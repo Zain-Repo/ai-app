@@ -1,22 +1,22 @@
 "use node"
 
-import {
-  createOpenAI,
-  type OpenAILanguageModelResponsesOptions,
-} from "@ai-sdk/openai"
-import {
-  createOpenRouter,
-  type OpenRouterChatSettings,
-  type OpenRouterEmbeddingSettings,
+import { createOpenAI } from "@ai-sdk/openai"
+import type { OpenAILanguageModelResponsesOptions } from "@ai-sdk/openai"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
+import type {
+  OpenRouterChatSettings,
+  OpenRouterEmbeddingSettings,
 } from "@openrouter/ai-sdk-provider"
 import {
   APICallError,
   embedMany,
   generateText,
   Output,
+  stepCountIs,
   streamText,
-  type ModelMessage,
+  tool,
 } from "ai"
+import type { ModelMessage } from "ai"
 import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
@@ -35,6 +35,20 @@ import {
 } from "./memoryPolicy"
 import type { MemoryCandidate } from "./memoryPolicy"
 import { decryptProviderToken } from "./providerCrypto"
+import {
+  createTerminalSandboxSession,
+  runTerminalCommandInputSchema,
+  runTerminalCommandTool,
+} from "./terminalSandbox"
+import { finishTerminalRun, startTerminalRun } from "./terminalPolicy"
+import type { StoredTerminalRun } from "./terminalPolicy"
+import {
+  RENDER_UI_TOOL_NAME,
+  renderUiToolDescription,
+  renderUiToolInputSchema,
+  serializeGenerativeUi,
+} from "../shared/generative-ui"
+import { terminalExecuteResponseSchema } from "../shared/terminal-workspace"
 
 const MAX_RESPONSE_LENGTH = 32_000
 const STREAM_FLUSH_INTERVAL_MS = 80
@@ -52,6 +66,10 @@ const IMAGE_TYPES = new Set([
   "image/png",
   "image/webp",
 ])
+const renderUiTool = tool({
+  description: renderUiToolDescription,
+  inputSchema: renderUiToolInputSchema,
+})
 const DEEPSEEK_PROVIDER_ROUTING = {
   sort: { by: "price", partition: "model" },
   // Prefer the cheapest endpoint whose recent p90 latency stays under 3s.
@@ -112,8 +130,7 @@ export function getOpenRouterModelSettings(
   model: string,
   messages: ProviderMessage[],
   reasoningEffort?: string,
-  routingProvider?: string,
-  enableWebFetch = false
+  routingProvider?: string
 ): OpenRouterChatSettings {
   const provider = getProviderRouting(model, routingProvider)
   const effort = asReasoningEffort(reasoningEffort)
@@ -135,16 +152,6 @@ export function getOpenRouterModelSettings(
     extraBody: {
       store: false,
       ...(provider ? { provider } : {}),
-      ...(enableWebFetch
-        ? {
-            tools: [
-              {
-                type: "openrouter:web_fetch",
-                parameters: { max_content_tokens: 12_000 },
-              },
-            ],
-          }
-        : {}),
     },
   }
 }
@@ -225,32 +232,44 @@ export async function inlineTextAttachments(
   return hydrated
 }
 
-export function toModelMessages(messages: ProviderMessage[]): ModelMessage[] {
-  return messages.map((message) => {
-    if (message.role !== "user" || !message.attachments?.length)
-      return { content: message.content, role: message.role }
+export function toModelPrompt(messages: ProviderMessage[]) {
+  const instructions = messages
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n")
 
-    return {
-      role: "user",
-      content: [
-        { type: "text", text: message.content },
-        ...message.attachments.map((attachment) =>
-          IMAGE_TYPES.has(attachment.contentType)
-            ? {
-                type: "image" as const,
-                image: new URL(attachment.url),
-                mediaType: attachment.contentType,
-              }
-            : {
-                type: "file" as const,
-                data: new URL(attachment.url),
-                filename: attachment.name,
-                mediaType: attachment.contentType,
-              }
-        ),
-      ],
-    }
-  })
+  const modelMessages: ModelMessage[] = messages
+    .filter((message) => message.role !== "system")
+    .map((message) => {
+      if (message.role !== "user" || !message.attachments?.length)
+        return { content: message.content, role: message.role }
+
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: message.content },
+          ...message.attachments.map((attachment) =>
+            IMAGE_TYPES.has(attachment.contentType)
+              ? {
+                  type: "image" as const,
+                  image: new URL(attachment.url),
+                  mediaType: attachment.contentType,
+                }
+              : {
+                  type: "file" as const,
+                  data: new URL(attachment.url),
+                  filename: attachment.name,
+                  mediaType: attachment.contentType,
+                }
+          ),
+        ],
+      }
+    })
+
+  return {
+    ...(instructions ? { instructions } : {}),
+    messages: modelMessages,
+  }
 }
 
 const titleInstructions = `Summarize the user's prompt as a simple chat title.
@@ -505,6 +524,8 @@ export const generate = internalAction({
     let content = ""
     let provider: "openrouter" | "openai" | undefined
     let reasoning = ""
+    let terminalRuns: StoredTerminalRun[] = []
+    let uiPayload: string | undefined
     let errorCode: "insufficient_credits" | undefined
     try {
       const context = await ctx.runQuery(
@@ -551,37 +572,82 @@ export const generate = internalAction({
           ? { ...message, content: `${message.content}${memoryContext}` }
           : message
       )
-      const modelMessages = toModelMessages(messages)
+      const prompt = toModelPrompt(messages)
+      const terminalSandbox = createTerminalSandboxSession({
+        conversationId: args.conversationId,
+        ...(context.projectId ? { projectId: context.projectId } : {}),
+        workerToken: env.TERMINAL_WORKER_TOKEN,
+        workerUrl: env.TERMINAL_WORKER_URL,
+      })
+      const generationPrompt = terminalSandbox
+        ? {
+            ...prompt,
+            instructions: [prompt.instructions, terminalSandbox.description]
+              .filter(Boolean)
+              .join("\n\n"),
+          }
+        : prompt
+      const terminalOptions = terminalSandbox
+        ? {
+            experimental_sandbox: terminalSandbox,
+            stopWhen: stepCountIs(6),
+          }
+        : {}
       const result =
         context.provider === "openrouter"
-          ? streamText({
-              model: createOpenRouter({
+          ? (() => {
+              const openrouter = createOpenRouter({
                 apiKey: token,
                 compatibility: "strict",
-              })(
-                context.model,
-                getOpenRouterModelSettings(
+              })
+              return streamText({
+                model: openrouter(
                   context.model,
-                  messages,
-                  context.reasoningEffort,
-                  context.routingProvider,
-                  context.hasProjectLinks
-                )
-              ),
-              messages: modelMessages,
-              timeout: 120_000,
-            })
+                  getOpenRouterModelSettings(
+                    context.model,
+                    messages,
+                    context.reasoningEffort,
+                    context.routingProvider
+                  )
+                ),
+                ...generationPrompt,
+                tools: {
+                  [RENDER_UI_TOOL_NAME]: renderUiTool,
+                  ...(terminalSandbox
+                    ? { runTerminalCommand: runTerminalCommandTool }
+                    : {}),
+                  ...(context.hasProjectLinks
+                    ? {
+                        webSearch: openrouter.tools.webSearch({
+                          maxResults: 5,
+                          searchPrompt:
+                            "Use the exact project source URLs when they answer the request.",
+                        }),
+                      }
+                    : {}),
+                },
+                ...terminalOptions,
+                timeout: 120_000,
+              })
+            })()
           : (() => {
               const openai = createOpenAI({ apiKey: token })
               return streamText({
                 model: openai.responses(context.model),
-                messages: modelMessages,
-                ...(context.hasProjectLinks
-                  ? { tools: { webSearch: openai.tools.webSearch() } }
-                  : {}),
+                ...generationPrompt,
+                tools: {
+                  [RENDER_UI_TOOL_NAME]: renderUiTool,
+                  ...(terminalSandbox
+                    ? { runTerminalCommand: runTerminalCommandTool }
+                    : {}),
+                  ...(context.hasProjectLinks
+                    ? { webSearch: openai.tools.webSearch() }
+                    : {}),
+                },
                 providerOptions: {
                   openai: getOpenAIOptions(context.reasoningEffort),
                 },
+                ...terminalOptions,
                 timeout: 120_000,
               })
             })()
@@ -592,7 +658,10 @@ export const generate = internalAction({
       })
       let completed = false
       let lastFlushAt = 0
+      const terminalStartedAt = new Map<string, number>()
       for await (const event of result.stream) {
+        let terminalChanged = false
+        let uiChanged = false
         if (event.type === "error") throw event.error
         if (event.type === "text-delta") {
           content += event.text
@@ -602,10 +671,80 @@ export const generate = internalAction({
         if (event.type === "reasoning-delta") {
           reasoning = (reasoning + event.text).slice(0, MAX_RESPONSE_LENGTH)
         }
+        if (
+          event.type === "tool-call" &&
+          event.toolName === RENDER_UI_TOOL_NAME
+        ) {
+          const input = renderUiToolInputSchema.safeParse(event.input)
+          const nextPayload = input.success
+            ? serializeGenerativeUi(input.data.ui)
+            : null
+          if (nextPayload) {
+            uiPayload = nextPayload
+            uiChanged = true
+          }
+        }
+        if (
+          event.type === "tool-call" &&
+          event.toolName === "runTerminalCommand"
+        ) {
+          const input = runTerminalCommandInputSchema.safeParse(event.input)
+          if (input.success) {
+            terminalRuns = startTerminalRun(terminalRuns, {
+              command: input.data.command,
+              toolCallId: event.toolCallId,
+              ...(input.data.workingDirectory
+                ? { workingDirectory: input.data.workingDirectory }
+                : {}),
+            })
+            terminalStartedAt.set(event.toolCallId, Date.now())
+            terminalChanged = true
+          }
+        }
+        if (
+          event.type === "tool-result" &&
+          event.toolName === "runTerminalCommand"
+        ) {
+          const output = terminalExecuteResponseSchema.safeParse(event.output)
+          if (output.success) {
+            terminalRuns = finishTerminalRun(terminalRuns, event.toolCallId, {
+              durationMs:
+                Date.now() -
+                (terminalStartedAt.get(event.toolCallId) ?? Date.now()),
+              exitCode: output.data.exitCode,
+              status: output.data.exitCode === 0 ? "complete" : "failed",
+              stderr: output.data.stderr,
+              stdout: output.data.stdout,
+            })
+            terminalChanged = true
+          }
+        }
+        if (
+          event.type === "tool-error" &&
+          event.toolName === "runTerminalCommand"
+        ) {
+          terminalRuns = finishTerminalRun(terminalRuns, event.toolCallId, {
+            durationMs:
+              Date.now() -
+              (terminalStartedAt.get(event.toolCallId) ?? Date.now()),
+            status: "failed",
+            stderr: "Terminal command failed before producing a result.",
+          })
+          terminalChanged = true
+        }
         if (event.type === "finish") completed = true
-        if (event.type === "text-delta" || event.type === "reasoning-delta") {
+        if (
+          terminalChanged ||
+          uiChanged ||
+          event.type === "text-delta" ||
+          event.type === "reasoning-delta"
+        ) {
           const now = Date.now()
-          if (now - lastFlushAt >= STREAM_FLUSH_INTERVAL_MS) {
+          if (
+            terminalChanged ||
+            uiChanged ||
+            now - lastFlushAt >= STREAM_FLUSH_INTERVAL_MS
+          ) {
             await ctx.runMutation(
               internal.conversations.updateOpenRouterResponse,
               {
@@ -614,6 +753,8 @@ export const generate = internalAction({
                 ...(reasoning.trim()
                   ? { reasoningSteps: [reasoning.trim()] }
                   : {}),
+                ...(terminalRuns.length ? { terminalRuns } : {}),
+                ...(uiPayload ? { uiPayload } : {}),
               }
             )
             lastFlushAt = now
@@ -621,7 +762,7 @@ export const generate = internalAction({
         }
       }
       content = content.trim()
-      if (!completed || !content)
+      if (!completed || (!content && !uiPayload && !terminalRuns.length))
         throw new Error("Provider response incomplete")
 
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
@@ -629,6 +770,8 @@ export const generate = internalAction({
         content,
         failed: false,
         ...(reasoning.trim() ? { reasoningSteps: [reasoning.trim()] } : {}),
+        ...(terminalRuns.length ? { terminalRuns } : {}),
+        ...(uiPayload ? { uiPayload } : {}),
       })
       if (context.shouldGenerateTitle)
         await generateConversationTitle(ctx, token, {
@@ -661,12 +804,22 @@ export const generate = internalAction({
       if (provider === "openrouter" && status === 402)
         errorCode = "insufficient_credits"
       if (status) console.error("Provider request failed", { provider, status })
+      terminalRuns = terminalRuns.map((run) =>
+        run.status === "running"
+          ? {
+              ...run,
+              status: "failed" as const,
+              stderr: "Response ended before the command completed.",
+            }
+          : run
+      )
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
         ...(errorCode ? { errorCode } : {}),
         failed: true,
         ...(reasoning.trim() ? { reasoningSteps: [reasoning.trim()] } : {}),
+        ...(terminalRuns.length ? { terminalRuns } : {}),
       })
       throw new Error("Provider response failed")
     }

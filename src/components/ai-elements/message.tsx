@@ -14,9 +14,24 @@ import {
   CodeBlockCopyButton,
   CodeBlockHeader,
 } from "@/components/ai-elements/code-block"
+import {
+  Terminal,
+  TerminalActions,
+  TerminalContent,
+  TerminalCopyButton,
+  TerminalHeader,
+  TerminalStatus,
+  TerminalTitle,
+} from "@/components/ai-elements/terminal"
 import { cn } from "@/lib/utils"
+import { executeBrowserPython } from "@/lib/browser-python"
 import { math } from "@streamdown/math"
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlayIcon,
+  SquareIcon,
+} from "lucide-react"
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react"
 import {
   createContext,
@@ -25,6 +40,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import { Streamdown } from "streamdown"
@@ -323,10 +339,114 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
 type MarkdownCodeProps = ComponentProps<"code"> & { node?: unknown }
 
+const PYTHON_LANGUAGES = new Set(["py", "python", "python3"])
+
+const BrowserPythonCodeBlock = ({
+  code,
+  language,
+}: {
+  code: string
+  language: string
+}) => {
+  const [isRunning, setIsRunning] = useState(false)
+  const [output, setOutput] = useState<string | null>(null)
+  const executionRef = useRef<ReturnType<typeof executeBrowserPython> | null>(
+    null
+  )
+
+  const stop = useCallback(() => {
+    executionRef.current?.cancel()
+    executionRef.current = null
+  }, [])
+
+  const run = useCallback(() => {
+    stop()
+    setIsRunning(true)
+    setOutput("Loading Python 3.14 in your browser…")
+    let execution: ReturnType<typeof executeBrowserPython>
+    try {
+      execution = executeBrowserPython(code)
+    } catch (cause) {
+      setIsRunning(false)
+      setOutput(cause instanceof Error ? cause.message : "Python could not run")
+      return
+    }
+    executionRef.current = execution
+    void execution.result
+      .then((result) => {
+        if (executionRef.current !== execution) return
+        setOutput(
+          [result.stdout.trimEnd(), result.stderr.trimEnd(), result.error]
+            .filter(Boolean)
+            .join("\n") || "Process exited with no output."
+        )
+      })
+      .catch((cause: unknown) => {
+        if (executionRef.current !== execution) return
+        setOutput(
+          cause instanceof DOMException && cause.name === "AbortError"
+            ? "Stopped."
+            : cause instanceof Error
+              ? cause.message
+              : "Python could not run"
+        )
+      })
+      .finally(() => {
+        if (executionRef.current !== execution) return
+        executionRef.current = null
+        setIsRunning(false)
+      })
+  }, [code, stop])
+
+  useEffect(() => stop, [stop])
+
+  return (
+    <div className="my-4">
+      <CodeBlock className="my-0" code={code} language={language}>
+        <CodeBlockHeader>
+          <span className="font-mono lowercase">{language}</span>
+          <CodeBlockActions>
+            <CodeBlockCopyButton aria-label="Copy code" size="icon-sm" />
+            <Button
+              aria-label={isRunning ? "Stop Python" : "Run Python"}
+              onClick={isRunning ? stop : run}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {isRunning ? (
+                <SquareIcon aria-hidden="true" size={13} />
+              ) : (
+                <PlayIcon aria-hidden="true" size={13} />
+              )}
+              {isRunning ? "Stop" : "Run"}
+            </Button>
+          </CodeBlockActions>
+        </CodeBlockHeader>
+      </CodeBlock>
+      {output !== null ? (
+        <Terminal className="mt-2" isStreaming={isRunning} output={output}>
+          <TerminalHeader>
+            <TerminalTitle>Browser Python</TerminalTitle>
+            <TerminalActions>
+              <TerminalStatus />
+              <TerminalCopyButton aria-label="Copy Python output" />
+            </TerminalActions>
+          </TerminalHeader>
+          <TerminalContent />
+        </Terminal>
+      ) : null}
+    </div>
+  )
+}
+
 const markdownComponents: Components = {
   code: ({ children, className, node: _node }: MarkdownCodeProps) => {
     const language = className?.replace(/^language-/, "") || "text"
     const value = String(children).replace(/\n$/, "")
+
+    if (PYTHON_LANGUAGES.has(language.toLowerCase()))
+      return <BrowserPythonCodeBlock code={value} language={language} />
 
     return (
       <CodeBlock code={value} language={language}>

@@ -1,5 +1,6 @@
 import { v } from "convex/values"
 
+import { internal } from "./_generated/api"
 import { mutation, query } from "./_generated/server"
 import { consumeDraftAttachments } from "./attachments"
 import { getCurrentUser } from "./authHelpers"
@@ -281,6 +282,11 @@ export const remove = mutation({
         memoryRevision: (user.memoryRevision ?? 0) + 1,
       })
     await ctx.db.delete(project._id)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.terminalSandboxActions.removeWorkspace,
+      { key: project._id, scope: "project" }
+    )
     return null
   },
 })

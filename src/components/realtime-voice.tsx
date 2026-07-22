@@ -11,6 +11,12 @@ import { useAction } from "convex/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { api } from "../../convex/_generated/api"
+import {
+  RENDER_UI_TOOL_NAME,
+  renderUiToolInputSchema,
+  serializeGenerativeUi,
+} from "../../shared/generative-ui"
+import { GenerativeUi } from "@/components/generative-ui"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 
@@ -24,9 +30,12 @@ type Transcript = {
 }
 
 type RealtimeEvent = {
+  arguments?: string
+  call_id?: string
   delta?: string
   error?: { message?: string }
   item_id?: string
+  name?: string
   transcript?: string
   type?: string
 }
@@ -52,6 +61,7 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
   const [userDraft, setUserDraft] = useState("")
   const [assistantDraft, setAssistantDraft] = useState("")
+  const [uiPayload, setUiPayload] = useState("")
   const peerRef = useRef<RTCPeerConnection | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const channelRef = useRef<RTCDataChannel | null>(null)
@@ -91,6 +101,24 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
     []
   )
 
+  const sendEvent = useCallback((payload: object) => {
+    const channel = channelRef.current
+    if (!channel || channel.readyState !== "open") return false
+    channel.send(JSON.stringify(payload))
+    return true
+  }, [])
+
+  const continueAfterToolCall = useCallback(
+    (callId: string, output: string) => {
+      sendEvent({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: callId, output },
+      })
+      sendEvent({ type: "response.create" })
+    },
+    [sendEvent]
+  )
+
   const handleEvent = useCallback(
     (event: MessageEvent<string>) => {
       let data: RealtimeEvent
@@ -126,6 +154,36 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
           commitTranscript("assistant", data.transcript ?? "", data.item_id)
           setAssistantDraft("")
           break
+        case "response.function_call_arguments.done": {
+          if (
+            data.name !== RENDER_UI_TOOL_NAME ||
+            !data.arguments ||
+            !data.call_id
+          )
+            break
+          let input: unknown
+          try {
+            input = JSON.parse(data.arguments)
+          } catch {
+            continueAfterToolCall(
+              data.call_id,
+              "The interface arguments were invalid."
+            )
+            break
+          }
+          const parsed = renderUiToolInputSchema.safeParse(input)
+          const payload = parsed.success
+            ? serializeGenerativeUi(parsed.data.ui)
+            : null
+          if (payload) setUiPayload(payload)
+          continueAfterToolCall(
+            data.call_id,
+            payload
+              ? "The requested interface is visible to the user."
+              : "The requested interface could not be displayed."
+          )
+          break
+        }
         case "response.done":
           setStatus("listening")
           break
@@ -137,7 +195,29 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
           break
       }
     },
-    [commitTranscript]
+    [commitTranscript, continueAfterToolCall]
+  )
+
+  const submitUiAction = useCallback(
+    (value: string) => {
+      const text = value.trim()
+      if (!text) return
+      if (
+        !sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text }],
+          },
+        })
+      )
+        return
+      sendEvent({ type: "response.create" })
+      commitTranscript("user", text)
+      setStatus("thinking")
+    },
+    [commitTranscript, sendEvent]
   )
 
   const startMeter = useCallback((stream: MediaStream) => {
@@ -162,6 +242,7 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
     setStatus("connecting")
     setError("")
     setTranscripts([])
+    setUiPayload("")
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -340,18 +421,38 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
               >
                 <NativeSelectOption value="marin">Marin</NativeSelectOption>
                 <NativeSelectOption value="cedar">Cedar</NativeSelectOption>
+                <NativeSelectOption value="alloy">Alloy</NativeSelectOption>
+                <NativeSelectOption value="ash">Ash</NativeSelectOption>
+                <NativeSelectOption value="ballad">Ballad</NativeSelectOption>
+                <NativeSelectOption value="coral">Coral</NativeSelectOption>
+                <NativeSelectOption value="echo">Echo</NativeSelectOption>
+                <NativeSelectOption value="sage">Sage</NativeSelectOption>
+                <NativeSelectOption value="shimmer">Shimmer</NativeSelectOption>
+                <NativeSelectOption value="verse">Verse</NativeSelectOption>
               </NativeSelect>
             </label>
           ) : null}
         </main>
 
-        <aside className="min-h-0 border-t bg-muted/20 lg:border-t-0 lg:border-l">
+        <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 lg:border-t-0 lg:border-l">
           <div className="flex items-center justify-between border-b px-5 py-4">
             <h2 className="text-sm font-medium">Live transcript</h2>
             <span className="text-[11px] text-muted-foreground">
               Session only
             </span>
           </div>
+          {uiPayload ? (
+            <div className="border-b p-5">
+              <p className="mb-3 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                Generated view
+              </p>
+              <GenerativeUi
+                disabled={!isLive}
+                onAction={submitUiAction}
+                payload={uiPayload}
+              />
+            </div>
+          ) : null}
           <div className="max-h-72 space-y-5 overflow-y-auto px-5 py-5 lg:max-h-[calc(100svh-8rem)]">
             {transcripts.length === 0 ? (
               <p className="text-sm leading-relaxed text-muted-foreground">

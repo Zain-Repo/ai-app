@@ -14,6 +14,8 @@ import { messageAttachmentValidator } from "./attachmentPolicy"
 import { consumeDraftAttachments } from "./attachments"
 import { getMemorySearchScopes } from "./memories"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
+import { terminalRunValidator } from "./terminalPolicy"
+import { MAX_GENERATIVE_UI_PAYLOAD_LENGTH } from "../shared/generative-ui"
 
 const MAX_CONVERSATIONS = 30
 const MAX_MESSAGES = 200
@@ -64,6 +66,8 @@ const messageValidator = v.object({
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
   reasoningSteps: v.optional(v.array(v.string())),
+  terminalRuns: v.optional(v.array(terminalRunValidator)),
+  uiPayload: v.optional(v.string()),
   errorCode: v.optional(v.literal("insufficient_credits")),
 })
 
@@ -566,7 +570,7 @@ export const getOpenRouterResponseContext = internalQuery({
         ...(await Promise.all(
           messagesBeforeResponse
             .filter((message) => message.status === "complete")
-            .map(async ({ attachments = [], content, role }) => ({
+            .map(async ({ attachments = [], content, role, uiPayload }) => ({
               attachments: (
                 await Promise.all(
                   attachments.map(async (attachment) => {
@@ -575,7 +579,11 @@ export const getOpenRouterResponseContext = internalQuery({
                   })
                 )
               ).filter((attachment) => attachment !== null),
-              content,
+              content: uiPayload
+                ? [content, `[Rendered interface]\n${uiPayload}`]
+                    .filter(Boolean)
+                    .join("\n\n")
+                : content,
               role,
             }))
         )),
@@ -617,11 +625,18 @@ export const finishOpenRouterResponse = internalMutation({
     errorCode: v.optional(v.literal("insufficient_credits")),
     failed: v.boolean(),
     reasoningSteps: v.optional(v.array(v.string())),
+    terminalRuns: v.optional(v.array(terminalRunValidator)),
+    uiPayload: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     if (args.content.length > MAX_MESSAGE_LENGTH)
       throw new Error("Response is too long")
+    if (
+      args.uiPayload &&
+      args.uiPayload.length > MAX_GENERATIVE_UI_PAYLOAD_LENGTH
+    )
+      throw new Error("Generated interface is too large")
     const message = await ctx.db.get(args.assistantMessageId)
     if (
       message?.role === "assistant" &&
@@ -631,6 +646,8 @@ export const finishOpenRouterResponse = internalMutation({
         content: args.content,
         errorCode: args.errorCode,
         ...(args.reasoningSteps ? { reasoningSteps: args.reasoningSteps } : {}),
+        ...(args.terminalRuns ? { terminalRuns: args.terminalRuns } : {}),
+        ...(args.uiPayload ? { uiPayload: args.uiPayload } : {}),
         status: args.failed ? "failed" : "complete",
       })
     }
@@ -643,11 +660,18 @@ export const updateOpenRouterResponse = internalMutation({
     assistantMessageId: v.id("messages"),
     content: v.string(),
     reasoningSteps: v.optional(v.array(v.string())),
+    terminalRuns: v.optional(v.array(terminalRunValidator)),
+    uiPayload: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     if (args.content.length > MAX_MESSAGE_LENGTH)
       throw new Error("Response is too long")
+    if (
+      args.uiPayload &&
+      args.uiPayload.length > MAX_GENERATIVE_UI_PAYLOAD_LENGTH
+    )
+      throw new Error("Generated interface is too large")
     const message = await ctx.db.get(args.assistantMessageId)
     if (
       message?.role === "assistant" &&
@@ -656,6 +680,8 @@ export const updateOpenRouterResponse = internalMutation({
       await ctx.db.patch(message._id, {
         content: args.content,
         ...(args.reasoningSteps ? { reasoningSteps: args.reasoningSteps } : {}),
+        ...(args.terminalRuns ? { terminalRuns: args.terminalRuns } : {}),
+        ...(args.uiPayload ? { uiPayload: args.uiPayload } : {}),
         status: "streaming",
       })
     }
@@ -745,6 +771,12 @@ export const remove = mutation({
     )
     await deleteConversationMessages(ctx, conversation._id)
     await ctx.db.delete(conversation._id)
+    if (!conversation.projectId)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.terminalSandboxActions.removeWorkspace,
+        { key: conversation._id, scope: "chat" }
+      )
     return null
   },
 })

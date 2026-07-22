@@ -6,7 +6,7 @@ import {
   getPrivateOpenRouterEmbeddingSettings,
   inlineTextAttachments,
   normalizeGeneratedTitle,
-  toModelMessages,
+  toModelPrompt,
 } from "./openRouterResponses"
 
 describe("AI SDK provider bridge", () => {
@@ -56,7 +56,7 @@ describe("AI SDK provider bridge", () => {
 
   it("converts attachments to AI SDK multimodal messages", () => {
     expect(
-      toModelMessages([
+      toModelPrompt([
         { content: "System", role: "system" },
         {
           attachments: [
@@ -75,29 +75,31 @@ describe("AI SDK provider bridge", () => {
           role: "user",
         },
       ])
-    ).toEqual([
-      { content: "System", role: "system" },
-      {
-        role: "user",
-        content: [
-          { text: "Review these files", type: "text" },
-          {
-            image: new URL("https://files.example/screen.png"),
-            mediaType: "image/png",
-            type: "image",
-          },
-          {
-            data: new URL("https://files.example/brief.pdf"),
-            filename: "brief.pdf",
-            mediaType: "application/pdf",
-            type: "file",
-          },
-        ],
-      },
-    ])
+    ).toEqual({
+      instructions: "System",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { text: "Review these files", type: "text" },
+            {
+              image: new URL("https://files.example/screen.png"),
+              mediaType: "image/png",
+              type: "image",
+            },
+            {
+              data: new URL("https://files.example/brief.pdf"),
+              filename: "brief.pdf",
+              mediaType: "application/pdf",
+              type: "file",
+            },
+          ],
+        },
+      ],
+    })
   })
 
-  it("preserves OpenRouter routing, privacy, reasoning, and server tools", () => {
+  it("preserves OpenRouter routing, privacy, and reasoning", () => {
     const messages = [
       {
         attachments: [
@@ -116,8 +118,7 @@ describe("AI SDK provider bridge", () => {
         "deepseek/deepseek-chat",
         messages,
         "max",
-        undefined,
-        true
+        undefined
       )
     ).toMatchObject({
       plugins: [{ id: "file-parser" }],
@@ -131,12 +132,6 @@ describe("AI SDK provider bridge", () => {
           sort: { by: "price", partition: "model" },
         },
         store: false,
-        tools: [
-          {
-            parameters: { max_content_tokens: 12_000 },
-            type: "openrouter:web_fetch",
-          },
-        ],
       },
     })
     expect(

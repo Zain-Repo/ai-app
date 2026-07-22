@@ -26,6 +26,8 @@ import type { DataModel } from "./dataModel.js";
  */
 type Env = {
   readonly PROVIDER_TOKEN_ENCRYPTION_KEY: string;
+  readonly TERMINAL_WORKER_TOKEN: string | undefined;
+  readonly TERMINAL_WORKER_URL: string | undefined;
 };
 
 /**

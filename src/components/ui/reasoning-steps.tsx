@@ -279,7 +279,7 @@ function ShimmerLabel({
 }) {
   if (!(active && !reduceMotion)) {
     return (
-      <span className="text-[13px] font-medium text-foreground">
+      <span className="text-[13px] leading-5 font-medium text-foreground">
         {children}
       </span>
     )
@@ -288,7 +288,7 @@ function ShimmerLabel({
   return (
     <motion.span
       animate={{ backgroundPosition: "0% center" }}
-      className="bg-[length:250%_100%,auto] bg-clip-text [background-repeat:no-repeat,padding-box] text-[13px] font-medium text-transparent [--rs-base:var(--muted-foreground)] [--rs-sheen:var(--foreground)]"
+      className="bg-[length:250%_100%,auto] bg-clip-text [background-repeat:no-repeat,padding-box] text-[13px] leading-5 font-medium text-transparent [--rs-base:var(--muted-foreground)] [--rs-sheen:var(--foreground)]"
       initial={{ backgroundPosition: "100% center" }}
       style={{
         backgroundImage:
@@ -503,10 +503,7 @@ const ReasoningSteps = forwardRef<HTMLDivElement, ReasoningStepsProps>(
 
     return (
       <CollapsiblePrimitive.Root
-        className={cn(
-          "w-full max-w-md overflow-hidden rounded-2xl bg-card",
-          className
-        )}
+        className={cn("w-full max-w-md rounded-xl bg-card", className)}
         onOpenChange={handleOpenChange}
         open={open}
         ref={ref}
@@ -538,7 +535,7 @@ function ReasoningStepsTrigger({
   return (
     <CollapsiblePrimitive.Trigger
       className={cn(
-        "flex w-full items-center gap-3 px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none",
+        "relative flex min-h-9 w-full items-center rounded-xl px-3 py-2 text-left transition-colors before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset aria-expanded:rounded-b-none aria-expanded:bg-muted/40",
         className
       )}
       render={(triggerProps, state) => {
@@ -593,7 +590,7 @@ function ReasoningStepsContent({
   return (
     <MorphPanel
       className={className}
-      contentClassName="px-4 pt-1"
+      contentClassName="px-3 pt-1"
       open={open}
       reduceMotion={reduceMotion}
     >

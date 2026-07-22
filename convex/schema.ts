@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
 import { messageAttachmentValidator } from "./attachmentPolicy"
+import { terminalRunValidator } from "./terminalPolicy"
 
 const connectionStatus = v.union(
   v.literal("connected"),
@@ -159,6 +160,8 @@ export default defineSchema({
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
     reasoningSteps: v.optional(v.array(v.string())),
+    terminalRuns: v.optional(v.array(terminalRunValidator)),
+    uiPayload: v.optional(v.string()),
     errorCode: v.optional(v.literal("insufficient_credits")),
   }).index("by_conversation", ["conversationId"]),
 

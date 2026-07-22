@@ -3,6 +3,11 @@ import { v } from "convex/values"
 import { internal } from "./_generated/api"
 import { action, env } from "./_generated/server"
 import { decryptProviderToken, encryptProviderToken } from "./providerCrypto"
+import {
+  RENDER_UI_TOOL_NAME,
+  renderUiToolDescription,
+  renderUiToolJsonSchema,
+} from "../shared/generative-ui"
 
 const OPENROUTER_TOKEN_URL = "https://openrouter.ai/api/v1/auth/keys"
 const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
@@ -552,6 +557,14 @@ export const createRealtimeSession = action({
         output_modalities: ["audio"],
         instructions:
           "Be concise, conversational, and helpful. Speak naturally. Ask one clarifying question when the request is ambiguous.",
+        tools: [
+          {
+            type: "function",
+            name: RENDER_UI_TOOL_NAME,
+            description: renderUiToolDescription,
+            parameters: renderUiToolJsonSchema,
+          },
+        ],
         audio: {
           input: {
             transcription: {

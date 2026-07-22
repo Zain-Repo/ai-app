@@ -325,6 +325,20 @@ describe("projects and conversations", () => {
       ],
     })
 
+    const uiPayload = JSON.stringify({
+      kind: "stats",
+      stats: [{ label: "Index scans", value: 3 }],
+    })
+    await t.mutation(internal.conversations.finishOpenRouterResponse, {
+      assistantMessageId: messages[1]._id,
+      content: "",
+      failed: false,
+      uiPayload,
+    })
+    await expect(
+      ada.query(api.conversations.listMessages, { conversationId })
+    ).resolves.toMatchObject([{}, { status: "complete", uiPayload }])
+
     await ada.mutation(api.conversations.send, {
       conversationId,
       content: "Show an example.",
@@ -333,9 +347,18 @@ describe("projects and conversations", () => {
     await expect(
       ada.query(api.conversations.get, { conversationId })
     ).resolves.toMatchObject({ model: "anthropic/claude-sonnet" })
-    expect(
-      await ada.query(api.conversations.listMessages, { conversationId })
-    ).toHaveLength(4)
+    const nextMessages = await ada.query(api.conversations.listMessages, {
+      conversationId,
+    })
+    expect(nextMessages).toHaveLength(4)
+    const nextContext = await t.query(
+      internal.conversations.getOpenRouterResponseContext,
+      {
+        assistantMessageId: nextMessages[3]._id,
+        conversationId,
+      }
+    )
+    expect(nextContext.messages[3]?.content).toContain(uiPayload)
     await expect(
       ben.mutation(api.conversations.send, {
         conversationId,

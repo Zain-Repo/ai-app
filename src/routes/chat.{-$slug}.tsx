@@ -42,7 +42,9 @@ import {
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { MessageResponse } from "@/components/ai-elements/message"
+import { Terminal } from "@/components/ai-elements/terminal"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import { GenerativeUi } from "@/components/generative-ui"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
 import { RealtimeVoice } from "@/components/realtime-voice"
@@ -1866,8 +1868,20 @@ function ChatWorkspace() {
           ) : (
             <>
               <MessageArea
+                actionsDisabled={
+                  sendState === "sending" ||
+                  selected?.status === "archived" ||
+                  !activeConnectionId ||
+                  catalogState !== "ready" ||
+                  providerModels.length === 0
+                }
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
+                onAction={(value) => {
+                  void send(value, { settings: defaultSettings }, []).catch(
+                    () => undefined
+                  )
+                }}
               />
               <div className="sticky bottom-0 z-10 w-full bg-gradient-to-t from-background from-70% to-transparent px-4 pt-8 pb-4">
                 <div className="mx-auto w-full max-w-3xl">
@@ -2209,11 +2223,15 @@ function ProjectWorkspace({
 }
 
 function MessageArea({
+  actionsDisabled,
   messages,
   name,
+  onAction,
 }: {
+  actionsDisabled: boolean
   messages: ChatMessage[] | undefined
   name: string | null | undefined
+  onAction: (value: string) => void
 }) {
   if (messages === undefined)
     return <ChatStatus message="Loading messages..." />
@@ -2238,6 +2256,8 @@ function MessageArea({
                 const isUser = message.role === "user"
                 const isStreaming = message.status === "streaming"
                 const hasReasoning = Boolean(message.reasoningSteps?.length)
+                const hasTerminalRuns = Boolean(message.terminalRuns?.length)
+                const hasUi = Boolean(message.uiPayload)
                 return (
                   <MessageScrollerItem
                     className="chat-message-enter"
@@ -2252,10 +2272,48 @@ function MessageArea({
                           <BubbleContent
                             className={isUser ? undefined : "w-full"}
                           >
+                            {!isUser && message.terminalRuns?.length ? (
+                              <div className="mb-3 space-y-2">
+                                {message.terminalRuns.map((run) => {
+                                  const status =
+                                    run.status === "running"
+                                      ? ""
+                                      : run.status === "complete"
+                                        ? `\n[exit ${run.exitCode ?? 0}${
+                                            run.durationMs === undefined
+                                              ? ""
+                                              : ` · ${run.durationMs}ms`
+                                          }]`
+                                        : `\n[failed${
+                                            run.exitCode === undefined
+                                              ? ""
+                                              : ` · exit ${run.exitCode}`
+                                          }]`
+                                  const output = [
+                                    `${run.workingDirectory ?? "/workspace"} $ ${run.command}`,
+                                    run.stdout?.trimEnd(),
+                                    run.stderr?.trimEnd(),
+                                    status,
+                                  ]
+                                    .filter(Boolean)
+                                    .join("\n")
+                                  return (
+                                    <Terminal
+                                      aria-label="Terminal command"
+                                      isStreaming={run.status === "running"}
+                                      key={run.toolCallId}
+                                      output={output}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            ) : null}
                             {message.status === "pending" ||
                             (isStreaming &&
                               !message.content &&
-                              !hasReasoning) ? (
+                              !hasReasoning &&
+                              !hasTerminalRuns &&
+                              !hasUi) ? (
                               <span
                                 aria-live="polite"
                                 className="inline-flex items-center gap-2 text-muted-foreground"
@@ -2320,6 +2378,13 @@ function MessageArea({
                                   >
                                     {message.content}
                                   </MessageResponse>
+                                ) : null}
+                                {message.uiPayload ? (
+                                  <GenerativeUi
+                                    disabled={actionsDisabled}
+                                    onAction={onAction}
+                                    payload={message.uiPayload}
+                                  />
                                 ) : null}
                               </div>
                             )}
