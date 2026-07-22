@@ -8,44 +8,129 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root"
-import { Route as IndexRouteImport } from "./routes/index"
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as ChatChar123SlugChar125RouteImport } from './routes/chat.{-$slug}'
+import { Route as ProviderCallbackOpenrouterRouteImport } from './routes/provider-callback.openrouter'
+import { Route as SignInSplatRouteImport } from './routes/sign-in.$'
+import { Route as SignUpSplatRouteImport } from './routes/sign-up.$'
 
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatChar123SlugChar125Route = ChatChar123SlugChar125RouteImport.update({
+  id: '/chat/{-$slug}',
+  path: '/chat/{-$slug}',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProviderCallbackOpenrouterRoute =
+  ProviderCallbackOpenrouterRouteImport.update({
+    id: '/provider-callback/openrouter',
+    path: '/provider-callback/openrouter',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const SignInSplatRoute = SignInSplatRouteImport.update({
+  id: '/sign-in/$',
+  path: '/sign-in/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignUpSplatRoute = SignUpSplatRouteImport.update({
+  id: '/sign-up/$',
+  path: '/sign-up/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
+  '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
+  '/sign-in/$': typeof SignInSplatRoute
+  '/sign-up/$': typeof SignUpSplatRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
+  '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
+  '/sign-in/$': typeof SignInSplatRoute
+  '/sign-up/$': typeof SignUpSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  "/": typeof IndexRoute
+  '/': typeof IndexRoute
+  '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
+  '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
+  '/sign-in/$': typeof SignInSplatRoute
+  '/sign-up/$': typeof SignUpSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/"
+  fullPaths:
+    | '/'
+    | '/chat/{-$slug}'
+    | '/provider-callback/openrouter'
+    | '/sign-in/$'
+    | '/sign-up/$'
   fileRoutesByTo: FileRoutesByTo
-  to: "/"
-  id: "__root__" | "/"
+  to:
+    | '/'
+    | '/chat/{-$slug}'
+    | '/provider-callback/openrouter'
+    | '/sign-in/$'
+    | '/sign-up/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/chat/{-$slug}'
+    | '/provider-callback/openrouter'
+    | '/sign-in/$'
+    | '/sign-up/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatChar123SlugChar125Route: typeof ChatChar123SlugChar125Route
+  ProviderCallbackOpenrouterRoute: typeof ProviderCallbackOpenrouterRoute
+  SignInSplatRoute: typeof SignInSplatRoute
+  SignUpSplatRoute: typeof SignUpSplatRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/"
-      path: "/"
-      fullPath: "/"
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/{-$slug}': {
+      id: '/chat/{-$slug}'
+      path: '/chat/{-$slug}'
+      fullPath: '/chat/{-$slug}'
+      preLoaderRoute: typeof ChatChar123SlugChar125RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/provider-callback/openrouter': {
+      id: '/provider-callback/openrouter'
+      path: '/provider-callback/openrouter'
+      fullPath: '/provider-callback/openrouter'
+      preLoaderRoute: typeof ProviderCallbackOpenrouterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in/$': {
+      id: '/sign-in/$'
+      path: '/sign-in/$'
+      fullPath: '/sign-in/$'
+      preLoaderRoute: typeof SignInSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-up/$': {
+      id: '/sign-up/$'
+      path: '/sign-up/$'
+      fullPath: '/sign-up/$'
+      preLoaderRoute: typeof SignUpSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -53,16 +138,21 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatChar123SlugChar125Route: ChatChar123SlugChar125Route,
+  ProviderCallbackOpenrouterRoute: ProviderCallbackOpenrouterRoute,
+  SignInSplatRoute: SignInSplatRoute,
+  SignUpSplatRoute: SignUpSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from "./router.tsx"
-import type { createStart } from "@tanstack/react-start"
-declare module "@tanstack/react-start" {
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

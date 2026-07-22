@@ -21,5 +21,20 @@
   },
   "menuColor": "default-translucent",
   "menuAccent": "subtle",
-  "registries": {}
+  "registries": {
+    "@shadcnblocks": {
+      "url": "https://shadcnblocks.com/r/{name}",
+      "headers": {
+        "Authorization": "Bearer ${SHADCNBLOCKS_API_KEY}"
+      }
+    },
+    "@coss": "https://coss.com/ui/r/{name}.json",
+    "@elements": "https://www.tryelements.dev/r/{name}.json",
+    "@evilcharts": "https://evilcharts.com/r/{name}.json",
+    "@iconiq": "https://iconiqui.com/r/{name}.json",
+    "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
+    "@animate-ui": "https://animate-ui.com/r/{name}.json",
+    "@gammaui": "https://www.gammaui.com/r/{name}.json",
+    "@manifest": "https://ui.manifest.build/r/{name}.json"
+  }
 }

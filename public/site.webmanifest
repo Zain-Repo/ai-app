@@ -1,0 +1,31 @@
+{
+  "id": "/chat",
+  "name": "AI Harness",
+  "short_name": "AI Harness",
+  "description": "Connect your AI providers, route work to the right model, and keep every run in one focused workspace.",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#070807",
+  "background_color": "#070807",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

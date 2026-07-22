@@ -1,0 +1,2390 @@
+import { UserButton } from "@clerk/tanstack-react-start"
+import { auth } from "@clerk/tanstack-react-start/server"
+import {
+  Add01Icon,
+  AiBrain01Icon,
+  Archive02Icon,
+  Cancel01Icon,
+  Delete02Icon,
+  Edit02Icon,
+  FileAttachmentIcon,
+  FolderAddIcon,
+  Link01Icon,
+  MoreHorizontalIcon,
+  Search01Icon,
+  Settings02Icon,
+  Upload04Icon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
+import { createServerFn } from "@tanstack/react-start"
+import {
+  AudioWaveform,
+  Camera,
+  FileText,
+  Folder,
+  FolderPlus,
+  Paperclip,
+  Plug,
+} from "lucide-react"
+import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useMemo, useState } from "react"
+import type { ReactNode } from "react"
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useAction,
+  useMutation,
+  useQuery,
+} from "convex/react"
+
+import { api } from "../../convex/_generated/api"
+import type { Doc, Id } from "../../convex/_generated/dataModel"
+import { MessageResponse } from "@/components/ai-elements/message"
+import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
+import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
+import { RealtimeVoice } from "@/components/realtime-voice"
+import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
+import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
+import type {
+  AIInputMenuItem,
+  PromptSettingGroup,
+} from "@/components/ui/ai-input"
+import { AIInput } from "@/components/ui/ai-input"
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment"
+import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Message, MessageContent, MessageGroup } from "@/components/ui/message"
+import {
+  ReasoningStep,
+  ReasoningSteps,
+  ReasoningStepsContent,
+  ReasoningStepsTrigger,
+} from "@/components/ui/reasoning-steps"
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerButton,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller"
+import { Spinner } from "@/components/ui/spinner"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarInput,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+
+const requireAuth = createServerFn().handler(async () => {
+  if (!(await auth()).isAuthenticated) throw redirect({ href: "/sign-in" })
+})
+
+const providerLabels: Record<string, string> = {
+  anthropic: "Anthropic",
+  cohere: "Cohere",
+  deepseek: "DeepSeek",
+  google: "Google",
+  meta: "Meta",
+  microsoft: "Microsoft",
+  mistralai: "Mistral AI",
+  openai: "OpenAI",
+  perplexity: "Perplexity",
+  qwen: "Qwen",
+  "x-ai": "xAI",
+}
+
+const preferredProviders = [
+  "openai",
+  "anthropic",
+  "google",
+  "x-ai",
+  "meta",
+  "mistralai",
+  "deepseek",
+  "qwen",
+  "microsoft",
+  "cohere",
+  "perplexity",
+]
+
+export function toggleExpandedProject(
+  expandedProjectId: string | undefined,
+  projectId: string
+) {
+  return expandedProjectId === projectId ? undefined : projectId
+}
+
+export function ProjectConversationDisclosure({
+  children,
+  open,
+}: {
+  children: ReactNode
+  open: boolean
+}) {
+  const reduceMotion = useReducedMotion() === true
+
+  return (
+    <motion.div
+      animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
+      aria-hidden={!open}
+      className="overflow-hidden"
+      initial={false}
+      inert={!open}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
+      }
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+type CatalogModel = {
+  provider: string
+  value: string
+  label: string
+  description?: string
+  reasoningEfforts?: ReasoningEffort[]
+  defaultReasoningEffort?: ReasoningEffort
+}
+
+type ModelEndpoint = {
+  providerName: string
+  providerTag: string
+  promptPrice: number
+  completionPrice: number
+  cacheReadPrice?: number
+  cacheWritePrice?: number
+  contextLength?: number
+  quantization?: string
+  uptime?: number
+  throughput?: number
+}
+
+function formatPrice(value: number) {
+  return `$${value.toLocaleString(undefined, {
+    maximumFractionDigits: value < 0.01 ? 4 : 3,
+  })}`
+}
+
+function formatEndpointDescription(endpoint: ModelEndpoint) {
+  const details = [
+    `${formatPrice(endpoint.promptPrice)} input`,
+    `${formatPrice(endpoint.completionPrice)} output / 1M`,
+  ]
+  if (endpoint.cacheReadPrice !== undefined)
+    details.push(`${formatPrice(endpoint.cacheReadPrice)} cache read`)
+  if (endpoint.cacheWritePrice !== undefined)
+    details.push(`${formatPrice(endpoint.cacheWritePrice)} cache write`)
+  if (endpoint.quantization && endpoint.quantization !== "unknown")
+    details.push(endpoint.quantization.toUpperCase())
+  if (endpoint.contextLength)
+    details.push(
+      `${Math.round(endpoint.contextLength / 1_000).toLocaleString()}K context`
+    )
+  if (endpoint.throughput !== undefined)
+    details.push(`${Math.round(endpoint.throughput)} tok/s`)
+  if (endpoint.uptime !== undefined)
+    details.push(`${endpoint.uptime.toFixed(2)}% uptime`)
+  return details.join(" | ")
+}
+
+type ChatAttachment = {
+  contentType: string
+  name: string
+  size: number
+  storageId: Id<"_storage">
+  url: string
+}
+
+type ChatMessage = Omit<Doc<"messages">, "attachments"> & {
+  attachments: ChatAttachment[]
+}
+
+function readStorageId(value: unknown) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("storageId" in value) ||
+    typeof value.storageId !== "string"
+  )
+    throw new Error("File upload failed")
+  return value.storageId as Id<"_storage">
+}
+
+function formatFileSize(size: number) {
+  return size < 1024 * 1024
+    ? `${Math.max(1, Math.round(size / 1024))} KB`
+    : `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+type ReasoningEffort =
+  "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+
+const MAX_PROJECT_SOURCES = 8
+const MAX_PROJECT_SOURCE_FILES = 5
+const MAX_PROJECT_SOURCE_BYTES = 20 * 1024 * 1024
+
+const reasoningEffortLabels: Record<ReasoningEffort, string> = {
+  max: "Max",
+  xhigh: "Extra high",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  minimal: "Minimal",
+  none: "Off",
+}
+
+const preferenceReasoningEfforts = {
+  quick: "low",
+  balanced: "medium",
+  deep: "high",
+} as const
+
+export const Route = createFileRoute("/chat/{-$slug}")({
+  beforeLoad: async () => await requireAuth(),
+  errorComponent: () => (
+    <div className="grid min-h-svh place-items-center bg-background p-6 text-sm text-muted-foreground">
+      We could not display this chat. Please try again.
+    </div>
+  ),
+  validateSearch: (search: Record<string, unknown>) => ({
+    mode:
+      search.mode === "chat-new" ||
+      search.mode === "project" ||
+      search.mode === "project-new"
+        ? search.mode
+        : undefined,
+    projectId:
+      typeof search.projectId === "string" ? search.projectId : undefined,
+  }),
+  component: ChatPage,
+})
+
+function ChatPage() {
+  return (
+    <div className="app-view min-h-svh bg-background text-foreground">
+      <AuthLoading>
+        <ChatStatus message="Preparing your workspace..." />
+      </AuthLoading>
+      <Unauthenticated>
+        <ChatStatus message="We could not verify your session. Please sign in again." />
+      </Unauthenticated>
+      <Authenticated>
+        <Workspace />
+      </Authenticated>
+    </div>
+  )
+}
+
+function Workspace() {
+  const syncCurrent = useMutation(api.users.syncCurrent)
+  const [state, setState] = useState<"ready" | "failed" | "syncing">("syncing")
+
+  useEffect(() => {
+    void syncCurrent().then(
+      () => setState("ready"),
+      () => setState("failed")
+    )
+  }, [syncCurrent])
+
+  if (state !== "ready")
+    return (
+      <ChatStatus
+        message={
+          state === "failed"
+            ? "We could not prepare your workspace. Please sign in again."
+            : "Preparing your workspace..."
+        }
+      />
+    )
+  return <ChatWorkspace />
+}
+
+function ChatWorkspace() {
+  const navigate = useNavigate()
+  const { slug: conversationId } = Route.useParams()
+  const search = Route.useSearch()
+  const [expandedProjectId, setExpandedProjectId] = useState(search.projectId)
+  const viewer = useQuery(api.auth.viewer)
+  const preferences = useQuery(api.users.getPreferences)
+  const projects = useQuery(api.projects.list)
+  const projectConversations = useQuery(
+    api.conversations.listRecent,
+    search.projectId
+      ? {
+          limit: 30,
+          projectId: search.projectId,
+        }
+      : "skip"
+  )
+  const projectSources = useQuery(
+    api.projects.listSources,
+    search.mode === "project" && search.projectId
+      ? { projectId: search.projectId }
+      : "skip"
+  )
+  const recentConversations = useQuery(api.conversations.listRecent, {
+    limit: 30,
+    unassignedOnly: true,
+  })
+  const selected = useQuery(
+    api.conversations.get,
+    conversationId ? { conversationId } : "skip"
+  )
+  const messages = useQuery(
+    api.conversations.listMessages,
+    conversationId ? { conversationId } : "skip"
+  )
+  const startConversation = useMutation(api.conversations.start)
+  const sendMessage = useMutation(api.conversations.send)
+  const archiveConversation = useMutation(api.conversations.archive)
+  const removeConversation = useMutation(api.conversations.remove)
+  const createProject = useMutation(api.projects.create)
+  const addProjectSources = useMutation(api.projects.addSources)
+  const renameProjectMutation = useMutation(api.projects.rename)
+  const removeProject = useMutation(api.projects.remove)
+  const moveToProject = useMutation(api.conversations.moveToProject)
+  const generateUploadUrl = useMutation(api.attachments.generateUploadUrl)
+  const registerAttachment = useMutation(api.attachments.register)
+  const discardAttachment = useMutation(api.attachments.discard)
+  const connections = useQuery(api.providerConnections.listMine)
+  const listModels = useAction(api.providerOAuth.listModels)
+  const listModelEndpoints = useAction(api.providerOAuth.listModelEndpoints)
+  const [projectName, setProjectName] = useState("")
+  const [projectInstructions, setProjectInstructions] = useState("")
+  const [projectMemoryScope, setProjectMemoryScope] = useState<
+    "all_chats" | "project_only"
+  >("project_only")
+  const [projectSourceFiles, setProjectSourceFiles] = useState<File[]>([])
+  const [projectSourceLinks, setProjectSourceLinks] = useState<string[]>([])
+  const [projectSourceUrl, setProjectSourceUrl] = useState("")
+  const [projectSourceError, setProjectSourceError] = useState("")
+  const [projectState, setProjectState] = useState<
+    "creating" | "failed" | "idle"
+  >("idle")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [archivedOpen, setArchivedOpen] = useState(false)
+  const [connectorOpen, setConnectorOpen] = useState(false)
+  const [projectActionFailed, setProjectActionFailed] = useState(false)
+  const [projectMenuError, setProjectMenuError] = useState("")
+  const [projectMenuActionId, setProjectMenuActionId] = useState<string | null>(
+    null
+  )
+  const [conversationActionId, setConversationActionId] = useState<
+    string | null
+  >(null)
+  const [catalog, setCatalog] = useState<CatalogModel[]>([])
+  const [catalogState, setCatalogState] = useState<
+    "failed" | "idle" | "loading" | "ready"
+  >("idle")
+  const [modelEndpoints, setModelEndpoints] = useState<ModelEndpoint[]>([])
+  const [endpointState, setEndpointState] = useState<
+    "failed" | "idle" | "loading" | "ready"
+  >("idle")
+  const [modelProvider, setModelProvider] = useState("")
+  const [activeProvider, setActiveProvider] = useState<"openrouter" | "openai">(
+    "openrouter"
+  )
+  const [selectedModelId, setSelectedModelId] = useState("")
+  const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
+    "idle"
+  )
+  const [voiceMode, setVoiceMode] = useState(false)
+
+  useEffect(() => {
+    setExpandedProjectId(search.projectId)
+  }, [search.projectId])
+
+  const openRouter = connections?.find(
+    (connection) =>
+      connection.provider === "openrouter" && connection.status === "connected"
+  )
+  const openAi = connections?.find(
+    (connection) =>
+      connection.provider === "openai" && connection.status === "connected"
+  )
+  const activeConnection = activeProvider === "openai" ? openAi : openRouter
+  const activeConnectionId = activeConnection?.connectionId
+
+  useEffect(() => {
+    if (selected?.providerConnectionId) {
+      const provider = connections?.find(
+        (connection) =>
+          connection.connectionId === selected.providerConnectionId
+      )?.provider
+      if (provider === "openai" || provider === "openrouter")
+        setActiveProvider(provider)
+    } else if (openAi) setActiveProvider("openai")
+  }, [connections, openAi, selected?.providerConnectionId])
+
+  useEffect(() => {
+    if (!activeConnectionId) {
+      setCatalog([])
+      setCatalogState("idle")
+      return
+    }
+
+    let cancelled = false
+    setCatalogState("loading")
+    void listModels({ provider: activeProvider }).then(
+      (models) => {
+        if (cancelled) return
+        setCatalog(models)
+        setCatalogState("ready")
+      },
+      () => {
+        if (cancelled) return
+        setCatalog([])
+        setCatalogState("failed")
+      }
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeConnectionId, activeProvider, listModels])
+
+  const modelProviders = useMemo(() => {
+    const providers = Array.from(
+      new Map(
+        catalog.map((model) => [
+          model.provider,
+          {
+            value: model.provider,
+            label: providerLabels[model.provider] ?? model.provider,
+          },
+        ])
+      ).values()
+    )
+
+    return providers.sort((left, right) => {
+      const leftPriority = preferredProviders.indexOf(left.value)
+      const rightPriority = preferredProviders.indexOf(right.value)
+      if (leftPriority !== -1 || rightPriority !== -1) {
+        if (leftPriority === -1) return 1
+        if (rightPriority === -1) return -1
+        return leftPriority - rightPriority
+      }
+      return left.label.localeCompare(right.label)
+    })
+  }, [catalog])
+
+  useEffect(() => {
+    if (!modelProviders.some((provider) => provider.value === modelProvider)) {
+      setModelProvider(
+        modelProviders.find((provider) => provider.value === "openai")?.value ??
+          modelProviders.at(0)?.value ??
+          ""
+      )
+    }
+  }, [modelProvider, modelProviders])
+
+  useEffect(() => {
+    const provider = (selected?.model ?? preferences?.defaultModel)?.split(
+      "/",
+      1
+    )[0]
+    if (provider && modelProviders.some((option) => option.value === provider))
+      setModelProvider(provider)
+  }, [modelProviders, preferences?.defaultModel, selected?.model])
+
+  const providerModels = useMemo(
+    () => catalog.filter((model) => model.provider === modelProvider),
+    [catalog, modelProvider]
+  )
+  useEffect(() => {
+    const preferredModel = selected?.model ?? preferences?.defaultModel
+    setSelectedModelId(
+      providerModels.find((model) => model.value === preferredModel)?.value ??
+        providerModels.at(0)?.value ??
+        ""
+    )
+  }, [preferences?.defaultModel, providerModels, selected?.model])
+
+  const selectedModel = providerModels.find(
+    (model) => model.value === selectedModelId
+  )
+  useEffect(() => {
+    if (
+      activeProvider !== "openrouter" ||
+      !activeConnectionId ||
+      !selectedModelId
+    ) {
+      setModelEndpoints([])
+      setEndpointState("idle")
+      return
+    }
+
+    let cancelled = false
+    setModelEndpoints([])
+    setEndpointState("loading")
+    void listModelEndpoints({ model: selectedModelId }).then(
+      (endpoints) => {
+        if (cancelled) return
+        setModelEndpoints(endpoints)
+        setEndpointState("ready")
+      },
+      () => {
+        if (cancelled) return
+        setModelEndpoints([])
+        setEndpointState("failed")
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [activeConnectionId, activeProvider, listModelEndpoints, selectedModelId])
+
+  const settingGroups = useMemo<PromptSettingGroup[]>(() => {
+    if (providerModels.length === 0) return []
+
+    const groups: PromptSettingGroup[] = [
+      {
+        id: "model",
+        label: "Model",
+        display: "featured",
+        moreMenuLabel: "More models",
+        options: providerModels.map(({ value, label, description }) => ({
+          value,
+          label,
+          ...(description ? { description } : {}),
+        })),
+      },
+    ]
+
+    if (activeProvider === "openrouter") {
+      const cheapestPrompt = Math.min(
+        ...modelEndpoints.map((endpoint) => endpoint.promptPrice)
+      )
+      const cheapestCompletion = Math.min(
+        ...modelEndpoints.map((endpoint) => endpoint.completionPrice)
+      )
+      groups.push({
+        id: "routingProvider",
+        label: "Provider",
+        display: "submenu",
+        options: [
+          {
+            value: "auto",
+            label: "Cheapest available",
+            description:
+              endpointState === "loading"
+                ? "Loading live provider prices..."
+                : endpointState === "failed"
+                  ? "Live prices unavailable. OpenRouter will still route by price."
+                  : "Routes by lowest price and falls back if that host is unavailable.",
+          },
+          ...modelEndpoints.map((endpoint) => {
+            const cheapestInput = endpoint.promptPrice === cheapestPrompt
+            const cheapestOutput =
+              endpoint.completionPrice === cheapestCompletion
+            const priceLabel =
+              cheapestInput && cheapestOutput
+                ? " (lowest price)"
+                : cheapestInput
+                  ? " (lowest input)"
+                  : cheapestOutput
+                    ? " (lowest output)"
+                    : ""
+            return {
+              value: endpoint.providerTag,
+              label: `${endpoint.providerName}${priceLabel}`,
+              description: formatEndpointDescription(endpoint),
+            }
+          }),
+        ],
+      })
+    }
+
+    if (selectedModel?.reasoningEfforts?.length) {
+      groups.push({
+        id: "effort",
+        label: "Reasoning effort",
+        display: "submenu",
+        options: selectedModel.reasoningEfforts.map((effort) => ({
+          value: effort,
+          label: reasoningEffortLabels[effort],
+        })),
+      })
+    }
+
+    return groups
+  }, [
+    activeProvider,
+    endpointState,
+    modelEndpoints,
+    providerModels,
+    selectedModel,
+  ])
+  const defaultSettings = useMemo(() => {
+    const savedEffort = selectedModel?.reasoningEfforts?.find(
+      (effort) =>
+        selected?.model === selectedModelId &&
+        effort === selected.reasoningEffort
+    )
+    const preferredEffort =
+      !preferences || preferences.intelligenceLevel === "adaptive"
+        ? undefined
+        : preferenceReasoningEfforts[preferences.intelligenceLevel]
+    const effort =
+      savedEffort ??
+      selectedModel?.reasoningEfforts?.find(
+        (candidate) => candidate === preferredEffort
+      ) ??
+      selectedModel?.defaultReasoningEffort
+    return {
+      model: selectedModelId,
+      ...(activeProvider === "openrouter"
+        ? { routingProvider: selected?.routingProvider ?? "auto" }
+        : {}),
+      ...(effort ? { effort } : {}),
+    }
+  }, [
+    activeProvider,
+    preferences?.intelligenceLevel,
+    selected,
+    selectedModel,
+    selectedModelId,
+  ])
+
+  const normalizedSearch = searchQuery.trim().toLowerCase()
+  const filteredProjectConversations = projectConversations?.filter(
+    (conversation) =>
+      conversation.title.toLowerCase().includes(normalizedSearch)
+  )
+  const filteredRecentConversations = recentConversations?.filter(
+    (conversation) =>
+      conversation.title.toLowerCase().includes(normalizedSearch)
+  )
+  const selectedProject = projects?.find(
+    (project) => project._id === search.projectId
+  )
+
+  const open = (next: {
+    mode?: "chat-new" | "project" | "project-new"
+    projectId?: string
+    slug?: string
+  }) =>
+    navigate({
+      to: "/chat/{-$slug}",
+      params: { slug: next.slug },
+      search: {
+        mode: next.mode,
+        projectId: next.projectId,
+      },
+    })
+
+  const selectProject = async (projectId?: string) => {
+    setProjectActionFailed(false)
+    try {
+      if (conversationId) await moveToProject({ conversationId, projectId })
+      await open({
+        slug: conversationId,
+        projectId,
+        ...(!conversationId ? { mode: "chat-new" as const } : {}),
+      })
+    } catch {
+      setProjectActionFailed(true)
+    }
+  }
+
+  const menuItems: AIInputMenuItem[] = [
+    {
+      value: "add-files",
+      label: "Add files or photos",
+      icon: Paperclip,
+      shortcut: "Ctrl U",
+    },
+    { value: "screenshot", label: "Take a screenshot", icon: Camera },
+    {
+      value: "project",
+      label: "Add to project",
+      icon: FolderPlus,
+      items: [
+        ...((selected?.projectId ?? search.projectId)
+          ? [
+              {
+                value: "project:none",
+                label: "No project",
+                onClick: () => void selectProject(),
+              },
+            ]
+          : []),
+        ...(projects ?? []).map((project) => ({
+          value: `project:${project._id}`,
+          label: project.name,
+          onClick: () => void selectProject(project._id),
+        })),
+        {
+          value: "project:new",
+          label: "Create a project",
+          onClick: () => void open({ mode: "project-new" }),
+        },
+      ],
+    },
+    { value: "primary-divider", type: "separator" },
+    {
+      value: "connector",
+      label: "Add connector",
+      icon: Plug,
+      onClick: () => setConnectorOpen(true),
+    },
+  ]
+
+  const uploadDraftFiles = async (
+    files: File[],
+    onUploaded?: (count: number) => void
+  ) => {
+    const draftAttachmentIds: Id<"draftAttachments">[] = []
+    for (const [index, file] of files.entries()) {
+      const uploadUrl = await generateUploadUrl()
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      })
+      if (!uploadResponse.ok) throw new Error("File upload failed")
+      const storageId = readStorageId(await uploadResponse.json())
+      draftAttachmentIds.push(
+        await registerAttachment({ name: file.name, storageId })
+      )
+      onUploaded?.(index + 1)
+    }
+    return draftAttachmentIds
+  }
+
+  const addProjectSourceLink = () => {
+    const value = projectSourceUrl.trim()
+    if (!value) return
+    try {
+      const url = new URL(
+        /^https?:\/\//i.test(value) ? value : `https://${value}`
+      )
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error()
+      url.hash = ""
+      const normalized = url.toString()
+      if (projectSourceLinks.includes(normalized)) {
+        setProjectSourceError("That link is already in this project.")
+        return
+      }
+      if (
+        projectSourceLinks.length + projectSourceFiles.length >=
+        MAX_PROJECT_SOURCES
+      ) {
+        setProjectSourceError(
+          `Add no more than ${MAX_PROJECT_SOURCES} project sources.`
+        )
+        return
+      }
+      setProjectSourceLinks((links) => [...links, normalized])
+      setProjectSourceUrl("")
+      setProjectSourceError("")
+    } catch {
+      setProjectSourceError("Enter a valid http or https link.")
+    }
+  }
+
+  const addProjectSourceFiles = (files: FileList | null) => {
+    if (!files) return
+    const next = [...files]
+    if (
+      next.some((file) => !file.size || file.size > MAX_PROJECT_SOURCE_BYTES)
+    ) {
+      setProjectSourceError("Each file must be between 1 byte and 20 MB.")
+      return
+    }
+    const unique = next.filter(
+      (file) =>
+        !projectSourceFiles.some(
+          (current) =>
+            current.name === file.name &&
+            current.size === file.size &&
+            current.lastModified === file.lastModified
+        )
+    )
+    if (projectSourceFiles.length + unique.length > MAX_PROJECT_SOURCE_FILES) {
+      setProjectSourceError(
+        `Add no more than ${MAX_PROJECT_SOURCE_FILES} files.`
+      )
+      return
+    }
+    if (
+      projectSourceLinks.length + projectSourceFiles.length + unique.length >
+      MAX_PROJECT_SOURCES
+    ) {
+      setProjectSourceError(
+        `Add no more than ${MAX_PROJECT_SOURCES} project sources.`
+      )
+      return
+    }
+    setProjectSourceFiles((current) => [...current, ...unique])
+    setProjectSourceError("")
+  }
+
+  const create = async () => {
+    let draftAttachmentIds: Id<"draftAttachments">[] = []
+    setProjectState("creating")
+    try {
+      draftAttachmentIds = await uploadDraftFiles(projectSourceFiles)
+      const projectId = await createProject({
+        instructions: projectInstructions,
+        memoryScope: projectMemoryScope,
+        name: projectName,
+        ...(draftAttachmentIds.length
+          ? { sourceDraftAttachmentIds: draftAttachmentIds }
+          : {}),
+        ...(projectSourceLinks.length
+          ? { sourceLinks: projectSourceLinks }
+          : {}),
+      })
+      draftAttachmentIds = []
+      setProjectName("")
+      setProjectInstructions("")
+      setProjectMemoryScope("project_only")
+      setProjectSourceFiles([])
+      setProjectSourceLinks([])
+      setProjectSourceUrl("")
+      setProjectSourceError("")
+      setProjectState("idle")
+      await open({ projectId, mode: "chat-new" })
+    } catch {
+      await Promise.allSettled(
+        draftAttachmentIds.map(
+          async (draftAttachmentId) =>
+            await discardAttachment({ draftAttachmentId })
+        )
+      )
+      setProjectState("failed")
+    }
+  }
+
+  const uploadProjectSourceFiles = async (
+    projectId: Id<"projects">,
+    files: File[],
+    reportProgress: (progress: number) => void
+  ) => {
+    let draftAttachmentIds: Id<"draftAttachments">[] = []
+    try {
+      draftAttachmentIds = await uploadDraftFiles(files, (uploaded) =>
+        reportProgress((uploaded / (files.length + 1)) * 100)
+      )
+      await addProjectSources({
+        projectId,
+        sourceDraftAttachmentIds: draftAttachmentIds,
+      })
+      draftAttachmentIds = []
+      reportProgress(100)
+    } catch {
+      await Promise.allSettled(
+        draftAttachmentIds.map(
+          async (draftAttachmentId) =>
+            await discardAttachment({ draftAttachmentId })
+        )
+      )
+      throw new Error("The project files could not be added. Try again.")
+    }
+  }
+
+  const leaveIfSelected = async (targetId: string) => {
+    if (conversationId === targetId) {
+      await open({ projectId: search.projectId, mode: "chat-new" })
+    }
+  }
+
+  const archiveChat = async (targetId: string) => {
+    setConversationActionId(targetId)
+    try {
+      await archiveConversation({ conversationId: targetId })
+      await leaveIfSelected(targetId)
+    } finally {
+      setConversationActionId(null)
+    }
+  }
+
+  const deleteChat = async (targetId: string) => {
+    setConversationActionId(targetId)
+    try {
+      await removeConversation({ conversationId: targetId })
+      await leaveIfSelected(targetId)
+    } finally {
+      setConversationActionId(null)
+    }
+  }
+
+  const renameProject = async (project: Doc<"projects">) => {
+    const name = window.prompt("Rename project", project.name)?.trim()
+    if (!name || name === project.name) return
+    setProjectMenuActionId(project._id)
+    setProjectMenuError("")
+    try {
+      await renameProjectMutation({ name, projectId: project._id })
+    } catch {
+      setProjectMenuError("The project could not be renamed. Try again.")
+    } finally {
+      setProjectMenuActionId(null)
+    }
+  }
+
+  const deleteProject = async (project: Doc<"projects">) => {
+    if (
+      !window.confirm(
+        `Delete "${project.name}"? Its chats will move to Recent chats.`
+      )
+    )
+      return
+    setProjectMenuActionId(project._id)
+    setProjectMenuError("")
+    try {
+      await removeProject({ projectId: project._id })
+      if (expandedProjectId === project._id) setExpandedProjectId(undefined)
+      if (search.projectId === project._id) await open({ mode: "chat-new" })
+    } catch {
+      setProjectMenuError("The project could not be deleted. Try again.")
+    } finally {
+      setProjectMenuActionId(null)
+    }
+  }
+
+  const send = async (
+    content: string,
+    meta: { settings: Record<string, string> },
+    files: File[]
+  ) => {
+    let draftAttachmentIds: Id<"draftAttachments">[] = []
+    setSendState("sending")
+    try {
+      draftAttachmentIds = await uploadDraftFiles(files)
+
+      if (conversationId) {
+        if (!meta.settings.model) throw new Error("Model unavailable")
+        await sendMessage({
+          conversationId,
+          content,
+          ...(draftAttachmentIds.length ? { draftAttachmentIds } : {}),
+          model: meta.settings.model,
+          ...(activeProvider === "openrouter" && meta.settings.routingProvider
+            ? { routingProvider: meta.settings.routingProvider }
+            : {}),
+          ...(meta.settings.effort
+            ? { reasoningEffort: meta.settings.effort }
+            : {}),
+        })
+      } else {
+        if (!activeConnectionId || !meta.settings.model)
+          throw new Error("Model unavailable")
+        const slug = await startConversation({
+          content,
+          ...(draftAttachmentIds.length ? { draftAttachmentIds } : {}),
+          model: meta.settings.model,
+          projectId: search.projectId,
+          providerConnectionId: activeConnectionId,
+          ...(activeProvider === "openrouter" && meta.settings.routingProvider
+            ? { routingProvider: meta.settings.routingProvider }
+            : {}),
+          ...(meta.settings.effort
+            ? { reasoningEffort: meta.settings.effort }
+            : {}),
+        })
+        await open({ slug, projectId: search.projectId })
+      }
+      setSendState("idle")
+    } catch {
+      await Promise.allSettled(
+        draftAttachmentIds.map(
+          async (draftAttachmentId) =>
+            await discardAttachment({ draftAttachmentId })
+        )
+      )
+      setSendState("failed")
+      throw new Error("Message could not be sent")
+    }
+  }
+
+  const renderConversation = (conversation: Doc<"conversations">) => (
+    <SidebarMenuItem key={conversation._id}>
+      <SidebarMenuButton
+        className="rounded-lg px-2.5 transition-[width,height,padding,background-color,color] duration-150 data-active:bg-sidebar-accent/90"
+        isActive={conversationId === conversation._id}
+        render={
+          <button
+            onClick={() =>
+              open({
+                projectId: conversation.projectId,
+                slug: conversation._id,
+              })
+            }
+            type="button"
+          />
+        }
+      >
+        <span className="truncate">{conversation.title}</span>
+      </SidebarMenuButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <SidebarMenuAction
+              aria-label={`Chat actions for ${conversation.title}`}
+              disabled={conversationActionId === conversation._id}
+              showOnHover
+            />
+          }
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={MoreHorizontalIcon}
+            strokeWidth={2}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="right">
+          <DropdownMenuItem
+            disabled={conversationActionId === conversation._id}
+            onClick={() => void archiveChat(conversation._id)}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Archive02Icon}
+              strokeWidth={1.8}
+            />
+            Archive
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={conversationActionId === conversation._id}
+            onClick={() => void deleteChat(conversation._id)}
+            variant="destructive"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Delete02Icon}
+              strokeWidth={1.8}
+            />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarMenuItem>
+  )
+
+  return (
+    <SidebarProvider className="h-svh overflow-hidden">
+      <Sidebar collapsible="offcanvas">
+        <SidebarHeader className="gap-2 border-b border-sidebar-border/70 p-3">
+          <a
+            aria-label="AI Harness home"
+            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            href="/chat"
+          >
+            <span className="inline-flex size-9 shrink-0 overflow-hidden rounded-lg bg-background ring-1 ring-sidebar-border">
+              <img
+                alt=""
+                className="size-full"
+                height={96}
+                src="/media/ai-harness-logo.png"
+                width={96}
+              />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold tracking-tight">
+                AI Harness
+              </span>
+              <span className="block text-[11px] text-sidebar-foreground/55">
+                Model workspace
+              </span>
+            </span>
+          </a>
+          <Button
+            className="h-9 w-full justify-start rounded-lg"
+            onClick={() =>
+              open({ mode: "chat-new", projectId: search.projectId })
+            }
+            size="sm"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={Add01Icon}
+              strokeWidth={2}
+            />{" "}
+            New chat
+          </Button>
+          <ProviderConnectDialog
+            onOpenChange={setConnectorOpen}
+            open={connectorOpen}
+          />
+          <div className="relative">
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 -translate-y-1/2 text-sidebar-foreground/45"
+              icon={Search01Icon}
+              strokeWidth={1.8}
+            />
+            <SidebarInput
+              aria-label="Search recent chats"
+              className="h-9 rounded-lg border-sidebar-border bg-background/70 pl-8 focus-visible:bg-background"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search chats"
+              value={searchQuery}
+            />
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="gap-0 px-1 py-2">
+          <SidebarGroup className="p-2">
+            <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold tracking-wide text-sidebar-foreground/55">
+              Projects
+            </SidebarGroupLabel>
+            <SidebarGroupAction
+              aria-label="Create new project"
+              onClick={() => open({ mode: "project-new" })}
+              title="Create new project"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Add01Icon}
+                strokeWidth={2}
+              />
+            </SidebarGroupAction>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {projects === undefined ? (
+                  <SidebarMenuSkeleton />
+                ) : (
+                  projects.map((project) => {
+                    const isActive = search.projectId === project._id
+                    const isExpanded = expandedProjectId === project._id
+                    return (
+                      <SidebarMenuItem key={project._id}>
+                        <SidebarMenuButton
+                          className="rounded-lg px-2.5 pr-14 transition-[width,height,padding,background-color,color] duration-150 data-active:bg-sidebar-accent/90"
+                          isActive={isActive}
+                          render={
+                            <button
+                              aria-expanded={isExpanded}
+                              onClick={() => {
+                                const nextExpandedProjectId =
+                                  toggleExpandedProject(
+                                    expandedProjectId,
+                                    project._id
+                                  )
+                                setExpandedProjectId(nextExpandedProjectId)
+                                if (nextExpandedProjectId && !isActive)
+                                  void open({ projectId: project._id })
+                              }}
+                              type="button"
+                            />
+                          }
+                        >
+                          <Folder aria-hidden="true" className="size-4" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {project.name}
+                          </span>
+                        </SidebarMenuButton>
+                        <SidebarMenuAction
+                          aria-label={`Start a new chat in ${project.name}`}
+                          className="right-7"
+                          disabled={projectMenuActionId === project._id}
+                          onClick={() =>
+                            open({ mode: "project", projectId: project._id })
+                          }
+                          showOnHover
+                          title="Open project"
+                        >
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={Edit02Icon}
+                            strokeWidth={1.8}
+                          />
+                        </SidebarMenuAction>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <SidebarMenuAction
+                                aria-label={`Project actions for ${project.name}`}
+                                disabled={projectMenuActionId === project._id}
+                                showOnHover
+                              />
+                            }
+                          >
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={MoreHorizontalIcon}
+                              strokeWidth={2}
+                            />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" side="right">
+                            <DropdownMenuItem
+                              onClick={() => void renameProject(project)}
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={Edit02Icon}
+                                strokeWidth={1.8}
+                              />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => void deleteProject(project)}
+                              variant="destructive"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={Delete02Icon}
+                                strokeWidth={1.8}
+                              />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <ProjectConversationDisclosure open={isExpanded}>
+                          {isActive ? (
+                            <SidebarMenu className="mt-1 ml-4 w-[calc(100%-1rem)] gap-0.5 border-l border-sidebar-border pl-2">
+                              {filteredProjectConversations === undefined ? (
+                                <SidebarMenuSkeleton />
+                              ) : filteredProjectConversations.length === 0 ? (
+                                <p className="px-2 py-2 text-xs text-sidebar-foreground/55">
+                                  {searchQuery
+                                    ? "No matching project chats"
+                                    : "No chats in this project yet"}
+                                </p>
+                              ) : (
+                                filteredProjectConversations.map(
+                                  renderConversation
+                                )
+                              )}
+                            </SidebarMenu>
+                          ) : null}
+                        </ProjectConversationDisclosure>
+                      </SidebarMenuItem>
+                    )
+                  })
+                )}
+              </SidebarMenu>
+              {projectMenuError ? (
+                <p
+                  aria-live="polite"
+                  className="px-2 pt-2 text-xs text-destructive"
+                >
+                  {projectMenuError}
+                </p>
+              ) : null}
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup className="p-2 pt-1">
+            <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold tracking-wide text-sidebar-foreground/55">
+              Recent chats
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {filteredRecentConversations === undefined ? (
+                  <SidebarMenuSkeleton />
+                ) : filteredRecentConversations.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-sidebar-foreground/55">
+                    {searchQuery
+                      ? "No matching conversations"
+                      : "No chats outside projects yet"}
+                  </p>
+                ) : (
+                  filteredRecentConversations.map(renderConversation)
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border/70 p-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <UserButton>
+              <UserButton.MenuItems>
+                <UserButton.Action
+                  label="Archived chats"
+                  labelIcon={
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Archive02Icon}
+                      strokeWidth={1.8}
+                    />
+                  }
+                  onClick={() => setArchivedOpen(true)}
+                />
+                <UserButton.Action
+                  label="Memory"
+                  labelIcon={
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={AiBrain01Icon}
+                      strokeWidth={1.8}
+                    />
+                  }
+                  onClick={() => setMemoryOpen(true)}
+                />
+                <UserButton.Action
+                  label="Preferences"
+                  labelIcon={
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Settings02Icon}
+                      strokeWidth={1.8}
+                    />
+                  }
+                  onClick={() => setPreferencesOpen(true)}
+                />
+              </UserButton.MenuItems>
+            </UserButton>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium">
+                {viewer?.name ?? "Your account"}
+              </span>
+              <span className="block truncate text-[11px] text-sidebar-foreground/55">
+                {viewer?.email ?? "Signed in"}
+              </span>
+            </span>
+          </div>
+          <UserPreferencesDialog
+            models={catalog}
+            onOpenChange={setPreferencesOpen}
+            open={preferencesOpen}
+          />
+          <MemorySettingsDialog
+            onOpenChange={setMemoryOpen}
+            open={memoryOpen}
+          />
+          <ArchivedChatsDialog
+            onOpenChange={setArchivedOpen}
+            onOpenChat={(conversation) =>
+              open({
+                projectId: conversation.projectId,
+                slug: conversation.slug,
+              })
+            }
+            open={archivedOpen}
+          />
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-14 items-center gap-2 border-b px-3">
+          <SidebarTrigger />
+          <p className="truncate text-sm font-medium">
+            {search.mode === "project"
+              ? (selectedProject?.name ?? "Project")
+              : (selected?.title ?? "New chat")}
+          </p>
+        </header>
+        <section
+          className="flex min-h-0 flex-1 flex-col"
+          aria-label="Chat workspace"
+        >
+          {search.mode === "project" ? (
+            selectedProject ? (
+              <ProjectWorkspace
+                conversations={projectConversations}
+                onNewChat={() =>
+                  open({ mode: "chat-new", projectId: selectedProject._id })
+                }
+                onOpenChat={(slug) =>
+                  open({ projectId: selectedProject._id, slug })
+                }
+                onUploadFiles={(files, reportProgress) =>
+                  uploadProjectSourceFiles(
+                    selectedProject._id,
+                    files,
+                    reportProgress
+                  )
+                }
+                project={selectedProject}
+                sources={projectSources}
+              />
+            ) : (
+              <ChatStatus message="That project is unavailable." />
+            )
+          ) : search.mode === "project-new" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto grid min-h-full w-full max-w-6xl lg:grid-cols-[minmax(0,1fr)_17rem]">
+                <main className="min-w-0 px-5 py-6 md:px-8 md:py-8">
+                  <header className="mb-6 flex items-start gap-3">
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      className="mt-0.5 size-5 text-primary"
+                      icon={FolderAddIcon}
+                      strokeWidth={1.7}
+                    />
+                    <div>
+                      <h1 className="font-heading text-xl font-semibold tracking-tight">
+                        Start a project
+                      </h1>
+                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                        Set the context once. Every chat in this project will
+                        use these instructions, sources, and memory rules.
+                      </p>
+                    </div>
+                  </header>
+
+                  <div className="mb-5 grid gap-2 border-b pb-5">
+                    <label
+                      className="text-sm font-medium"
+                      htmlFor="project-name"
+                    >
+                      Project name
+                    </label>
+                    <Input
+                      className="max-w-xl"
+                      id="project-name"
+                      maxLength={80}
+                      onChange={(event) => setProjectName(event.target.value)}
+                      placeholder="Website redesign"
+                      value={projectName}
+                    />
+                  </div>
+
+                  <Tabs defaultValue="instructions">
+                    <TabsList className="mb-5" variant="line">
+                      <TabsTrigger value="instructions">
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={AiBrain01Icon}
+                          strokeWidth={1.7}
+                        />
+                        Instructions
+                      </TabsTrigger>
+                      <TabsTrigger value="sources">
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={FileAttachmentIcon}
+                          strokeWidth={1.7}
+                        />
+                        Sources
+                        {projectSourceFiles.length +
+                        projectSourceLinks.length ? (
+                          <span className="text-xs text-primary">
+                            {projectSourceFiles.length +
+                              projectSourceLinks.length}
+                          </span>
+                        ) : null}
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent
+                      className="grid gap-6 md:grid-cols-[minmax(0,1.2fr)_minmax(15rem,.8fr)]"
+                      value="instructions"
+                    >
+                      <div className="grid content-start gap-2">
+                        <label
+                          className="text-sm font-medium"
+                          htmlFor="project-instructions"
+                        >
+                          Project instructions
+                        </label>
+                        <Textarea
+                          aria-describedby="project-instructions-description"
+                          className="min-h-44 resize-y"
+                          id="project-instructions"
+                          maxLength={8000}
+                          onChange={(event) =>
+                            setProjectInstructions(event.target.value)
+                          }
+                          placeholder="Goals, constraints, stack, terminology, or response style to use in every chat."
+                          value={projectInstructions}
+                        />
+                        <p
+                          className="text-xs leading-relaxed text-muted-foreground"
+                          id="project-instructions-description"
+                        >
+                          Keep these durable and project-specific. Never include
+                          secrets or credentials.
+                        </p>
+                      </div>
+
+                      <fieldset className="min-w-0">
+                        <legend className="mb-2 text-sm font-medium">
+                          Memory scope
+                        </legend>
+                        <div className="border-y">
+                          <label
+                            className="flex cursor-pointer items-start gap-3 border-b py-3 transition-colors hover:text-foreground"
+                            htmlFor="memory-project-only"
+                          >
+                            <input
+                              checked={projectMemoryScope === "project_only"}
+                              className="mt-0.5 size-4 shrink-0 accent-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                              id="memory-project-only"
+                              name="project-memory-scope"
+                              onChange={() =>
+                                setProjectMemoryScope("project_only")
+                              }
+                              type="radio"
+                              value="project_only"
+                            />
+                            <span className="grid gap-1">
+                              <span className="text-sm font-medium">
+                                Project only
+                              </span>
+                              <span className="text-xs leading-relaxed text-muted-foreground">
+                                Keep this project isolated from other chat
+                                memory.
+                              </span>
+                            </span>
+                          </label>
+                          <label
+                            className="flex cursor-pointer items-start gap-3 py-3 transition-colors hover:text-foreground"
+                            htmlFor="memory-all-chats"
+                          >
+                            <input
+                              checked={projectMemoryScope === "all_chats"}
+                              className="mt-0.5 size-4 shrink-0 accent-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                              id="memory-all-chats"
+                              name="project-memory-scope"
+                              onChange={() =>
+                                setProjectMemoryScope("all_chats")
+                              }
+                              type="radio"
+                              value="all_chats"
+                            />
+                            <span className="grid gap-1">
+                              <span className="text-sm font-medium">
+                                Full memory
+                              </span>
+                              <span className="text-xs leading-relaxed text-muted-foreground">
+                                Include useful personal memory from chats
+                                outside this project.
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+                      </fieldset>
+                    </TabsContent>
+
+                    <TabsContent className="grid gap-5" value="sources">
+                      <div className="grid gap-5 md:grid-cols-2">
+                        <section aria-labelledby="source-link-heading">
+                          <div className="mb-2 flex items-center gap-2">
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              className="size-4 text-muted-foreground"
+                              icon={Link01Icon}
+                              strokeWidth={1.7}
+                            />
+                            <h2
+                              className="text-sm font-medium"
+                              id="source-link-heading"
+                            >
+                              Add a link
+                            </h2>
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              aria-label="Source URL"
+                              onChange={(event) =>
+                                setProjectSourceUrl(event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault()
+                                  addProjectSourceLink()
+                                }
+                              }}
+                              placeholder="docs.example.com/guide"
+                              value={projectSourceUrl}
+                            />
+                            <Button
+                              aria-label="Add source link"
+                              disabled={!projectSourceUrl.trim()}
+                              onClick={addProjectSourceLink}
+                              size="icon"
+                              variant="secondary"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={Add01Icon}
+                                strokeWidth={1.7}
+                              />
+                            </Button>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            Web pages are fetched when the connected model needs
+                            them.
+                          </p>
+                        </section>
+
+                        <section aria-labelledby="source-file-heading">
+                          <div className="mb-2 flex items-center gap-2">
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              className="size-4 text-muted-foreground"
+                              icon={FileAttachmentIcon}
+                              strokeWidth={1.7}
+                            />
+                            <h2
+                              className="text-sm font-medium"
+                              id="source-file-heading"
+                            >
+                              Add files
+                            </h2>
+                          </div>
+                          <input
+                            className="sr-only"
+                            id="project-source-files"
+                            multiple
+                            onChange={(event) => {
+                              addProjectSourceFiles(event.target.files)
+                              event.currentTarget.value = ""
+                            }}
+                            type="file"
+                          />
+                          <label
+                            className="inline-flex h-8 w-full cursor-pointer items-center justify-start gap-1.5 rounded-2xl border border-dashed border-border bg-background px-3 text-sm font-medium transition-colors focus-within:ring-3 focus-within:ring-ring/30 hover:bg-muted hover:text-foreground"
+                            htmlFor="project-source-files"
+                          >
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={Upload04Icon}
+                              strokeWidth={1.7}
+                            />
+                            Choose up to 5 files
+                          </label>
+                          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            PDFs, images, text, and documents up to 20 MB each.
+                          </p>
+                        </section>
+                      </div>
+
+                      <section
+                        className="border-t pt-4"
+                        aria-labelledby="sources-heading"
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <h2
+                            className="text-sm font-medium"
+                            id="sources-heading"
+                          >
+                            Project sources
+                          </h2>
+                          <span className="text-xs text-muted-foreground">
+                            {projectSourceFiles.length +
+                              projectSourceLinks.length}
+                            /{MAX_PROJECT_SOURCES}
+                          </span>
+                        </div>
+                        {projectSourceFiles.length ||
+                        projectSourceLinks.length ? (
+                          <ul className="max-h-40 divide-y overflow-y-auto border-y">
+                            {projectSourceFiles.map((file) => (
+                              <li
+                                className="flex min-w-0 items-center gap-3 py-2.5"
+                                key={`${file.name}-${file.size}-${file.lastModified}`}
+                              >
+                                <HugeiconsIcon
+                                  aria-hidden="true"
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  icon={FileAttachmentIcon}
+                                  strokeWidth={1.7}
+                                />
+                                <span className="min-w-0 flex-1 truncate text-sm">
+                                  {file.name}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {formatFileSize(file.size)}
+                                </span>
+                                <Button
+                                  aria-label={`Remove ${file.name}`}
+                                  onClick={() =>
+                                    setProjectSourceFiles((files) =>
+                                      files.filter(
+                                        (candidate) => candidate !== file
+                                      )
+                                    )
+                                  }
+                                  size="icon-xs"
+                                  variant="ghost"
+                                >
+                                  <HugeiconsIcon
+                                    aria-hidden="true"
+                                    icon={Cancel01Icon}
+                                    strokeWidth={1.7}
+                                  />
+                                </Button>
+                              </li>
+                            ))}
+                            {projectSourceLinks.map((url) => (
+                              <li
+                                className="flex min-w-0 items-center gap-3 py-2.5"
+                                key={url}
+                              >
+                                <HugeiconsIcon
+                                  aria-hidden="true"
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  icon={Link01Icon}
+                                  strokeWidth={1.7}
+                                />
+                                <span className="min-w-0 flex-1 truncate text-sm">
+                                  {url}
+                                </span>
+                                <Button
+                                  aria-label={`Remove ${url}`}
+                                  onClick={() =>
+                                    setProjectSourceLinks((links) =>
+                                      links.filter(
+                                        (candidate) => candidate !== url
+                                      )
+                                    )
+                                  }
+                                  size="icon-xs"
+                                  variant="ghost"
+                                >
+                                  <HugeiconsIcon
+                                    aria-hidden="true"
+                                    icon={Cancel01Icon}
+                                    strokeWidth={1.7}
+                                  />
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="border-y py-4 text-sm text-muted-foreground">
+                            No sources yet. Add only the material this project
+                            should rely on.
+                          </p>
+                        )}
+                        {projectSourceError ? (
+                          <p
+                            aria-live="polite"
+                            className="mt-2 text-xs text-destructive"
+                          >
+                            {projectSourceError}
+                          </p>
+                        ) : null}
+                      </section>
+                    </TabsContent>
+                  </Tabs>
+                </main>
+
+                <aside className="border-t bg-muted/10 px-5 py-6 lg:border-t-0 lg:border-l lg:px-6 lg:py-8">
+                  <div className="lg:sticky lg:top-8">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      Project context
+                    </p>
+                    <dl className="mt-4 divide-y border-y text-sm">
+                      <div className="grid gap-1 py-3">
+                        <dt className="text-xs text-muted-foreground">Name</dt>
+                        <dd className="truncate font-medium">
+                          {projectName.trim() || "Untitled project"}
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-3">
+                        <dt className="text-muted-foreground">Instructions</dt>
+                        <dd>{projectInstructions.trim() ? "Set" : "None"}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 py-3">
+                        <dt className="text-muted-foreground">Sources</dt>
+                        <dd>
+                          {projectSourceFiles.length +
+                            projectSourceLinks.length}
+                        </dd>
+                      </div>
+                      <div className="grid gap-1 py-3">
+                        <dt className="text-xs text-muted-foreground">
+                          Memory
+                        </dt>
+                        <dd>
+                          {projectMemoryScope === "project_only"
+                            ? "Project only"
+                            : "Full memory"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <Button
+                      className="mt-5 w-full"
+                      disabled={
+                        !projectName.trim() || projectState === "creating"
+                      }
+                      onClick={() => void create()}
+                    >
+                      {projectState === "creating"
+                        ? "Creating project..."
+                        : "Create project"}
+                    </Button>
+                    {projectState === "failed" ? (
+                      <p
+                        aria-live="polite"
+                        className="mt-3 text-xs leading-relaxed text-destructive"
+                      >
+                        We could not create the project or upload its sources.
+                        Try again.
+                      </p>
+                    ) : null}
+                  </div>
+                </aside>
+              </div>
+            </div>
+          ) : voiceMode ? (
+            <RealtimeVoice onClose={() => setVoiceMode(false)} />
+          ) : selected === null && conversationId ? (
+            <ChatStatus message="That conversation is unavailable." />
+          ) : (
+            <>
+              <MessageArea
+                messages={conversationId ? messages : []}
+                name={viewer?.name}
+              />
+              <div className="sticky bottom-0 z-10 w-full bg-gradient-to-t from-background from-70% to-transparent px-4 pt-8 pb-4">
+                <div className="mx-auto w-full max-w-3xl">
+                  {selected?.status === "archived" ? (
+                    <p className="mb-2 text-center text-xs text-muted-foreground">
+                      This chat is archived. Restore it from your profile menu
+                      to keep chatting.
+                    </p>
+                  ) : null}
+                  {catalogState === "failed" ? (
+                    <p
+                      className="mb-2 text-center text-xs text-destructive"
+                      role="alert"
+                    >
+                      Provider models could not be loaded. Check your provider
+                      connection.
+                    </p>
+                  ) : null}
+                  <div className="mb-2 flex justify-end gap-2">
+                    <Button
+                      onClick={() => setVoiceMode(true)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <AudioWaveform aria-hidden="true" />
+                      Voice
+                    </Button>
+                    <NativeSelect
+                      aria-label="Model provider"
+                      disabled={
+                        Boolean(conversationId) || sendState === "sending"
+                      }
+                      onChange={(event) =>
+                        setActiveProvider(
+                          event.target.value as "openrouter" | "openai"
+                        )
+                      }
+                      value={activeProvider}
+                    >
+                      {openAi ? (
+                        <NativeSelectOption value="openai">
+                          OpenAI
+                        </NativeSelectOption>
+                      ) : null}
+                      {openRouter ? (
+                        <NativeSelectOption value="openrouter">
+                          OpenRouter
+                        </NativeSelectOption>
+                      ) : null}
+                    </NativeSelect>
+                  </div>
+                  <AIInput
+                    agents={modelProviders}
+                    defaultAgent={modelProvider}
+                    defaultSettings={defaultSettings}
+                    disabled={
+                      sendState === "sending" ||
+                      selected?.status === "archived" ||
+                      !activeConnectionId ||
+                      catalogState !== "ready" ||
+                      providerModels.length === 0
+                    }
+                    onAgentChange={setModelProvider}
+                    onSettingsChange={(settings) =>
+                      setSelectedModelId(settings.model)
+                    }
+                    onSend={send}
+                    menuItems={menuItems}
+                    placeholder={
+                      selected?.status === "archived"
+                        ? "Restore this chat to continue messaging"
+                        : !activeConnection
+                          ? "Connect a provider to choose a model"
+                          : catalogState === "loading"
+                            ? "Loading provider models..."
+                            : catalogState === "failed"
+                              ? "Reconnect your provider to continue"
+                              : selectedModel
+                                ? `Message ${selectedModel.label}`
+                                : "Choose a model"
+                    }
+                    settingGroups={settingGroups}
+                    showMessages={false}
+                  />
+                  {sendState === "failed" ? (
+                    <p
+                      aria-live="polite"
+                      className="mt-2 text-center text-xs text-destructive"
+                    >
+                      Your message was not saved. Try again.
+                    </p>
+                  ) : null}
+                  {projectActionFailed ? (
+                    <p
+                      aria-live="polite"
+                      className="mt-2 text-center text-xs text-destructive"
+                    >
+                      This chat could not be added to the project. Try again.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
+
+type ProjectSource = {
+  _id: Id<"projectSources">
+  contentType?: string
+  createdAt: number
+  kind: "file" | "link"
+  name: string
+  size?: number
+  url: string | null
+}
+
+function formatProjectDate(value: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year:
+      new Date(value).getFullYear() === new Date().getFullYear()
+        ? undefined
+        : "numeric",
+  }).format(value)
+}
+
+function ProjectWorkspace({
+  conversations,
+  onNewChat,
+  onOpenChat,
+  onUploadFiles,
+  project,
+  sources,
+}: {
+  conversations: Doc<"conversations">[] | undefined
+  onNewChat: () => void
+  onOpenChat: (slug: string) => void
+  onUploadFiles: (
+    files: File[],
+    reportProgress: (progress: number) => void
+  ) => Promise<void>
+  project: Doc<"projects">
+  sources: ProjectSource[] | undefined
+}) {
+  const [activeTab, setActiveTab] = useState("chats")
+  const inputId = `project-${project._id}-source-files`
+  const remainingFiles =
+    sources === undefined
+      ? 0
+      : Math.min(
+          MAX_PROJECT_SOURCE_FILES,
+          Math.max(0, MAX_PROJECT_SOURCES - sources.length)
+        )
+
+  return (
+    <UploadThingDropzone
+      disabled={!remainingFiles}
+      inputId={inputId}
+      maxFiles={remainingFiles}
+      maxSize={MAX_PROJECT_SOURCE_BYTES}
+      onUpload={async (files, reportProgress) => {
+        await onUploadFiles(files, reportProgress)
+        setActiveTab("sources")
+      }}
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <main className="mx-auto w-full max-w-5xl px-5 py-8 md:px-8 md:py-12">
+          <header className="mb-8 flex items-center gap-3">
+            <Folder aria-hidden="true" className="size-7 stroke-[1.6]" />
+            <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+              {project.name}
+            </h1>
+          </header>
+
+          <button
+            className="mb-8 flex min-h-16 w-full items-center gap-4 rounded-2xl border bg-card px-5 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            onClick={onNewChat}
+            type="button"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="size-5 shrink-0 text-muted-foreground"
+              icon={Add01Icon}
+              strokeWidth={2}
+            />
+            <span className="text-base text-muted-foreground">
+              New chat in {project.name}
+            </span>
+          </button>
+
+          <Tabs onValueChange={setActiveTab} value={activeTab}>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <TabsList className="h-10 gap-2 bg-transparent p-0">
+                <TabsTrigger
+                  className="h-10 flex-none rounded-full px-4 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  value="chats"
+                >
+                  Chats
+                </TabsTrigger>
+                <TabsTrigger
+                  className="h-10 flex-none rounded-full px-4 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  value="sources"
+                >
+                  Sources
+                </TabsTrigger>
+              </TabsList>
+              <Button
+                disabled={!remainingFiles}
+                onClick={() => document.getElementById(inputId)?.click()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Upload04Icon}
+                  strokeWidth={1.8}
+                />
+                {remainingFiles ? "Add files" : "Source limit reached"}
+              </Button>
+            </div>
+            <TabsContent value="chats">
+              {conversations === undefined ? (
+                <ChatStatus message="Loading project chats..." />
+              ) : conversations.length === 0 ? (
+                <Empty className="min-h-56 border-0">
+                  <EmptyHeader>
+                    <EmptyTitle>No chats yet</EmptyTitle>
+                    <EmptyDescription>
+                      Start the first conversation in this project.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className="divide-y">
+                  {conversations.map((conversation) => (
+                    <button
+                      className="group flex w-full items-center gap-4 px-3 py-4 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                      key={conversation._id}
+                      onClick={() => onOpenChat(conversation._id)}
+                      type="button"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">
+                          {conversation.title}
+                        </span>
+                        <span className="mt-1 block truncate text-sm text-muted-foreground">
+                          Continue this conversation
+                        </span>
+                      </span>
+                      <time
+                        className="shrink-0 text-xs text-muted-foreground"
+                        dateTime={new Date(
+                          conversation.updatedAt
+                        ).toISOString()}
+                      >
+                        {formatProjectDate(conversation.updatedAt)}
+                      </time>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="sources">
+              {sources === undefined ? (
+                <ChatStatus message="Loading project sources..." />
+              ) : sources.length === 0 ? (
+                <Empty className="min-h-56 border-0">
+                  <EmptyHeader>
+                    <EmptyTitle>No sources yet</EmptyTitle>
+                    <EmptyDescription>
+                      This project does not have any files or links.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className="divide-y">
+                  {sources.map((source) => {
+                    const content = (
+                      <>
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/50 text-muted-foreground">
+                          {source.kind === "file" ? (
+                            <FileText aria-hidden="true" className="size-4" />
+                          ) : (
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={Link01Icon}
+                              strokeWidth={1.8}
+                            />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold">
+                            {source.name}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {source.kind === "file" && source.size !== undefined
+                              ? formatFileSize(source.size)
+                              : "Link"}
+                          </span>
+                        </span>
+                        <time className="shrink-0 text-xs text-muted-foreground">
+                          {formatProjectDate(source.createdAt)}
+                        </time>
+                      </>
+                    )
+                    return source.url ? (
+                      <a
+                        className="flex items-center gap-3 px-3 py-4 transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                        href={source.url}
+                        key={source._id}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <div
+                        className="flex items-center gap-3 px-3 py-4"
+                        key={source._id}
+                      >
+                        {content}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </main>
+      </div>
+    </UploadThingDropzone>
+  )
+}
+
+function MessageArea({
+  messages,
+  name,
+}: {
+  messages: ChatMessage[] | undefined
+  name: string | null | undefined
+}) {
+  if (messages === undefined)
+    return <ChatStatus message="Loading messages..." />
+  if (messages.length === 0)
+    return (
+      <Empty className="border-0">
+        <EmptyHeader>
+          <EmptyTitle>
+            {name ? `Welcome back, ${name}.` : "Welcome back."}
+          </EmptyTitle>
+          <EmptyDescription>What would you like to work on?</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  return (
+    <MessageScrollerProvider>
+      <MessageScroller>
+        <MessageScrollerViewport>
+          <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
+            <MessageGroup>
+              {messages.map((message) => {
+                const isUser = message.role === "user"
+                const isStreaming = message.status === "streaming"
+                const hasReasoning = Boolean(message.reasoningSteps?.length)
+                return (
+                  <MessageScrollerItem
+                    className="chat-message-enter"
+                    key={message._id}
+                  >
+                    <Message align={isUser ? "end" : "start"}>
+                      <MessageContent>
+                        <Bubble
+                          align={isUser ? "end" : "start"}
+                          variant={isUser ? "default" : "ghost"}
+                        >
+                          <BubbleContent
+                            className={isUser ? undefined : "w-full"}
+                          >
+                            {message.status === "pending" ||
+                            (isStreaming &&
+                              !message.content &&
+                              !hasReasoning) ? (
+                              <span
+                                aria-live="polite"
+                                className="inline-flex items-center gap-2 text-muted-foreground"
+                                role="status"
+                              >
+                                <Spinner className="size-3.5" />
+                                Thinking
+                              </span>
+                            ) : message.status === "failed" ? (
+                              message.errorCode === "insufficient_credits" ? (
+                                <span className="block space-y-2">
+                                  <span className="block">
+                                    OpenRouter rejected this request because the
+                                    account or API key has insufficient credit.
+                                  </span>
+                                  <a
+                                    className="inline-flex font-medium underline underline-offset-2"
+                                    href="https://openrouter.ai/settings/credits"
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    Add OpenRouter credits
+                                  </a>
+                                </span>
+                              ) : (
+                                "OpenRouter could not complete this response."
+                              )
+                            ) : isUser ? (
+                              <span className="whitespace-pre-wrap">
+                                {message.content}
+                              </span>
+                            ) : (
+                              <div className="space-y-3">
+                                {message.reasoningSteps?.length ? (
+                                  <ReasoningSteps className="max-w-full border">
+                                    <ReasoningStepsTrigger />
+                                    <ReasoningStepsContent>
+                                      {message.reasoningSteps.map(
+                                        (step, index) => (
+                                          <ReasoningStep
+                                            id={`${message._id}-${index}`}
+                                            key={`${message._id}-${index}`}
+                                            label={step}
+                                            status={
+                                              isStreaming &&
+                                              index ===
+                                                message.reasoningSteps!.length -
+                                                  1
+                                                ? "active"
+                                                : "done"
+                                            }
+                                          />
+                                        )
+                                      )}
+                                    </ReasoningStepsContent>
+                                  </ReasoningSteps>
+                                ) : null}
+                                {message.content ? (
+                                  <MessageResponse
+                                    animated
+                                    isAnimating={isStreaming}
+                                  >
+                                    {message.content}
+                                  </MessageResponse>
+                                ) : null}
+                              </div>
+                            )}
+                            {message.attachments.length ? (
+                              <AttachmentGroup className="mt-2 max-w-full">
+                                {message.attachments.map((attachment) => {
+                                  const isImage =
+                                    attachment.contentType.startsWith("image/")
+                                  return (
+                                    <Attachment
+                                      key={attachment.storageId}
+                                      size="sm"
+                                    >
+                                      <AttachmentMedia
+                                        variant={isImage ? "image" : "icon"}
+                                      >
+                                        {isImage ? (
+                                          <img alt="" src={attachment.url} />
+                                        ) : (
+                                          <FileText aria-hidden="true" />
+                                        )}
+                                      </AttachmentMedia>
+                                      <AttachmentContent className="max-w-44">
+                                        <AttachmentTitle>
+                                          {attachment.name}
+                                        </AttachmentTitle>
+                                        <AttachmentDescription>
+                                          {formatFileSize(attachment.size)}
+                                        </AttachmentDescription>
+                                      </AttachmentContent>
+                                      <AttachmentTrigger
+                                        aria-label={`Open ${attachment.name}`}
+                                        render={
+                                          <a
+                                            href={attachment.url}
+                                            rel="noreferrer"
+                                            target="_blank"
+                                          />
+                                        }
+                                      />
+                                    </Attachment>
+                                  )
+                                })}
+                              </AttachmentGroup>
+                            ) : null}
+                          </BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </Message>
+                  </MessageScrollerItem>
+                )
+              })}
+            </MessageGroup>
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
+    </MessageScrollerProvider>
+  )
+}
+
+function ChatStatus({ message }: { message: string }) {
+  return (
+    <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">
+      {message}
+    </div>
+  )
+}
