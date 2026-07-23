@@ -40,7 +40,7 @@ The production desktop client is a thin wrapper around the deployed HTTPS web
 application. Set its trusted renderer URL before packaging:
 
 ```powershell
-$env:AI_HARNESS_DESKTOP_URL = "https://app.example.com"
+$env:AI_HARNESS_DESKTOP_URL = "https://app.a2zsoftware.ca/"
 bun run installer:windows
 ```
 
