@@ -4,69 +4,99 @@ import log from "electron-log/main"
 import { autoUpdater } from "electron-updater"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
 
-import type { DesktopUpdaterState } from "../types"
+import {
+  canCheckForDesktopUpdates,
+  canDownloadDesktopUpdate,
+  canInstallDesktopUpdate,
+  createDesktopUpdaterState,
+  reduceDesktopUpdaterState,
+} from "./updater-state"
+import type { DesktopUpdaterEvent } from "./updater-state"
 
 export class DesktopUpdater {
-  private state: DesktopUpdaterState = {
-    availableVersion: null,
-    currentVersion: app.getVersion(),
-    error: null,
-    progress: null,
-    status: app.isPackaged ? "idle" : "disabled",
-  }
+  private state = createDesktopUpdaterState(app.getVersion(), app.isPackaged)
 
   constructor(private readonly window: BrowserWindow) {
     log.initialize()
     autoUpdater.logger = log
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoRunAppAfterInstall = true
     autoUpdater.on("checking-for-update", () =>
-      this.update({ status: "checking" })
+      this.apply({ type: "checking" })
     )
     autoUpdater.on("update-available", (info: UpdateInfo) =>
-      this.update({ availableVersion: info.version, status: "idle" })
+      this.apply({ type: "update-available", version: info.version })
     )
     autoUpdater.on("update-not-available", () =>
-      this.update({ availableVersion: null, status: "up-to-date" })
+      this.apply({ type: "update-not-available" })
     )
     autoUpdater.on("download-progress", (progress: ProgressInfo) =>
-      this.update({ progress: progress.percent, status: "downloading" })
+      this.apply({ progress: progress.percent, type: "download-progress" })
     )
     autoUpdater.on("update-downloaded", (info: UpdateInfo) =>
-      this.update({
-        availableVersion: info.version,
-        progress: 100,
-        status: "ready",
-      })
+      this.apply({ type: "update-downloaded", version: info.version })
     )
     autoUpdater.on("error", (error: Error) =>
-      this.update({ error: error.message, status: "error" })
+      this.apply({ message: error.message, type: "error" })
     )
   }
 
   getState() {
-    return this.state
+    return { ...this.state }
   }
 
   async check() {
-    if (!app.isPackaged) return this.state
-    await autoUpdater.checkForUpdates()
-    return this.state
+    if (!app.isPackaged || !canCheckForDesktopUpdates(this.state))
+      return this.getState()
+    try {
+      this.apply({ type: "checking" })
+      await autoUpdater.checkForUpdates()
+    } catch (error) {
+      this.apply({ message: this.errorMessage(error), type: "error" })
+    }
+    return this.getState()
   }
 
   async download() {
-    if (!app.isPackaged) return this.state
-    await autoUpdater.downloadUpdate()
-    return this.state
+    if (!app.isPackaged || !canDownloadDesktopUpdate(this.state))
+      return this.getState()
+    try {
+      this.apply({ type: "download-started" })
+      await autoUpdater.downloadUpdate()
+    } catch (error) {
+      this.apply({ message: this.errorMessage(error), type: "error" })
+    }
+    return this.getState()
   }
 
   install() {
-    if (this.state.status === "ready") autoUpdater.quitAndInstall(false, true)
+    if (!canInstallDesktopUpdate(this.state)) return this.getState()
+    this.apply({ type: "installing" })
+    try {
+      autoUpdater.quitAndInstall(false, true)
+    } catch (error) {
+      this.apply({ message: this.errorMessage(error), type: "error" })
+    }
+    return this.getState()
   }
 
-  private update(patch: Partial<DesktopUpdaterState>) {
-    this.state = { ...this.state, ...patch, error: patch.error ?? null }
-    if (!this.window.isDestroyed())
+  private apply(event: DesktopUpdaterEvent) {
+    this.state = reduceDesktopUpdaterState(this.state, event)
+    if (!this.window.isDestroyed()) {
+      if (this.state.status === "downloading")
+        this.window.setProgressBar(
+          Math.max((this.state.progress ?? 0) / 100, 0.01)
+        )
+      else if (this.state.status === "installing") this.window.setProgressBar(2)
+      else this.window.setProgressBar(-1)
       this.window.webContents.send("desktop:updater-state", this.state)
+    }
+  }
+
+  private errorMessage(error: unknown) {
+    return error instanceof Error && error.message.trim()
+      ? error.message
+      : "The updater encountered an unexpected error."
   }
 }

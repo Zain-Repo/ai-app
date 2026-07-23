@@ -40,7 +40,9 @@ export type DesktopUpdaterState = {
     | "downloading"
     | "error"
     | "idle"
-    | "ready"
+    | "installing"
+    | "ready-to-install"
+    | "update-available"
     | "up-to-date"
 }
 
@@ -59,7 +61,7 @@ export type AiHarnessDesktopApi = {
     check: () => Promise<DesktopUpdaterState>
     download: () => Promise<DesktopUpdaterState>
     getState: () => Promise<DesktopUpdaterState>
-    install: () => Promise<void>
+    install: () => Promise<DesktopUpdaterState>
     onState: (callback: (state: DesktopUpdaterState) => void) => () => void
   }
   version: () => Promise<string>

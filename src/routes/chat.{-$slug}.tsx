@@ -13,6 +13,7 @@ import {
   MoreHorizontalIcon,
   Search01Icon,
   Settings02Icon,
+  SystemUpdate02Icon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -42,6 +43,7 @@ import {
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
@@ -1544,6 +1546,19 @@ function ChatWorkspace() {
           <div className="flex min-w-0 items-center gap-2.5">
             <UserButton>
               <UserButton.MenuItems>
+                {desktopAvailable ? (
+                  <UserButton.Action
+                    label="App updates"
+                    labelIcon={
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={SystemUpdate02Icon}
+                        strokeWidth={1.8}
+                      />
+                    }
+                    onClick={openDesktopUpdaterDialog}
+                  />
+                ) : null}
                 <UserButton.Action
                   label="Archived chats"
                   labelIcon={
