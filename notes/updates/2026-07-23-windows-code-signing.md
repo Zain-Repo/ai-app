@@ -33,5 +33,7 @@ for Authenticode signatures.
 ## Remaining limitation
 
 The configured certificate is self-signed and intended only for local pipeline
-validation. Public distribution still requires an identity-validated
-certificate or Artifact Signing profile. No release was published.
+validation. Release
+[`v0.1.7`](https://github.com/Zain-Repo/ai-harness-releases/releases/tag/v0.1.7)
+uses this signed and timestamped pipeline, but public Windows trust still
+requires an identity-validated certificate or Artifact Signing profile.

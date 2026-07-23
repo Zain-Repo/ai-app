@@ -46,5 +46,7 @@ runtime replacement path.
 
 ## Limitations
 
-No installer was built or published in this task. The release-time freshness
-gate and manifest upload will run on the next authorized Windows release.
+The first combined app and Codex runtime release was published as
+[`v0.1.7`](https://github.com/Zain-Repo/ai-harness-releases/releases/tag/v0.1.7).
+Its `codex-runtime.json` manifest identifies app version `0.1.7` and Codex
+version `0.145.0`.
