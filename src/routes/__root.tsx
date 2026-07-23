@@ -6,6 +6,9 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 import { ConvexReactClient } from "convex/react"
 import { ConvexProviderWithClerk } from "convex/react-clerk"
 
+import { DesktopUpdater } from "@/components/desktop-updater"
+import { Toaster } from "@/components/ui/sonner"
+
 import appCss from "../styles.css?url"
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL
@@ -111,6 +114,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         >
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             {children}
+            <DesktopUpdater />
+            <Toaster />
             <TanStackDevtools
               config={{
                 position: "bottom-right",

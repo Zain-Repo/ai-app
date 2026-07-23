@@ -25,6 +25,8 @@ const messageStatus = v.union(
   v.literal("failed")
 )
 
+const outputMode = v.union(v.literal("image"), v.literal("text"))
+
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
@@ -136,6 +138,7 @@ export default defineSchema({
     status: conversationStatus,
     providerConnectionId: v.optional(v.id("providerConnections")),
     model: v.optional(v.string()),
+    outputMode: v.optional(outputMode),
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
     updatedAt: v.number(),
@@ -157,6 +160,7 @@ export default defineSchema({
     status: messageStatus,
     provider: v.optional(v.string()),
     model: v.optional(v.string()),
+    outputMode: v.optional(outputMode),
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
     reasoningSteps: v.optional(v.array(v.string())),

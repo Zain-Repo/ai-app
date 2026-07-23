@@ -73,6 +73,16 @@ describe("OpenRouter model catalog", () => {
             output_modalities: ["text"],
           },
         },
+        {
+          id: "poolside/laguna-s-2.1",
+          name: "Poolside: Laguna S 2.1",
+          context_length: 1_048_576,
+          reasoning: { mandatory: false, default_enabled: true },
+          architecture: {
+            input_modalities: ["text"],
+            output_modalities: ["text"],
+          },
+        },
       ])
     ).toEqual([
       {
@@ -80,14 +90,23 @@ describe("OpenRouter model catalog", () => {
         value: "openai/gpt-image-latest",
         label: "GPT Image Latest",
         description: "Image generation · 400K context",
+        outputMode: "image",
       },
       {
         provider: "openai",
         value: "openai/gpt-latest",
         label: "GPT Latest",
         description: "Chat · Vision · Files · 1.1M context",
+        outputMode: "text",
         reasoningEfforts: ["high", "medium", "low"],
         defaultReasoningEffort: "low",
+      },
+      {
+        provider: "poolside",
+        value: "poolside/laguna-s-2.1",
+        label: "Laguna S 2.1",
+        description: "Chat · 1M context",
+        outputMode: "text",
       },
     ])
   })
@@ -142,16 +161,17 @@ describe("OpenRouter model endpoints", () => {
               pricing: { prompt: "0", completion: "0" },
             },
             {
-              provider_name: "DeepInfra",
-              tag: "deepinfra/fp4",
+              provider_name: "Poolside",
+              tag: "poolside/bf16",
               status: 0,
               context_length: 1_048_576,
-              quantization: "fp4",
-              uptime_last_1d: 99.6,
+              quantization: "bf16",
+              uptime_last_1d: 99.99887844597474,
+              throughput_last_30m: { p50: 77, p90: 171 },
               pricing: {
-                prompt: "0.00000009",
-                completion: "0.00000018",
-                input_cache_read: "0.000000018",
+                prompt: "0.0000001",
+                completion: "0.0000002",
+                input_cache_read: "0.00000001",
               },
             },
           ],
@@ -159,14 +179,15 @@ describe("OpenRouter model endpoints", () => {
       })
     ).toEqual([
       {
-        providerName: "DeepInfra",
-        providerTag: "deepinfra/fp4",
-        promptPrice: 0.09,
-        completionPrice: 0.18,
-        cacheReadPrice: 0.018,
+        providerName: "Poolside",
+        providerTag: "poolside/bf16",
+        promptPrice: 0.1,
+        completionPrice: 0.2,
+        cacheReadPrice: 0.01,
         contextLength: 1_048_576,
-        quantization: "fp4",
-        uptime: 99.6,
+        quantization: "bf16",
+        uptime: 99.99887844597474,
+        throughput: 77,
       },
       {
         providerName: "Expensive",
@@ -175,6 +196,27 @@ describe("OpenRouter model endpoints", () => {
         completionPrice: 0.4,
       },
     ])
+  })
+
+  it("converts image output tokens to the estimated 1K image price", () => {
+    expect(
+      parseOpenRouterEndpoints({
+        data: {
+          endpoints: [
+            {
+              provider_name: "Black Forest Labs",
+              tag: "black-forest-labs",
+              status: 0,
+              pricing: {
+                prompt: "0",
+                completion: "0",
+                image_output: "0.00000341796875",
+              },
+            },
+          ],
+        },
+      })
+    ).toMatchObject([{ imagePrice: 0.014 }])
   })
 })
 

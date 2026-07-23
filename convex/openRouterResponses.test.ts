@@ -6,6 +6,7 @@ import {
   getPrivateOpenRouterEmbeddingSettings,
   inlineTextAttachments,
   normalizeGeneratedTitle,
+  parseOpenRouterImageResponse,
   toModelPrompt,
 } from "./openRouterResponses"
 
@@ -174,5 +175,16 @@ describe("AI SDK provider bridge", () => {
     expect(
       normalizeGeneratedTitle('**Chat title: "Clean Landing Page"**')
     ).toBe("Clean Landing Page")
+  })
+
+  it("decodes a bounded OpenRouter image response", () => {
+    const image = parseOpenRouterImageResponse({
+      data: [{ b64_json: "aW1hZ2U=", media_type: "image/webp" }],
+    })
+    expect(image).toMatchObject({
+      contentType: "image/webp",
+      extension: "webp",
+    })
+    expect(new TextDecoder().decode(image.bytes)).toBe("image")
   })
 })

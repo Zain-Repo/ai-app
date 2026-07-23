@@ -59,6 +59,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-sol",
     label: "GPT-5.6 Sol",
     description: "Frontier model for complex professional work",
+    outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -66,6 +67,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-terra",
     label: "GPT-5.6 Terra",
     description: "Balances intelligence and cost",
+    outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -73,6 +75,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-luna",
     label: "GPT-5.6 Luna",
     description: "Optimized for cost-sensitive workloads",
+    outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -80,6 +83,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.5",
     label: "GPT-5.5",
     description: "Advanced coding and professional work",
+    outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -87,12 +91,14 @@ export const OPENAI_MODELS = [
     value: "gpt-5.5-pro",
     label: "GPT-5.5 Pro",
     description: "Higher-compute GPT-5.5",
+    outputMode: "text",
   },
   {
     provider: "openai",
     value: "gpt-5.4",
     label: "GPT-5.4",
     description: "Coding and professional work",
+    outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -100,12 +106,14 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4-pro",
     label: "GPT-5.4 Pro",
     description: "Higher-compute GPT-5.4",
+    outputMode: "text",
   },
   {
     provider: "openai",
     value: "gpt-5.4-mini",
     label: "GPT-5.4 mini",
     description: "Fast, efficient GPT-5.4",
+    outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
   {
@@ -113,6 +121,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4-nano",
     label: "GPT-5.4 nano",
     description: "Low-cost, high-volume GPT-5.4",
+    outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
 ] satisfies CatalogModel[]
@@ -122,6 +131,7 @@ type CatalogModel = {
   value: string
   label: string
   description?: string
+  outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
 }
@@ -131,6 +141,7 @@ type ModelEndpoint = {
   providerTag: string
   promptPrice: number
   completionPrice: number
+  imagePrice?: number
   cacheReadPrice?: number
   cacheWritePrice?: number
   contextLength?: number
@@ -166,6 +177,7 @@ const modelValidator = v.object({
   value: v.string(),
   label: v.string(),
   description: v.optional(v.string()),
+  outputMode: v.union(v.literal("image"), v.literal("text")),
   reasoningEfforts: v.optional(v.array(reasoningEffortValidator)),
   defaultReasoningEffort: v.optional(reasoningEffortValidator),
 })
@@ -175,6 +187,7 @@ const modelEndpointValidator = v.object({
   providerTag: v.string(),
   promptPrice: v.number(),
   completionPrice: v.number(),
+  imagePrice: v.optional(v.number()),
   cacheReadPrice: v.optional(v.number()),
   cacheWritePrice: v.optional(v.number()),
   contextLength: v.optional(v.number()),
@@ -212,6 +225,13 @@ function readPrice(value: unknown) {
     : undefined
 }
 
+function readImagePrice(value: unknown) {
+  const price = typeof value === "string" ? Number(value) : value
+  return isFiniteNumber(price) && price >= 0
+    ? Number((price * 4_096).toPrecision(12))
+    : undefined
+}
+
 export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
   if (
     !isRecord(value) ||
@@ -239,12 +259,17 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
 
       const cacheReadPrice = readPrice(endpoint.pricing.input_cache_read)
       const cacheWritePrice = readPrice(endpoint.pricing.input_cache_write)
+      const imagePrice = readImagePrice(endpoint.pricing.image_output)
+      const throughput = isRecord(endpoint.throughput_last_30m)
+        ? endpoint.throughput_last_30m.p50
+        : endpoint.throughput_last_30m
       return [
         {
           providerName: endpoint.provider_name,
           providerTag: endpoint.tag,
           promptPrice,
           completionPrice,
+          ...(imagePrice === undefined ? {} : { imagePrice }),
           ...(cacheReadPrice === undefined ? {} : { cacheReadPrice }),
           ...(cacheWritePrice === undefined ? {} : { cacheWritePrice }),
           ...(isFiniteNumber(endpoint.context_length) &&
@@ -258,17 +283,14 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
           ...(isFiniteNumber(endpoint.uptime_last_1d)
             ? { uptime: endpoint.uptime_last_1d }
             : {}),
-          ...(isFiniteNumber(endpoint.throughput_last_30m)
-            ? { throughput: endpoint.throughput_last_30m }
-            : {}),
+          ...(isFiniteNumber(throughput) ? { throughput } : {}),
         },
       ]
     })
     .sort(
       (left, right) =>
-        left.promptPrice +
-          left.completionPrice -
-          (right.promptPrice + right.completionPrice) ||
+        (left.imagePrice ?? left.promptPrice + left.completionPrice) -
+          (right.imagePrice ?? right.promptPrice + right.completionPrice) ||
         left.providerName.localeCompare(right.providerName)
     )
 }
@@ -414,12 +436,17 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
           ? model.name.slice(separatorIndex + 2)
           : model.name
       const reasoningOptions = readReasoningOptions(model.reasoning)
+      const outputMode: CatalogModel["outputMode"] =
+        outputModalities.includes("image") && !outputModalities.includes("text")
+          ? "image"
+          : "text"
 
       return [
         {
           provider,
           value: model.id,
           label,
+          outputMode,
           description: describeCapabilities(
             inputModalities,
             outputModalities,

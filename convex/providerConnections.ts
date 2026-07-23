@@ -1,6 +1,11 @@
 import { v } from "convex/values"
 
-import { internalMutation, internalQuery, query } from "./_generated/server"
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 
 const status = v.union(
@@ -8,7 +13,11 @@ const status = v.union(
   v.literal("needs_reauthentication"),
   v.literal("disconnected")
 )
-const provider = v.union(v.literal("openrouter"), v.literal("openai"))
+const provider = v.union(
+  v.literal("openrouter"),
+  v.literal("openai"),
+  v.literal("codex")
+)
 
 export const listMine = query({
   args: {},
@@ -31,13 +40,53 @@ export const listMine = query({
 
     return connections.map((connection) => ({
       connectionId: connection._id,
-      provider: connection.provider as "openrouter" | "openai",
+      provider: connection.provider as "openrouter" | "openai" | "codex",
       authMethod: connection.authMethod,
       status: connection.status,
       ...(connection.displayName
         ? { displayName: connection.displayName }
         : {}),
     }))
+  },
+})
+
+export const connectDesktopCodex = mutation({
+  args: {
+    email: v.optional(v.string()),
+    planType: v.optional(v.string()),
+  },
+  returns: v.id("providerConnections"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const email = args.email?.trim()
+    const planType = args.planType?.trim()
+    if (email && email.length > 320)
+      throw new Error("OpenAI account is invalid")
+    if (planType && planType.length > 50)
+      throw new Error("OpenAI plan is invalid")
+    const existing = await ctx.db
+      .query("providerConnections")
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerId", user._id).eq("provider", "codex")
+      )
+      .unique()
+    const metadata = {
+      authMethod: "oauth" as const,
+      displayName: "ChatGPT subscription",
+      ...(email ? { externalAccountId: email } : {}),
+      scopes: ["codex", ...(planType ? [`plan:${planType}`] : [])],
+      status: "connected" as const,
+      updatedAt: Date.now(),
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, metadata)
+      return existing._id
+    }
+    return await ctx.db.insert("providerConnections", {
+      ...metadata,
+      ownerId: user._id,
+      provider: "codex",
+    })
   },
 })
 

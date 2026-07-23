@@ -35,6 +35,7 @@
     "@ai-elements": "https://ai-sdk.dev/elements/api/registry/{name}.json",
     "@animate-ui": "https://animate-ui.com/r/{name}.json",
     "@gammaui": "https://www.gammaui.com/r/{name}.json",
-    "@manifest": "https://ui.manifest.build/r/{name}.json"
+    "@manifest": "https://ui.manifest.build/r/{name}.json",
+    "@fluid": "https://www.fluidfunctionalism.com/r/{name}.json"
   }
 }

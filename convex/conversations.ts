@@ -33,6 +33,7 @@ const REASONING_EFFORTS = new Set([
   "minimal",
   "none",
 ])
+const outputModeValidator = v.union(v.literal("image"), v.literal("text"))
 
 const conversationValidator = v.object({
   _id: v.id("conversations"),
@@ -43,6 +44,7 @@ const conversationValidator = v.object({
   status: v.union(v.literal("active"), v.literal("archived")),
   providerConnectionId: v.optional(v.id("providerConnections")),
   model: v.optional(v.string()),
+  outputMode: v.optional(outputModeValidator),
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
   updatedAt: v.number(),
@@ -63,6 +65,7 @@ const messageValidator = v.object({
   ),
   provider: v.optional(v.string()),
   model: v.optional(v.string()),
+  outputMode: v.optional(outputModeValidator),
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
   reasoningSteps: v.optional(v.array(v.string())),
@@ -145,6 +148,7 @@ export const start = mutation({
     content: v.string(),
     draftAttachmentIds: v.optional(v.array(v.id("draftAttachments"))),
     model: v.string(),
+    outputMode: v.optional(outputModeValidator),
     projectId: v.optional(v.string()),
     providerConnectionId: v.id("providerConnections"),
     reasoningEffort: v.optional(v.string()),
@@ -161,7 +165,7 @@ export const start = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai"].includes(connection.provider) ||
+      !["openrouter", "openai", "codex"].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -169,6 +173,9 @@ export const start = mutation({
       args.routingProvider,
       connection.provider
     )
+    const outputMode = args.outputMode ?? "text"
+    if (outputMode === "image" && connection.provider !== "openrouter")
+      throw new Error("Image generation requires OpenRouter")
 
     const projectId = args.projectId
       ? ctx.db.normalizeId("projects", args.projectId)
@@ -193,6 +200,7 @@ export const start = mutation({
       status: "active",
       providerConnectionId: connection._id,
       model,
+      outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
       updatedAt: now,
@@ -205,6 +213,7 @@ export const start = mutation({
       status: "complete",
       provider: connection.provider,
       model,
+      outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
@@ -215,13 +224,15 @@ export const start = mutation({
       status: "pending",
       provider: connection.provider,
       model,
+      outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
-    await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
-      assistantMessageId,
-      conversationId,
-    })
+    if (connection.provider !== "codex")
+      await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
+        assistantMessageId,
+        conversationId,
+      })
 
     return conversationId
   },
@@ -262,7 +273,7 @@ export const send = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai"].includes(connection.provider) ||
+      !["openrouter", "openai", "codex"].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -270,6 +281,9 @@ export const send = mutation({
       args.routingProvider,
       connection.provider
     )
+    const outputMode = conversation.outputMode ?? "text"
+    if (outputMode === "image" && connection.provider !== "openrouter")
+      throw new Error("Image generation requires OpenRouter")
 
     const existingMessages = await ctx.db
       .query("messages")
@@ -277,6 +291,14 @@ export const send = mutation({
         indexQuery.eq("conversationId", conversationId)
       )
       .take(MAX_MESSAGES)
+    if (
+      existingMessages.some(
+        (message) =>
+          message.role === "assistant" &&
+          (message.status === "pending" || message.status === "streaming")
+      )
+    )
+      throw new Error("Wait for the current response to finish")
     if (existingMessages.length > MAX_MESSAGES - 2)
       throw new Error("Conversation has reached its message limit")
     const attachments = await consumeDraftAttachments(
@@ -293,6 +315,7 @@ export const send = mutation({
       status: "complete",
       provider: connection.provider,
       model,
+      outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
@@ -303,6 +326,7 @@ export const send = mutation({
       status: "pending",
       provider: connection.provider,
       model,
+      outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
@@ -312,11 +336,70 @@ export const send = mutation({
       reasoningEffort,
       updatedAt: Date.now(),
     })
-    await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
-      assistantMessageId,
-      conversationId,
-    })
+    if (connection.provider !== "codex")
+      await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
+        assistantMessageId,
+        conversationId,
+      })
     return messageId
+  },
+})
+
+export const finishDesktopCodexResponse = mutation({
+  args: {
+    conversationId: v.string(),
+    content: v.string(),
+    failed: v.boolean(),
+    reasoningSteps: v.optional(v.array(v.string())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (!conversation.providerConnectionId)
+      throw new Error("Conversation unavailable")
+    const connection = await ctx.db.get(conversation.providerConnectionId)
+    if (
+      !connection ||
+      connection.ownerId !== user._id ||
+      connection.provider !== "codex" ||
+      connection.status !== "connected"
+    )
+      throw new Error("Codex connection unavailable")
+    const content = normalizeMessage(args.content)
+    const reasoningSteps = args.reasoningSteps?.map((step) => step.trim())
+    if (
+      reasoningSteps &&
+      (reasoningSteps.length > 20 ||
+        reasoningSteps.some((step) => !step || step.length > 2_000))
+    )
+      throw new Error("Codex reasoning summary is invalid")
+    const pending = (
+      await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) =>
+          q.eq("conversationId", conversation._id)
+        )
+        .order("desc")
+        .take(MAX_MESSAGES)
+    ).filter(
+      (message) =>
+        message.role === "assistant" &&
+        (message.status === "pending" || message.status === "streaming")
+    )
+    if (pending.length !== 1)
+      throw new Error("Codex response is no longer available")
+    await ctx.db.patch(pending[0]._id, {
+      content,
+      ...(reasoningSteps ? { reasoningSteps } : {}),
+      status: args.failed ? "failed" : "complete",
+    })
+    await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
+    return null
   },
 })
 
@@ -354,6 +437,7 @@ const responseContextValidator = v.object({
   memoryRevision: v.number(),
   memorySearchScopes: v.array(v.string()),
   model: v.string(),
+  outputMode: outputModeValidator,
   provider: v.union(v.literal("openrouter"), v.literal("openai")),
   routingProvider: v.optional(v.string()),
   projectId: v.optional(v.id("projects")),
@@ -589,6 +673,8 @@ export const getOpenRouterResponseContext = internalQuery({
         )),
       ],
       model: assistantMessage.model,
+      outputMode:
+        assistantMessage.outputMode ?? conversation.outputMode ?? "text",
       provider: connection.provider as "openrouter" | "openai",
       ...(assistantMessage.routingProvider
         ? { routingProvider: assistantMessage.routingProvider }
@@ -624,6 +710,7 @@ export const finishOpenRouterResponse = internalMutation({
     content: v.string(),
     errorCode: v.optional(v.literal("insufficient_credits")),
     failed: v.boolean(),
+    attachments: v.optional(v.array(messageAttachmentValidator)),
     reasoningSteps: v.optional(v.array(v.string())),
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
@@ -644,6 +731,7 @@ export const finishOpenRouterResponse = internalMutation({
     ) {
       await ctx.db.patch(message._id, {
         content: args.content,
+        ...(args.attachments ? { attachments: args.attachments } : {}),
         errorCode: args.errorCode,
         ...(args.reasoningSteps ? { reasoningSteps: args.reasoningSteps } : {}),
         ...(args.terminalRuns ? { terminalRuns: args.terminalRuns } : {}),

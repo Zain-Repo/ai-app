@@ -23,6 +23,7 @@ import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { env, internalAction } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
+import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
 import {
   buildMemoryContext,
   MEMORY_EMBEDDING_DIMENSIONS,
@@ -60,11 +61,19 @@ const OPENROUTER_TITLE_MODEL = `openai/${OPENAI_TITLE_MODEL}`
 const MAX_RELEVANT_MEMORIES = 8
 const MIN_MEMORY_SCORE = 0.35
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
+const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
+const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
+const MAX_IMAGE_BASE64_LENGTH = Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 4
 const IMAGE_TYPES = new Set([
   "image/gif",
   "image/jpeg",
   "image/png",
   "image/webp",
+])
+const GENERATED_IMAGE_EXTENSIONS = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
 ])
 const renderUiTool = tool({
   description: renderUiToolDescription,
@@ -116,6 +125,87 @@ function getProviderRouting(model: string, routingProvider?: string) {
     } as const
   }
   return model.startsWith("deepseek/") ? DEEPSEEK_PROVIDER_ROUTING : undefined
+}
+
+class OpenRouterImageError extends Error {
+  constructor(readonly statusCode: number) {
+    super("OpenRouter image generation failed")
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+export function parseOpenRouterImageResponse(value: unknown) {
+  const image =
+    isRecord(value) && Array.isArray(value.data) && isRecord(value.data[0])
+      ? value.data[0]
+      : null
+  const base64 = image?.b64_json
+  const contentType =
+    typeof image?.media_type === "string" ? image.media_type : "image/webp"
+  const extension = GENERATED_IMAGE_EXTENSIONS.get(contentType)
+  if (
+    typeof base64 !== "string" ||
+    !base64 ||
+    base64.length > MAX_IMAGE_BASE64_LENGTH ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
+    !extension
+  ) {
+    throw new Error("Provider returned an invalid image")
+  }
+
+  const bytes = Uint8Array.from(Buffer.from(base64, "base64"))
+  if (!bytes.length || bytes.byteLength > MAX_ATTACHMENT_BYTES)
+    throw new Error("Provider returned an invalid image")
+  return { bytes, contentType, extension }
+}
+
+async function generateOpenRouterImage(
+  token: string,
+  options: {
+    messages: ProviderMessage[]
+    model: string
+    prompt: string
+    routingProvider?: string
+  }
+) {
+  const latestUserMessage = options.messages.findLast(
+    (message) => message.role === "user"
+  )
+  const inputReferences = (latestUserMessage?.attachments ?? []).flatMap(
+    (attachment) =>
+      IMAGE_TYPES.has(attachment.contentType)
+        ? [
+            {
+              type: "image_url" as const,
+              image_url: { url: attachment.url },
+            },
+          ]
+        : []
+  )
+  const provider = getProviderRouting(options.model, options.routingProvider)
+  const response = await fetch(OPENROUTER_IMAGES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: options.model,
+      prompt: options.prompt,
+      n: 1,
+      size: "1K",
+      output_format: "webp",
+      ...(inputReferences.length ? { input_references: inputReferences } : {}),
+      ...(provider ? { provider } : {}),
+    }),
+    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
+  })
+  const result: unknown = await response.json().catch(() => null)
+  if (!response.ok) throw new OpenRouterImageError(response.status)
+  return parseOpenRouterImageResponse(result)
 }
 
 function asReasoningEffort(value?: string): ReasoningEffort | undefined {
@@ -540,6 +630,41 @@ export const generate = internalAction({
         env.PROVIDER_TOKEN_ENCRYPTION_KEY,
         context.provider
       )
+      if (context.outputMode === "image") {
+        if (context.provider !== "openrouter")
+          throw new Error("Image generation requires OpenRouter")
+        const image = await generateOpenRouterImage(token, {
+          messages: context.messages,
+          model: context.model,
+          prompt: context.lastUserMessage,
+          routingProvider: context.routingProvider,
+        })
+        const storageId = await ctx.storage.store(
+          new Blob([image.bytes], { type: image.contentType })
+        )
+        try {
+          await ctx.runMutation(
+            internal.conversations.finishOpenRouterResponse,
+            {
+              assistantMessageId: args.assistantMessageId,
+              attachments: [
+                {
+                  storageId,
+                  name: `generated-image.${image.extension}`,
+                  contentType: image.contentType,
+                  size: image.bytes.byteLength,
+                },
+              ],
+              content: "",
+              failed: false,
+            }
+          )
+        } catch (cause) {
+          await ctx.storage.delete(storageId)
+          throw cause
+        }
+        return null
+      }
       const memoryEnabled =
         context.provider === "openrouter" &&
         context.memoryEnabled &&
@@ -794,7 +919,9 @@ export const generate = internalAction({
       return null
     } catch (cause) {
       const apiError = APICallError.isInstance(cause) ? cause : undefined
-      const status = apiError?.statusCode
+      const status =
+        apiError?.statusCode ??
+        (cause instanceof OpenRouterImageError ? cause.statusCode : undefined)
       if (connectionId && (status === 401 || status === 403)) {
         await ctx.runMutation(
           internal.providerConnections.markProviderNeedsAuthentication,

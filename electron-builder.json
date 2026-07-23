@@ -1,0 +1,35 @@
+{
+  "appId": "com.zain.ai-harness",
+  "productName": "AI Harness",
+  "artifactName": "ai-harness-setup-${version}.${ext}",
+  "directories": {
+    "output": "out/nsis"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "Zain-Repo",
+      "repo": "ai-app-releases"
+    }
+  ],
+  "executableName": "ai-harness",
+  "win": {
+    "icon": "public/icons/icon-512.png",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "AI Harness",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": true
+  }
+}

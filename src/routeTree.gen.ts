@@ -10,14 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as ChatChar123SlugChar125RouteImport } from './routes/chat.{-$slug}'
 import { Route as ProviderCallbackOpenrouterRouteImport } from './routes/provider-callback.openrouter'
 import { Route as SignInSplatRouteImport } from './routes/sign-in.$'
 import { Route as SignUpSplatRouteImport } from './routes/sign-up.$'
+import { Route as DesktopSignInSplatRouteImport } from './routes/desktop.sign-in.$'
+import { Route as DesktopSignUpSplatRouteImport } from './routes/desktop.sign-up.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopRoute = DesktopRouteImport.update({
+  id: '/desktop',
+  path: '/desktop',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatChar123SlugChar125Route = ChatChar123SlugChar125RouteImport.update({
@@ -41,55 +49,84 @@ const SignUpSplatRoute = SignUpSplatRouteImport.update({
   path: '/sign-up/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DesktopSignInSplatRoute = DesktopSignInSplatRouteImport.update({
+  id: '/sign-in/$',
+  path: '/sign-in/$',
+  getParentRoute: () => DesktopRoute,
+} as any)
+const DesktopSignUpSplatRoute = DesktopSignUpSplatRouteImport.update({
+  id: '/sign-up/$',
+  path: '/sign-up/$',
+  getParentRoute: () => DesktopRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/desktop': typeof DesktopRouteWithChildren
   '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
   '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
+  '/desktop/sign-in/$': typeof DesktopSignInSplatRoute
+  '/desktop/sign-up/$': typeof DesktopSignUpSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/desktop': typeof DesktopRouteWithChildren
   '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
   '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
+  '/desktop/sign-in/$': typeof DesktopSignInSplatRoute
+  '/desktop/sign-up/$': typeof DesktopSignUpSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/desktop': typeof DesktopRouteWithChildren
   '/chat/{-$slug}': typeof ChatChar123SlugChar125Route
   '/provider-callback/openrouter': typeof ProviderCallbackOpenrouterRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
+  '/desktop/sign-in/$': typeof DesktopSignInSplatRoute
+  '/desktop/sign-up/$': typeof DesktopSignUpSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/desktop'
     | '/chat/{-$slug}'
     | '/provider-callback/openrouter'
     | '/sign-in/$'
     | '/sign-up/$'
+    | '/desktop/sign-in/$'
+    | '/desktop/sign-up/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/desktop'
     | '/chat/{-$slug}'
     | '/provider-callback/openrouter'
     | '/sign-in/$'
     | '/sign-up/$'
+    | '/desktop/sign-in/$'
+    | '/desktop/sign-up/$'
   id:
     | '__root__'
     | '/'
+    | '/desktop'
     | '/chat/{-$slug}'
     | '/provider-callback/openrouter'
     | '/sign-in/$'
     | '/sign-up/$'
+    | '/desktop/sign-in/$'
+    | '/desktop/sign-up/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DesktopRoute: typeof DesktopRouteWithChildren
   ChatChar123SlugChar125Route: typeof ChatChar123SlugChar125Route
   ProviderCallbackOpenrouterRoute: typeof ProviderCallbackOpenrouterRoute
   SignInSplatRoute: typeof SignInSplatRoute
@@ -103,6 +140,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop': {
+      id: '/desktop'
+      path: '/desktop'
+      fullPath: '/desktop'
+      preLoaderRoute: typeof DesktopRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat/{-$slug}': {
@@ -133,11 +177,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignUpSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desktop/sign-in/$': {
+      id: '/desktop/sign-in/$'
+      path: '/sign-in/$'
+      fullPath: '/desktop/sign-in/$'
+      preLoaderRoute: typeof DesktopSignInSplatRouteImport
+      parentRoute: typeof DesktopRoute
+    }
+    '/desktop/sign-up/$': {
+      id: '/desktop/sign-up/$'
+      path: '/sign-up/$'
+      fullPath: '/desktop/sign-up/$'
+      preLoaderRoute: typeof DesktopSignUpSplatRouteImport
+      parentRoute: typeof DesktopRoute
+    }
   }
 }
 
+interface DesktopRouteChildren {
+  DesktopSignInSplatRoute: typeof DesktopSignInSplatRoute
+  DesktopSignUpSplatRoute: typeof DesktopSignUpSplatRoute
+}
+
+const DesktopRouteChildren: DesktopRouteChildren = {
+  DesktopSignInSplatRoute: DesktopSignInSplatRoute,
+  DesktopSignUpSplatRoute: DesktopSignUpSplatRoute,
+}
+
+const DesktopRouteWithChildren =
+  DesktopRoute._addFileChildren(DesktopRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DesktopRoute: DesktopRouteWithChildren,
   ChatChar123SlugChar125Route: ChatChar123SlugChar125Route,
   ProviderCallbackOpenrouterRoute: ProviderCallbackOpenrouterRoute,
   SignInSplatRoute: SignInSplatRoute,

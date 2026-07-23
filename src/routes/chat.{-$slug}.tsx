@@ -28,7 +28,7 @@ import {
   Plug,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
-import { useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import {
   Authenticated,
@@ -41,13 +41,10 @@ import {
 
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
-import { MessageResponse } from "@/components/ai-elements/message"
-import { Terminal } from "@/components/ai-elements/terminal"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
-import { GenerativeUi } from "@/components/generative-ui"
+import { ImageGeneration } from "@/components/ui/image-generation"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
-import { RealtimeVoice } from "@/components/realtime-voice"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
 import type {
@@ -73,7 +70,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -118,12 +121,33 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 
+const MessageResponse = lazy(async () => {
+  const module = await import("@/components/ai-elements/message")
+  return { default: module.MessageResponse }
+})
+
+const Terminal = lazy(async () => {
+  const module = await import("@/components/ai-elements/terminal")
+  return { default: module.Terminal }
+})
+
+const GenerativeUi = lazy(async () => {
+  const module = await import("@/components/generative-ui")
+  return { default: module.GenerativeUi }
+})
+
+const RealtimeVoice = lazy(async () => {
+  const module = await import("@/components/realtime-voice")
+  return { default: module.RealtimeVoice }
+})
+
 const requireAuth = createServerFn().handler(async () => {
   if (!(await auth()).isAuthenticated) throw redirect({ href: "/sign-in" })
 })
 
 const providerLabels: Record<string, string> = {
   anthropic: "Anthropic",
+  "black-forest-labs": "Black Forest Labs",
   cohere: "Cohere",
   deepseek: "DeepSeek",
   google: "Google",
@@ -132,7 +156,9 @@ const providerLabels: Record<string, string> = {
   mistralai: "Mistral AI",
   openai: "OpenAI",
   perplexity: "Perplexity",
+  poolside: "Poolside",
   qwen: "Qwen",
+  sourceful: "Sourceful",
   "x-ai": "xAI",
 }
 
@@ -149,6 +175,16 @@ const preferredProviders = [
   "cohere",
   "perplexity",
 ]
+
+const IMAGE_MODEL_PRIORITY = [
+  "black-forest-labs/flux.2-klein-4b",
+  "sourceful/riverflow-v2.5-pro",
+]
+const imageModelDescriptions: Record<string, string> = {
+  "black-forest-labs/flux.2-klein-4b": "Low cost · about $0.014 per 1K image",
+  "sourceful/riverflow-v2.5-pro":
+    "Best quality · Design Arena rank #1 · about $0.128 per 1K image",
+}
 
 export function toggleExpandedProject(
   expandedProjectId: string | undefined,
@@ -189,6 +225,7 @@ type CatalogModel = {
   value: string
   label: string
   description?: string
+  outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
 }
@@ -198,6 +235,7 @@ type ModelEndpoint = {
   providerTag: string
   promptPrice: number
   completionPrice: number
+  imagePrice?: number
   cacheReadPrice?: number
   cacheWritePrice?: number
   contextLength?: number
@@ -213,10 +251,13 @@ function formatPrice(value: number) {
 }
 
 function formatEndpointDescription(endpoint: ModelEndpoint) {
-  const details = [
-    `${formatPrice(endpoint.promptPrice)} input`,
-    `${formatPrice(endpoint.completionPrice)} output / 1M`,
-  ]
+  const details =
+    endpoint.imagePrice !== undefined
+      ? [`~${formatPrice(endpoint.imagePrice)} / 1K image`]
+      : [
+          `${formatPrice(endpoint.promptPrice)} input`,
+          `${formatPrice(endpoint.completionPrice)} output / 1M`,
+        ]
   if (endpoint.cacheReadPrice !== undefined)
     details.push(`${formatPrice(endpoint.cacheReadPrice)} cache read`)
   if (endpoint.cacheWritePrice !== undefined)
@@ -265,6 +306,10 @@ function formatFileSize(size: number) {
 
 type ReasoningEffort =
   "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+
+function isReasoningEffort(value: string): value is ReasoningEffort {
+  return value in reasoningEffortLabels
+}
 
 const MAX_PROJECT_SOURCES = 8
 const MAX_PROJECT_SOURCE_FILES = 5
@@ -383,6 +428,9 @@ function ChatWorkspace() {
   )
   const startConversation = useMutation(api.conversations.start)
   const sendMessage = useMutation(api.conversations.send)
+  const finishDesktopCodexResponse = useMutation(
+    api.conversations.finishDesktopCodexResponse
+  )
   const archiveConversation = useMutation(api.conversations.archive)
   const removeConversation = useMutation(api.conversations.remove)
   const createProject = useMutation(api.projects.create)
@@ -430,9 +478,11 @@ function ChatWorkspace() {
     "failed" | "idle" | "loading" | "ready"
   >("idle")
   const [modelProvider, setModelProvider] = useState("")
-  const [activeProvider, setActiveProvider] = useState<"openrouter" | "openai">(
-    "openrouter"
-  )
+  const [activeProvider, setActiveProvider] = useState<
+    "codex" | "openrouter" | "openai"
+  >("openrouter")
+  const [desktopAvailable, setDesktopAvailable] = useState(false)
+  const [outputMode, setOutputMode] = useState<"image" | "text">("text")
   const [selectedModelId, setSelectedModelId] = useState("")
   const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
     "idle"
@@ -443,6 +493,10 @@ function ChatWorkspace() {
     setExpandedProjectId(search.projectId)
   }, [search.projectId])
 
+  useEffect(() => {
+    setDesktopAvailable(Boolean(window.aiHarnessDesktop))
+  }, [])
+
   const openRouter = connections?.find(
     (connection) =>
       connection.provider === "openrouter" && connection.status === "connected"
@@ -451,7 +505,18 @@ function ChatWorkspace() {
     (connection) =>
       connection.provider === "openai" && connection.status === "connected"
   )
-  const activeConnection = activeProvider === "openai" ? openAi : openRouter
+  const codex = desktopAvailable
+    ? connections?.find(
+        (connection) =>
+          connection.provider === "codex" && connection.status === "connected"
+      )
+    : undefined
+  const activeConnection =
+    activeProvider === "codex"
+      ? codex
+      : activeProvider === "openai"
+        ? openAi
+        : openRouter
   const activeConnectionId = activeConnection?.connectionId
 
   useEffect(() => {
@@ -460,10 +525,25 @@ function ChatWorkspace() {
         (connection) =>
           connection.connectionId === selected.providerConnectionId
       )?.provider
-      if (provider === "openai" || provider === "openrouter")
+      if (
+        provider === "openai" ||
+        provider === "openrouter" ||
+        (provider === "codex" && desktopAvailable)
+      )
         setActiveProvider(provider)
-    } else if (openAi) setActiveProvider("openai")
-  }, [connections, openAi, selected?.providerConnectionId])
+    } else if (codex) setActiveProvider("codex")
+    else if (openAi) setActiveProvider("openai")
+  }, [
+    codex,
+    connections,
+    desktopAvailable,
+    openAi,
+    selected?.providerConnectionId,
+  ])
+
+  useEffect(() => {
+    if (conversationId && selected) setOutputMode(selected.outputMode ?? "text")
+  }, [conversationId, selected])
 
   useEffect(() => {
     if (!activeConnectionId) {
@@ -474,7 +554,33 @@ function ChatWorkspace() {
 
     let cancelled = false
     setCatalogState("loading")
-    void listModels({ provider: activeProvider }).then(
+    const modelsPromise =
+      activeProvider === "codex"
+        ? window.aiHarnessDesktop?.codex.listModels().then((models) =>
+            models.map((model): CatalogModel => ({
+              provider: "openai",
+              value: model.value,
+              label: model.label,
+              outputMode: "text",
+              ...(model.description ? { description: model.description } : {}),
+              ...(model.reasoningEfforts
+                ? {
+                    reasoningEfforts:
+                      model.reasoningEfforts.filter(isReasoningEffort),
+                  }
+                : {}),
+              ...(model.defaultReasoningEffort &&
+              isReasoningEffort(model.defaultReasoningEffort)
+                ? {
+                    defaultReasoningEffort: model.defaultReasoningEffort,
+                  }
+                : {}),
+            }))
+          )
+        : listModels({ provider: activeProvider })
+    void (
+      modelsPromise ?? Promise.reject(new Error("Desktop unavailable"))
+    ).then(
       (models) => {
         if (cancelled) return
         setCatalog(models)
@@ -492,10 +598,14 @@ function ChatWorkspace() {
     }
   }, [activeConnectionId, activeProvider, listModels])
 
+  const availableModels = useMemo(
+    () => catalog.filter((model) => model.outputMode === outputMode),
+    [catalog, outputMode]
+  )
   const modelProviders = useMemo(() => {
     const providers = Array.from(
       new Map(
-        catalog.map((model) => [
+        availableModels.map((model) => [
           model.provider,
           {
             value: model.provider,
@@ -515,17 +625,21 @@ function ChatWorkspace() {
       }
       return left.label.localeCompare(right.label)
     })
-  }, [catalog])
+  }, [availableModels])
 
   useEffect(() => {
     if (!modelProviders.some((provider) => provider.value === modelProvider)) {
       setModelProvider(
-        modelProviders.find((provider) => provider.value === "openai")?.value ??
+        modelProviders.find(
+          (provider) =>
+            provider.value ===
+            (outputMode === "image" ? "black-forest-labs" : "openai")
+        )?.value ??
           modelProviders.at(0)?.value ??
           ""
       )
     }
-  }, [modelProvider, modelProviders])
+  }, [modelProvider, modelProviders, outputMode])
 
   useEffect(() => {
     const provider = (selected?.model ?? preferences?.defaultModel)?.split(
@@ -537,8 +651,18 @@ function ChatWorkspace() {
   }, [modelProviders, preferences?.defaultModel, selected?.model])
 
   const providerModels = useMemo(
-    () => catalog.filter((model) => model.provider === modelProvider),
-    [catalog, modelProvider]
+    () =>
+      availableModels
+        .filter((model) => model.provider === modelProvider)
+        .sort((left, right) => {
+          const leftPriority = IMAGE_MODEL_PRIORITY.indexOf(left.value)
+          const rightPriority = IMAGE_MODEL_PRIORITY.indexOf(right.value)
+          if (leftPriority === -1 && rightPriority === -1) return 0
+          if (leftPriority === -1) return 1
+          if (rightPriority === -1) return -1
+          return leftPriority - rightPriority
+        }),
+    [availableModels, modelProvider]
   )
   useEffect(() => {
     const preferredModel = selected?.model ?? preferences?.defaultModel
@@ -595,12 +719,19 @@ function ChatWorkspace() {
         options: providerModels.map(({ value, label, description }) => ({
           value,
           label,
-          ...(description ? { description } : {}),
+          ...(imageModelDescriptions[value] || description
+            ? { description: imageModelDescriptions[value] ?? description }
+            : {}),
         })),
       },
     ]
 
     if (activeProvider === "openrouter") {
+      const cheapestImage = Math.min(
+        ...modelEndpoints.flatMap((endpoint) =>
+          endpoint.imagePrice === undefined ? [] : [endpoint.imagePrice]
+        )
+      )
       const cheapestPrompt = Math.min(
         ...modelEndpoints.map((endpoint) => endpoint.promptPrice)
       )
@@ -623,6 +754,15 @@ function ChatWorkspace() {
                   : "Routes by lowest price and falls back if that host is unavailable.",
           },
           ...modelEndpoints.map((endpoint) => {
+            if (endpoint.imagePrice !== undefined) {
+              return {
+                value: endpoint.providerTag,
+                label: `${endpoint.providerName}${
+                  endpoint.imagePrice === cheapestImage ? " (lowest price)" : ""
+                }`,
+                description: formatEndpointDescription(endpoint),
+              }
+            }
             const cheapestInput = endpoint.promptPrice === cheapestPrompt
             const cheapestOutput =
               endpoint.completionPrice === cheapestCompletion
@@ -644,7 +784,7 @@ function ChatWorkspace() {
       })
     }
 
-    if (selectedModel?.reasoningEfforts?.length) {
+    if (outputMode === "text" && selectedModel?.reasoningEfforts?.length) {
       groups.push({
         id: "effort",
         label: "Reasoning effort",
@@ -661,6 +801,7 @@ function ChatWorkspace() {
     activeProvider,
     endpointState,
     modelEndpoints,
+    outputMode,
     providerModels,
     selectedModel,
   ])
@@ -1001,10 +1142,26 @@ function ChatWorkspace() {
     files: File[]
   ) => {
     let draftAttachmentIds: Id<"draftAttachments">[] = []
+    const desktopCodexMessages =
+      activeProvider === "codex" && conversationId
+        ? (messages ?? [])
+            .filter(
+              (message) =>
+                message.status === "complete" &&
+                (message.role === "assistant" || message.role === "user")
+            )
+            .map((message) => ({
+              content: message.content,
+              role: message.role as "assistant" | "user",
+            }))
+        : []
     setSendState("sending")
     try {
+      if (activeProvider === "codex" && files.length)
+        throw new Error("Attachments are not available with Codex yet")
       draftAttachmentIds = await uploadDraftFiles(files)
 
+      let targetConversationId = conversationId
       if (conversationId) {
         if (!meta.settings.model) throw new Error("Model unavailable")
         await sendMessage({
@@ -1026,6 +1183,7 @@ function ChatWorkspace() {
           content,
           ...(draftAttachmentIds.length ? { draftAttachmentIds } : {}),
           model: meta.settings.model,
+          outputMode,
           projectId: search.projectId,
           providerConnectionId: activeConnectionId,
           ...(activeProvider === "openrouter" && meta.settings.routingProvider
@@ -1035,7 +1193,52 @@ function ChatWorkspace() {
             ? { reasoningEffort: meta.settings.effort }
             : {}),
         })
+        targetConversationId = slug
         await open({ slug, projectId: search.projectId })
+      }
+      if (activeProvider === "codex" && targetConversationId) {
+        const desktop = window.aiHarnessDesktop
+        if (!desktop)
+          throw new Error("Codex is only available in the desktop app")
+        try {
+          const result = await desktop.codex.generate({
+            model: meta.settings.model,
+            ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
+            developerInstructions: [
+              "Answer as a general-purpose assistant inside AI Harness. Do not inspect files, run commands, or modify the filesystem.",
+              selectedProject?.instructions,
+              preferences?.responseDetail
+                ? `Response detail: ${preferences.responseDetail}.`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            messages: [
+              ...desktopCodexMessages,
+              { content, role: "user" as const },
+            ],
+          })
+          await finishDesktopCodexResponse({
+            conversationId: targetConversationId,
+            content: result.content,
+            failed: false,
+            ...(result.reasoningSteps.length
+              ? { reasoningSteps: result.reasoningSteps }
+              : {}),
+          })
+        } catch (cause) {
+          try {
+            await finishDesktopCodexResponse({
+              conversationId: targetConversationId,
+              content:
+                "Codex could not complete this response. Reconnect your ChatGPT subscription and try again.",
+              failed: true,
+            })
+          } catch {
+            // Preserve the original local Codex error for the composer state.
+          }
+          throw cause
+        }
       }
       setSendState("idle")
     } catch {
@@ -1862,7 +2065,9 @@ function ChatWorkspace() {
               </div>
             </div>
           ) : voiceMode ? (
-            <RealtimeVoice onClose={() => setVoiceMode(false)} />
+            <Suspense fallback={<ChatStatus message="Starting voice…" />}>
+              <RealtimeVoice onClose={() => setVoiceMode(false)} />
+            </Suspense>
           ) : selected === null && conversationId ? (
             <ChatStatus message="That conversation is unavailable." />
           ) : (
@@ -1901,6 +2106,27 @@ function ChatWorkspace() {
                     </p>
                   ) : null}
                   <div className="mb-2 flex justify-end gap-2">
+                    <Select
+                      disabled={
+                        Boolean(conversationId) || sendState === "sending"
+                      }
+                      onValueChange={(mode) => {
+                        if (!mode) return
+                        setOutputMode(mode)
+                        if (mode === "image") setActiveProvider("openrouter")
+                      }}
+                      value={outputMode}
+                    >
+                      <SelectTrigger aria-label="Output mode" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="start" alignItemWithTrigger={false}>
+                        <SelectItem value="text">Chat</SelectItem>
+                        {openRouter ? (
+                          <SelectItem value="image">Image</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
                     <Button
                       onClick={() => setVoiceMode(true)}
                       size="sm"
@@ -1909,29 +2135,34 @@ function ChatWorkspace() {
                       <AudioWaveform aria-hidden="true" />
                       Voice
                     </Button>
-                    <NativeSelect
-                      aria-label="Model provider"
+                    <Select
                       disabled={
-                        Boolean(conversationId) || sendState === "sending"
+                        Boolean(conversationId) ||
+                        outputMode === "image" ||
+                        sendState === "sending"
                       }
-                      onChange={(event) =>
-                        setActiveProvider(
-                          event.target.value as "openrouter" | "openai"
-                        )
-                      }
+                      onValueChange={(provider) => {
+                        if (provider) setActiveProvider(provider)
+                      }}
                       value={activeProvider}
                     >
-                      {openAi ? (
-                        <NativeSelectOption value="openai">
-                          OpenAI
-                        </NativeSelectOption>
-                      ) : null}
-                      {openRouter ? (
-                        <NativeSelectOption value="openrouter">
-                          OpenRouter
-                        </NativeSelectOption>
-                      ) : null}
-                    </NativeSelect>
+                      <SelectTrigger aria-label="Model provider" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent align="end" alignItemWithTrigger={false}>
+                        {outputMode === "text" && codex ? (
+                          <SelectItem value="codex">
+                            ChatGPT subscription
+                          </SelectItem>
+                        ) : null}
+                        {outputMode === "text" && openAi ? (
+                          <SelectItem value="openai">OpenAI</SelectItem>
+                        ) : null}
+                        {openRouter ? (
+                          <SelectItem value="openrouter">OpenRouter</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <AIInput
                     agents={modelProviders}
@@ -1960,7 +2191,9 @@ function ChatWorkspace() {
                             : catalogState === "failed"
                               ? "Reconnect your provider to continue"
                               : selectedModel
-                                ? `Message ${selectedModel.label}`
+                                ? outputMode === "image"
+                                  ? `Describe an image for ${selectedModel.label}`
+                                  : `Message ${selectedModel.label}`
                                 : "Choose a model"
                     }
                     settingGroups={settingGroups}
@@ -2258,6 +2491,17 @@ function MessageArea({
                 const hasReasoning = Boolean(message.reasoningSteps?.length)
                 const hasTerminalRuns = Boolean(message.terminalRuns?.length)
                 const hasUi = Boolean(message.uiPayload)
+                const generatedImage =
+                  !isUser && message.outputMode === "image"
+                    ? message.attachments.find((attachment) =>
+                        attachment.contentType.startsWith("image/")
+                      )
+                    : undefined
+                const remainingAttachments = generatedImage
+                  ? message.attachments.filter(
+                      (attachment) => attachment !== generatedImage
+                    )
+                  : message.attachments
                 return (
                   <MessageScrollerItem
                     className="chat-message-enter"
@@ -2298,22 +2542,62 @@ function MessageArea({
                                     .filter(Boolean)
                                     .join("\n")
                                   return (
-                                    <Terminal
-                                      aria-label="Terminal command"
-                                      isStreaming={run.status === "running"}
+                                    <Suspense
+                                      fallback={
+                                        <div
+                                          aria-hidden="true"
+                                          className="h-24 animate-pulse rounded-lg bg-muted"
+                                        />
+                                      }
                                       key={run.toolCallId}
-                                      output={output}
-                                    />
+                                    >
+                                      <Terminal
+                                        aria-label="Terminal command"
+                                        isStreaming={run.status === "running"}
+                                        output={output}
+                                      />
+                                    </Suspense>
                                   )
                                 })}
                               </div>
                             ) : null}
-                            {message.status === "pending" ||
-                            (isStreaming &&
-                              !message.content &&
-                              !hasReasoning &&
-                              !hasTerminalRuns &&
-                              !hasUi) ? (
+                            {!isUser &&
+                            message.outputMode === "image" &&
+                            message.status !== "failed" ? (
+                              <ImageGeneration
+                                completed={
+                                  message.status === "complete" &&
+                                  Boolean(generatedImage)
+                                }
+                              >
+                                {generatedImage ? (
+                                  <a
+                                    aria-label="Open generated image"
+                                    className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                    href={generatedImage.url}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    <img
+                                      alt="AI-generated image"
+                                      className="max-h-[32rem] w-full object-contain"
+                                      loading="lazy"
+                                      src={generatedImage.url}
+                                    />
+                                  </a>
+                                ) : (
+                                  <div
+                                    aria-hidden="true"
+                                    className="aspect-square w-full bg-muted/40"
+                                  />
+                                )}
+                              </ImageGeneration>
+                            ) : message.status === "pending" ||
+                              (isStreaming &&
+                                !message.content &&
+                                !hasReasoning &&
+                                !hasTerminalRuns &&
+                                !hasUi) ? (
                               <span
                                 aria-live="polite"
                                 className="inline-flex items-center gap-2 text-muted-foreground"
@@ -2372,25 +2656,36 @@ function MessageArea({
                                   </ReasoningSteps>
                                 ) : null}
                                 {message.content ? (
-                                  <MessageResponse
-                                    animated
-                                    isAnimating={isStreaming}
+                                  <Suspense
+                                    fallback={
+                                      <div
+                                        aria-hidden="true"
+                                        className="h-5 w-32 animate-pulse rounded bg-muted"
+                                      />
+                                    }
                                   >
-                                    {message.content}
-                                  </MessageResponse>
+                                    <MessageResponse
+                                      animated
+                                      isAnimating={isStreaming}
+                                    >
+                                      {message.content}
+                                    </MessageResponse>
+                                  </Suspense>
                                 ) : null}
                                 {message.uiPayload ? (
-                                  <GenerativeUi
-                                    disabled={actionsDisabled}
-                                    onAction={onAction}
-                                    payload={message.uiPayload}
-                                  />
+                                  <Suspense fallback={null}>
+                                    <GenerativeUi
+                                      disabled={actionsDisabled}
+                                      onAction={onAction}
+                                      payload={message.uiPayload}
+                                    />
+                                  </Suspense>
                                 ) : null}
                               </div>
                             )}
-                            {message.attachments.length ? (
+                            {remainingAttachments.length ? (
                               <AttachmentGroup className="mt-2 max-w-full">
-                                {message.attachments.map((attachment) => {
+                                {remainingAttachments.map((attachment) => {
                                   const isImage =
                                     attachment.contentType.startsWith("image/")
                                   return (

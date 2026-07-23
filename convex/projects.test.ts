@@ -225,11 +225,16 @@ describe("projects and conversations", () => {
       name: " example.png ",
       storageId,
     })
+    const generatedStorageId = await t.run(
+      async (ctx) =>
+        await ctx.storage.store(new Blob(["generated"], { type: "image/webp" }))
+    )
 
     const conversationId = await ada.mutation(api.conversations.start, {
       content: "  Explain indexed database lookups.  ",
       draftAttachmentIds: [draftAttachmentId],
       model: "openai/gpt-5",
+      outputMode: "text",
       projectId,
       providerConnectionId: connectionId,
       reasoningEffort: "high",
@@ -240,6 +245,7 @@ describe("projects and conversations", () => {
     expect(conversation).toMatchObject({
       _id: conversationId,
       model: "openai/gpt-5",
+      outputMode: "text",
       ownerId: adaId,
       projectId,
       providerConnectionId: connectionId,
@@ -262,6 +268,7 @@ describe("projects and conversations", () => {
         ],
         content: "Explain indexed database lookups.",
         model: "openai/gpt-5",
+        outputMode: "text",
         provider: "openrouter",
         reasoningEffort: "high",
         role: "user",
@@ -269,6 +276,7 @@ describe("projects and conversations", () => {
       {
         content: "",
         model: "openai/gpt-5",
+        outputMode: "text",
         provider: "openrouter",
         reasoningEffort: "high",
         role: "assistant",
@@ -286,6 +294,7 @@ describe("projects and conversations", () => {
       role: "system",
       content: expect.stringContaining("Reply in French"),
     })
+    expect(responseContext.outputMode).toBe("text")
     expect(responseContext.messages[0].content).toContain("Be concise")
     expect(responseContext.messages[0].content).toContain(
       "Use TypeScript and include a focused verification step."
@@ -331,13 +340,36 @@ describe("projects and conversations", () => {
     })
     await t.mutation(internal.conversations.finishOpenRouterResponse, {
       assistantMessageId: messages[1]._id,
+      attachments: [
+        {
+          contentType: "image/webp",
+          name: "generated-image.webp",
+          size: 9,
+          storageId: generatedStorageId,
+        },
+      ],
       content: "",
       failed: false,
       uiPayload,
     })
     await expect(
       ada.query(api.conversations.listMessages, { conversationId })
-    ).resolves.toMatchObject([{}, { status: "complete", uiPayload }])
+    ).resolves.toMatchObject([
+      {},
+      {
+        attachments: [
+          {
+            contentType: "image/webp",
+            name: "generated-image.webp",
+            size: 9,
+            storageId: generatedStorageId,
+            url: expect.any(String),
+          },
+        ],
+        status: "complete",
+        uiPayload,
+      },
+    ])
 
     await ada.mutation(api.conversations.send, {
       conversationId,

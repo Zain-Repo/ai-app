@@ -1,9 +1,4 @@
-import {
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/tanstack-react-start"
+import { Show } from "@clerk/tanstack-react-start"
 import {
   ActivitySparkIcon,
   AiNetworkIcon,
@@ -12,42 +7,42 @@ import {
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-  useQuery,
-} from "convex/react"
+import { createFileRoute, Link, redirect } from "@tanstack/react-router"
 import {
   motion,
+  useInView,
   useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
-  type MotionValue,
 } from "motion/react"
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react"
+import type { MotionValue } from "motion/react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import type { ReactNode } from "react"
 
-import { LandingRoutingPlayer } from "@/components/landing/landing-routing-player"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { api } from "../../convex/_generated/api"
 
-export const Route = createFileRoute("/")({ component: App })
+export const Route = createFileRoute("/")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined" && window.aiHarnessDesktop)
+      throw redirect({ href: "/desktop" })
+  },
+  component: App,
+})
 
 const easeOutExpo = [0.16, 1, 0.3, 1] as const
+
+const LandingRoutingPlayer = lazy(async () => {
+  const module = await import("@/components/landing/landing-routing-player")
+  return { default: module.LandingRoutingPlayer }
+})
 
 const chapters = [
   { href: "#top", label: "Open" },
   { href: "#purpose", label: "Purpose" },
   { href: "#path", label: "Path" },
   { href: "#control", label: "Control" },
+  { href: "#desktop", label: "Desktop" },
   { href: "#enter", label: "Enter" },
 ] as const
 
@@ -122,9 +117,37 @@ function useHydratedReducedMotion() {
   return hydrated && reduceMotion === true
 }
 
+function LandingPlayerPlaceholder() {
+  return (
+    <div
+      aria-hidden="true"
+      className="landing-player aspect-video overflow-hidden rounded-[1.5rem] border border-cinema-line/80 bg-cinema-surface"
+    />
+  )
+}
+
+function DeferredLandingRoutingPlayer() {
+  const ref = useRef<HTMLDivElement>(null)
+  const isNearViewport = useInView(ref, {
+    margin: "300px 0px",
+    once: true,
+  })
+
+  return (
+    <div ref={ref}>
+      {isNearViewport ? (
+        <Suspense fallback={<LandingPlayerPlaceholder />}>
+          <LandingRoutingPlayer />
+        </Suspense>
+      ) : (
+        <LandingPlayerPlaceholder />
+      )}
+    </div>
+  )
+}
+
 function LandingHeader() {
   const [scrolled, setScrolled] = useState(false)
-  const reduceMotion = useHydratedReducedMotion()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 18)
@@ -135,9 +158,7 @@ function LandingHeader() {
 
   return (
     <motion.header
-      initial={reduceMotion ? false : { y: -18, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.7, ease: easeOutExpo }}
+      initial={false}
       className={cn(
         "landing-header sticky top-0 z-40 border-b border-transparent",
         scrolled && "landing-header--scrolled"
@@ -153,7 +174,7 @@ function LandingHeader() {
         >
           <span className="grid size-8 place-items-center overflow-hidden rounded-xl border border-cinema-line bg-cinema-surface/80">
             <img
-              src="/media/ai-harness-icon.png"
+              src="/icons/icon-192.png"
               alt=""
               width={28}
               height={28}
@@ -177,17 +198,18 @@ function LandingHeader() {
 
         <div className="flex shrink-0 items-center gap-2">
           <Show when="signed-out">
-            <SignInButton mode="modal">
-              <Button
-                variant="ghost"
-                className="cinema-cta-ghost hidden min-[360px]:inline-flex"
-              >
-                Sign in
-              </Button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <Button className="cinema-cta">Create account</Button>
-            </SignUpButton>
+            <a
+              className="cinema-cta-ghost hidden h-9 min-[360px]:inline-flex"
+              href="/sign-in"
+            >
+              Sign in
+            </a>
+            <a
+              className="cinema-cta inline-flex h-9 items-center justify-center px-4"
+              href="/sign-up"
+            >
+              Create account
+            </a>
           </Show>
           <Show when="signed-in">
             <Link
@@ -198,7 +220,6 @@ function LandingHeader() {
             >
               Open workspace
             </Link>
-            <UserButton />
           </Show>
         </div>
       </nav>
@@ -237,19 +258,12 @@ function SplitWord({ text, className }: { text: string; className?: string }) {
   return (
     <span className={cn("inline-flex flex-wrap gap-x-[0.28em]", className)}>
       {words.map((word, index) => (
-        <motion.span
+        <span
           key={`${word}-${index}`}
-          initial={{ y: "0.7em", opacity: 0, filter: "blur(10px)" }}
-          animate={{ y: "0em", opacity: 1, filter: "blur(0px)" }}
-          transition={{
-            duration: 0.85,
-            ease: easeOutExpo,
-            delay: 0.12 + index * 0.055,
-          }}
           className="landing-split-word inline-block"
         >
           {word}
-        </motion.span>
+        </span>
       ))}
     </span>
   )
@@ -375,12 +389,24 @@ function App() {
             style={{ y: heroY, opacity: heroOpacity }}
             className="min-w-0"
           >
-            <motion.p
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: easeOutExpo }}
-              className="cinema-eyebrow mb-5"
+            <motion.a
+              initial={false}
+              href="#desktop"
+              className="group mb-5 inline-flex w-fit items-center gap-2.5 rounded-full border border-cinema-accent/30 bg-cinema-accent/8 py-1.5 pr-3 pl-1.5 text-xs font-semibold tracking-[0.08em] text-cinema-ivory uppercase transition-colors duration-300 hover:border-cinema-accent/55 hover:bg-cinema-accent/12 focus-visible:ring-2 focus-visible:ring-cinema-accent/70 focus-visible:outline-none"
             >
+              <span className="rounded-full bg-cinema-accent px-2 py-1 text-[0.65rem] text-cinema-bg">
+                New
+              </span>
+              Desktop version for Windows
+              <HugeiconsIcon
+                icon={ArrowRight01Icon}
+                strokeWidth={2}
+                className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
+            </motion.a>
+
+            <motion.p initial={false} className="cinema-eyebrow mb-5">
               Model-agnostic operator room
             </motion.p>
 
@@ -392,9 +418,7 @@ function App() {
             </h1>
 
             <motion.p
-              initial={reduceMotion ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.28, ease: easeOutExpo }}
+              initial={false}
               className="cinema-body mt-6 max-w-[34rem]"
             >
               AI Harness is the control layer between your identity, your
@@ -403,22 +427,21 @@ function App() {
             </motion.p>
 
             <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4, ease: easeOutExpo }}
+              initial={false}
               className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center"
             >
-              <SignUpButton mode="modal">
-                <Button className="cinema-cta h-11 px-5 text-sm">
-                  Create account
-                  <HugeiconsIcon
-                    icon={ArrowRight01Icon}
-                    strokeWidth={2}
-                    className="transition-transform duration-300 group-hover/button:translate-x-0.5"
-                    aria-hidden="true"
-                  />
-                </Button>
-              </SignUpButton>
+              <a
+                className="cinema-cta group/button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm"
+                href="/sign-up"
+              >
+                Create account
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="transition-transform duration-300 group-hover/button:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </a>
               <a href="#path" className="cinema-cta-ghost h-11 px-5">
                 Watch the path
               </a>
@@ -426,8 +449,7 @@ function App() {
 
             <motion.dl
               variants={stagger}
-              initial={reduceMotion ? false : "hidden"}
-              animate="show"
+              initial={false}
               className="mt-12 grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-3"
             >
               {[
@@ -449,14 +471,12 @@ function App() {
 
           <div className="relative min-w-0">
             <HeroOrbit progress={scrollYProgress} />
-            <Reveal>
-              <ParallaxMedia
-                src="/media/ai-harness-hero.webp"
-                alt="Dark optical routing plate with warm signal paths"
-                className="aspect-[16/11] shadow-[0_40px_100px_oklch(0_0_0/0.45)]"
-                priority
-              />
-            </Reveal>
+            <ParallaxMedia
+              src="/media/ai-harness-hero.webp"
+              alt="Dark optical routing plate with warm signal paths"
+              className="aspect-[16/11] shadow-[0_40px_100px_oklch(0_0_0/0.45)]"
+              priority
+            />
             <Reveal delay={0.12} className="mt-4">
               <div className="grid gap-3 sm:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[1.25rem] border border-cinema-line bg-cinema-surface/70 p-4 backdrop-blur-sm">
@@ -553,7 +573,7 @@ function App() {
               </p>
             </Reveal>
             <Reveal delay={0.1}>
-              <LandingRoutingPlayer />
+              <DeferredLandingRoutingPlayer />
             </Reveal>
           </div>
 
@@ -661,6 +681,84 @@ function App() {
       </section>
 
       <section
+        id="desktop"
+        aria-labelledby="desktop-title"
+        className="relative overflow-hidden border-b border-cinema-line/80"
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_45%,oklch(0.78_0.135_73/0.13),transparent_30%)]" />
+        <div className="cinema-shell relative grid gap-12 py-20 md:grid-cols-12 md:items-center md:py-28">
+          <Reveal className="md:col-span-6">
+            <p className="cinema-eyebrow">Scene 05 · Desktop</p>
+            <h2
+              id="desktop-title"
+              className="cinema-section-heading mt-4 max-w-[12ch] text-balance"
+            >
+              Meet the new desktop version.
+            </h2>
+            <p className="cinema-body mt-5 max-w-[37rem]">
+              AI Harness is coming to Windows as a dedicated desktop app. Keep
+              the same signed-in workspace, use your ChatGPT subscription
+              through Codex, and receive updates without rebuilding your setup.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <a
+                className="cinema-cta group/button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm"
+                href="/sign-up"
+              >
+                Get your workspace ready
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="transition-transform duration-300 group-hover/button:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </a>
+              <p className="cinema-kicker px-1">Windows x64 · Download soon</p>
+            </div>
+          </Reveal>
+
+          <Reveal delay={0.08} className="md:col-span-5 md:col-start-8">
+            <ol className="divide-y divide-cinema-line border-y border-cinema-line">
+              {[
+                [
+                  "01",
+                  "Dedicated app",
+                  "A focused native window for the workspace.",
+                ],
+                [
+                  "02",
+                  "Codex access",
+                  "Bring your existing ChatGPT plan into the harness.",
+                ],
+                [
+                  "03",
+                  "Built-in updates",
+                  "Stay current from inside the desktop app.",
+                ],
+              ].map(([number, title, copy]) => (
+                <li
+                  key={number}
+                  className="grid gap-3 py-5 sm:grid-cols-[2.5rem_1fr] sm:gap-4"
+                >
+                  <span className="cinema-kicker pt-1 tabular-nums">
+                    {number}
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold tracking-tight text-cinema-ivory">
+                      {title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-cinema-muted">
+                      {copy}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Reveal>
+        </div>
+      </section>
+
+      <section
         id="enter"
         aria-labelledby="enter-title"
         className="relative overflow-hidden py-20 md:py-28"
@@ -682,37 +780,35 @@ function App() {
           </Reveal>
 
           <Reveal delay={0.08} className="md:col-span-4 md:col-start-9">
-            <AuthLoading>
-              <p className="text-sm text-cinema-muted">
-                Verifying your session…
-              </p>
-            </AuthLoading>
-            <Unauthenticated>
+            <Show when="signed-out">
               <div className="flex flex-col gap-3">
-                <SignUpButton mode="modal">
-                  <Button className="cinema-cta h-11 w-full px-5">
-                    Create account
-                    <HugeiconsIcon
-                      icon={ArrowRight01Icon}
-                      strokeWidth={2}
-                      className="transition-transform duration-300 group-hover/button:translate-x-0.5"
-                      aria-hidden="true"
-                    />
-                  </Button>
-                </SignUpButton>
-                <SignInButton mode="modal">
-                  <Button
-                    variant="ghost"
-                    className="cinema-cta-ghost h-11 w-full"
-                  >
-                    Sign in
-                  </Button>
-                </SignInButton>
+                <a
+                  className="cinema-cta group/button inline-flex h-11 w-full items-center justify-center gap-2 px-5"
+                  href="/sign-up"
+                >
+                  Create account
+                  <HugeiconsIcon
+                    icon={ArrowRight01Icon}
+                    strokeWidth={2}
+                    className="transition-transform duration-300 group-hover/button:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </a>
+                <a className="cinema-cta-ghost h-11 w-full" href="/sign-in">
+                  Sign in
+                </a>
               </div>
-            </Unauthenticated>
-            <Authenticated>
-              <Viewer />
-            </Authenticated>
+            </Show>
+            <Show when="signed-in">
+              <Link
+                className="cinema-cta inline-flex h-11 w-full items-center justify-center px-5"
+                params={{ slug: undefined }}
+                search={{ mode: undefined, projectId: undefined }}
+                to="/chat/{-$slug}"
+              >
+                Open workspace
+              </Link>
+            </Show>
           </Reveal>
         </div>
       </section>
@@ -724,37 +820,5 @@ function App() {
         </div>
       </footer>
     </main>
-  )
-}
-
-function Viewer() {
-  const viewer = useQuery(api.auth.viewer)
-
-  if (viewer === undefined) {
-    return <p className="text-sm text-cinema-muted">Loading your workspace…</p>
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-[1.25rem] border border-cinema-line bg-cinema-surface/80 p-4">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-cinema-ivory">
-          Workspace connected
-        </p>
-        <p className="mt-1 truncate text-sm text-cinema-muted">
-          {viewer.name ?? viewer.email ?? "Your Clerk account"}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <Link
-          to="/chat/{-$slug}"
-          params={{ slug: undefined }}
-          search={{ mode: undefined, projectId: undefined }}
-          className="cinema-cta-ghost hidden sm:inline-flex"
-        >
-          Open
-        </Link>
-        <UserButton />
-      </div>
-    </div>
   )
 }

@@ -6,7 +6,7 @@ import {
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useAction, useQuery } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { useEffect, useState } from "react"
 
 import { api } from "../../convex/_generated/api"
@@ -69,12 +69,21 @@ export function ProviderConnectDialog({
   onOpenChange?: (open: boolean) => void
 } = {}) {
   const connections = useQuery(api.providerConnections.listMine)
+  const connectDesktopCodex = useMutation(
+    api.providerConnections.connectDesktopCodex
+  )
   const getCreditStatus = useAction(api.providerOAuth.getCreditStatus)
   const connectOpenAI = useAction(api.providerOAuth.connectOpenAI)
   const [internalOpen, setInternalOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [openAiKey, setOpenAiKey] = useState("")
+  const [desktopCodexAvailable, setDesktopCodexAvailable] = useState(false)
+  const [desktopCodexAccount, setDesktopCodexAccount] = useState<{
+    connected: boolean
+    email: string | null
+    planType: string | null
+  } | null>(null)
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null)
   const [creditState, setCreditState] = useState<
     "failed" | "idle" | "loading" | "ready"
@@ -86,11 +95,32 @@ export function ProviderConnectDialog({
   const openAi = connections?.find(
     (connection) => connection.provider === "openai"
   )
+  const codex = connections?.find(
+    (connection) => connection.provider === "codex"
+  )
   const open = controlledOpen ?? internalOpen
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(nextOpen)
     onOpenChange?.(nextOpen)
   }
+
+  useEffect(() => {
+    const desktop = window.aiHarnessDesktop
+    setDesktopCodexAvailable(Boolean(desktop))
+    if (!desktop) return
+    let cancelled = false
+    void desktop.codex.account().then(
+      (account) => {
+        if (!cancelled) setDesktopCodexAccount(account)
+      },
+      () => {
+        if (!cancelled) setDesktopCodexAccount(null)
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!open || !openRouterConnectionId || openRouter.status !== "connected") {
@@ -156,6 +186,29 @@ export function ProviderConnectDialog({
     }
   }
 
+  async function connectCodex() {
+    const desktop = window.aiHarnessDesktop
+    if (!desktop) return
+    setPending(true)
+    setError("")
+    try {
+      const account = await desktop.codex.login()
+      await connectDesktopCodex({
+        ...(account.email ? { email: account.email } : {}),
+        ...(account.planType ? { planType: account.planType } : {}),
+      })
+      setDesktopCodexAccount(account)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not connect ChatGPT subscription"
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
     <Dialog
       open={open}
@@ -207,6 +260,58 @@ export function ProviderConnectDialog({
                 OAuth + PKCE
               </span>
             </div>
+
+            {desktopCodexAvailable ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => void connectCodex()}
+                className="group mb-2 flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-3.5 text-left shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-foreground text-background">
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    className="size-5"
+                    icon={ChatGptIcon}
+                    strokeWidth={1.8}
+                  />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 font-medium">
+                    ChatGPT subscription
+                    {desktopCodexAccount?.connected ||
+                    codex?.status === "connected" ? (
+                      <HugeiconsIcon
+                        aria-label="Connected"
+                        className="size-4 text-emerald-600"
+                        icon={CheckmarkCircle02Icon}
+                        strokeWidth={2}
+                      />
+                    ) : null}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                    Use Codex models through your ChatGPT plan. Sign-in stays on
+                    this device.
+                  </span>
+                  {desktopCodexAccount?.email ? (
+                    <span className="mt-1 block truncate text-[11px] text-muted-foreground">
+                      {desktopCodexAccount.email}
+                      {desktopCodexAccount.planType
+                        ? ` (${desktopCodexAccount.planType})`
+                        : ""}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-xs font-medium text-foreground">
+                  {pending
+                    ? "Opening..."
+                    : desktopCodexAccount?.connected ||
+                        codex?.status === "connected"
+                      ? "Reconnect"
+                      : "Connect"}
+                </span>
+              </button>
+            ) : null}
 
             <button
               type="button"
