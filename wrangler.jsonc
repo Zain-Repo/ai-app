@@ -8,6 +8,10 @@
     {
       "pattern": "app.a2zsoftware.ca",
       "custom_domain": true
+    },
+    {
+      "pattern": "harness.a2zsoftware.ca",
+      "custom_domain": true
     }
   ]
 }
