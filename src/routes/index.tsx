@@ -4,6 +4,8 @@ import {
   AiNetworkIcon,
   AiSecurity01Icon,
   ArrowRight01Icon,
+  Moon02Icon,
+  Sun03Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -16,7 +18,7 @@ import {
   useSpring,
   useTransform,
 } from "motion/react"
-import type { MotionValue } from "motion/react"
+import { useTheme } from "next-themes"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
@@ -89,12 +91,12 @@ const controlPoints = [
 ] as const
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 28, filter: "blur(8px)" },
+  hidden: { opacity: 0, y: 18, filter: "blur(4px)" },
   show: {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: { duration: 0.8, ease: easeOutExpo },
+    transition: { duration: 0.65, ease: easeOutExpo },
   },
 }
 
@@ -102,8 +104,8 @@ const stagger = {
   hidden: {},
   show: {
     transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.08,
+      staggerChildren: 0.07,
+      delayChildren: 0.04,
     },
   },
 }
@@ -197,9 +199,10 @@ function LandingHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
           <Show when="signed-out">
             <a
-              className="cinema-cta-ghost hidden h-9 min-[360px]:inline-flex"
+              className="cinema-cta-ghost hidden h-9 sm:inline-flex"
               href="/sign-in"
             >
               Sign in
@@ -227,6 +230,46 @@ function LandingHeader() {
   )
 }
 
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
+
+  return (
+    <div
+      aria-label="Color theme"
+      className="landing-theme-toggle flex items-center p-0.5"
+      role="group"
+    >
+      {[
+        { icon: Sun03Icon, label: "Light", value: "light" },
+        { icon: Moon02Icon, label: "Dark", value: "dark" },
+      ].map((option) => {
+        const active = mounted && resolvedTheme === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-label={`${option.label} theme`}
+            aria-pressed={active}
+            className="landing-theme-option"
+            onClick={() => setTheme(option.value)}
+          >
+            <HugeiconsIcon
+              icon={option.icon}
+              strokeWidth={1.7}
+              className="size-3.5"
+              aria-hidden="true"
+            />
+            <span className="hidden min-[430px]:inline">{option.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function Reveal({
   children,
   className,
@@ -245,7 +288,7 @@ function Reveal({
       initial={reduceMotion ? false : "hidden"}
       whileInView="show"
       viewport={{ once: true, amount: 0.28, margin: "0px 0px -8% 0px" }}
-      transition={{ duration: 0.8, ease: easeOutExpo, delay }}
+      transition={{ duration: 0.65, ease: easeOutExpo, delay }}
     >
       {children}
     </motion.div>
@@ -261,6 +304,7 @@ function SplitWord({ text, className }: { text: string; className?: string }) {
         <span
           key={`${word}-${index}`}
           className="landing-split-word inline-block"
+          style={{ animationDelay: `${120 + index * 55}ms` }}
         >
           {word}
         </span>
@@ -289,12 +333,12 @@ function ParallaxMedia({
   const y = useTransform(
     scrollYProgress,
     [0, 1],
-    reduceMotion ? ["0%", "0%"] : ["-6%", "6%"]
+    reduceMotion ? ["0%", "0%"] : ["-2.5%", "2.5%"]
   )
   const scale = useTransform(
     scrollYProgress,
     [0, 1],
-    reduceMotion ? [1, 1] : [1.08, 1]
+    reduceMotion ? [1, 1] : [1.035, 1]
   )
 
   return (
@@ -314,9 +358,9 @@ function ParallaxMedia({
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         style={{ y, scale }}
-        className="size-full min-h-full object-cover object-[68%_center] will-change-transform"
+        className="landing-media-image size-full min-h-full object-cover object-[68%_center] will-change-transform"
       />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_40%,oklch(0.105_0.006_85/0.55)),linear-gradient(90deg,oklch(0.105_0.006_85/0.35),transparent_42%)]" />
+      <div className="landing-media-shade pointer-events-none absolute inset-0" />
     </div>
   )
 }
@@ -337,24 +381,6 @@ function ProgressRail() {
   )
 }
 
-function HeroOrbit({ progress }: { progress: MotionValue<number> }) {
-  const reduceMotion = useHydratedReducedMotion()
-  const rotate = useTransform(progress, [0, 1], [0, reduceMotion ? 0 : 18])
-  const glow = useTransform(progress, [0, 1], [0.35, reduceMotion ? 0.35 : 0.8])
-
-  return (
-    <motion.div
-      aria-hidden="true"
-      style={{ rotate, opacity: glow }}
-      className="pointer-events-none absolute top-[8%] -right-[18%] hidden size-[34rem] rounded-full border border-cinema-accent/20 md:block"
-    >
-      <div className="absolute inset-[18%] rounded-full border border-cinema-line/70" />
-      <div className="absolute inset-[36%] rounded-full border border-cinema-accent/25" />
-      <div className="absolute top-0 left-1/2 size-2.5 -translate-x-1/2 rounded-full bg-cinema-accent shadow-[0_0_18px_var(--color-cinema-accent)]" />
-    </motion.div>
-  )
-}
-
 function App() {
   const heroRef = useRef<HTMLElement>(null)
   const reduceMotion = useHydratedReducedMotion()
@@ -365,12 +391,12 @@ function App() {
   const heroY = useTransform(
     scrollYProgress,
     [0, 1],
-    reduceMotion ? [0, 0] : [0, 80]
+    reduceMotion ? [0, 0] : [0, 36]
   )
   const heroOpacity = useTransform(
     scrollYProgress,
     [0, 1],
-    reduceMotion ? [1, 1] : [1, 0.35]
+    reduceMotion ? [1, 1] : [1, 0.55]
   )
 
   return (
@@ -470,11 +496,10 @@ function App() {
           </motion.div>
 
           <div className="relative min-w-0">
-            <HeroOrbit progress={scrollYProgress} />
             <ParallaxMedia
               src="/media/ai-harness-hero.webp"
-              alt="Dark optical routing plate with warm signal paths"
-              className="aspect-[16/11] shadow-[0_40px_100px_oklch(0_0_0/0.45)]"
+              alt="Optical routing plate with converging signal paths"
+              className="aspect-[16/11] shadow-[0_30px_80px_oklch(0_0_0/0.18)]"
               priority
             />
             <Reveal delay={0.12} className="mt-4">
@@ -487,7 +512,7 @@ function App() {
                     restarting the room.
                   </p>
                 </div>
-                <div className="rounded-[1.25rem] border border-cinema-accent/30 bg-[linear-gradient(180deg,oklch(0.78_0.135_73/0.14),oklch(0.17_0.008_85/0.9))] p-4">
+                <div className="rounded-[1.25rem] border border-cinema-line bg-cinema-surface/70 p-4">
                   <p className="cinema-kicker text-cinema-accent">Not this</p>
                   <p className="mt-2 text-sm leading-relaxed text-cinema-ivory/88">
                     Not another single-model chat skin. The product stays stable
@@ -503,7 +528,7 @@ function App() {
       <section
         id="purpose"
         aria-labelledby="purpose-title"
-        className="relative border-y border-cinema-line/80 bg-[linear-gradient(180deg,oklch(0.13_0.007_85),oklch(0.105_0.006_85))]"
+        className="relative border-y border-cinema-line/80 bg-cinema-surface/35"
       >
         <div className="cinema-shell grid gap-10 py-20 md:grid-cols-12 md:gap-8 md:py-28">
           <Reveal className="md:col-span-5">
@@ -636,7 +661,7 @@ function App() {
           <Reveal className="min-w-0 md:col-span-6">
             <ParallaxMedia
               src="/media/ai-harness-routing-detail.webp"
-              alt="Precision optical paths converging through a dark routing plate"
+              alt="Precision optical paths converging through a routing plate"
               className="aspect-[4/3]"
             />
           </Reveal>
@@ -685,7 +710,7 @@ function App() {
         aria-labelledby="desktop-title"
         className="relative overflow-hidden border-b border-cinema-line/80"
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_45%,oklch(0.78_0.135_73/0.13),transparent_30%)]" />
+        <div className="landing-accent-field pointer-events-none absolute inset-0" />
         <div className="cinema-shell relative grid gap-12 py-20 md:grid-cols-12 md:items-center md:py-28">
           <Reveal className="md:col-span-6">
             <p className="cinema-eyebrow">Scene 05 · Desktop</p>
@@ -773,7 +798,7 @@ function App() {
         aria-labelledby="enter-title"
         className="relative overflow-hidden py-20 md:py-28"
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,oklch(0.78_0.135_73/0.14),transparent_32%)]" />
+        <div className="landing-accent-field landing-accent-field--end pointer-events-none absolute inset-0" />
         <div className="cinema-shell relative grid gap-10 md:grid-cols-12 md:items-end">
           <Reveal className="md:col-span-7">
             <p className="cinema-eyebrow">Final frame</p>

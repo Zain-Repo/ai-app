@@ -35,13 +35,13 @@ const STAGES = [
 ] as const
 
 const COLORS = {
-  bg: "#100f0c",
-  surface: "#1a1814",
-  line: "rgba(255, 244, 224, 0.12)",
-  ivory: "#f4ecdf",
-  muted: "rgba(244, 236, 223, 0.62)",
-  accent: "#e0a24a",
-  accentSoft: "rgba(224, 162, 74, 0.18)",
+  bg: "#15181d",
+  surface: "#1d2229",
+  line: "rgba(232, 237, 243, 0.12)",
+  ivory: "#edf1f5",
+  muted: "rgba(220, 226, 233, 0.62)",
+  accent: "#78a9e6",
+  accentSoft: "rgba(120, 169, 230, 0.18)",
 }
 
 function stageWindow(frame: number, fps: number, index: number) {
@@ -58,7 +58,7 @@ function stageWindow(frame: number, fps: number, index: number) {
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
-    },
+    }
   )
   return { enter, active, start }
 }
@@ -78,17 +78,17 @@ export function HarnessRoutingReel() {
     [-8, 108],
     {
       easing: Easing.inOut(Easing.cubic),
-    },
+    }
   )
   const pulse = interpolate(
     frame % Math.round(2.4 * fps),
     [0, Math.round(1.2 * fps), Math.round(2.4 * fps)],
     [0.35, 1, 0.35],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   )
   const activeIndex = Math.min(
     STAGES.length - 1,
-    Math.floor(frame / Math.round(1.55 * fps)),
+    Math.floor(frame / Math.round(1.55 * fps))
   )
   const typed = "Route work without rebuilding the room.".slice(
     0,
@@ -96,8 +96,8 @@ export function HarnessRoutingReel() {
       interpolate(frame, [8, 8 + 34 * 1.6], [0, 38], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
-      }),
-    ),
+      })
+    )
   )
 
   return (
@@ -113,8 +113,8 @@ export function HarnessRoutingReel() {
       <AbsoluteFill
         style={{
           backgroundImage: `
-            radial-gradient(circle at 18% 18%, rgba(224,162,74,0.16), transparent 28%),
-            radial-gradient(circle at 82% 12%, rgba(244,236,223,0.05), transparent 24%),
+            radial-gradient(circle at 18% 18%, rgba(120,169,230,0.12), transparent 28%),
+            radial-gradient(circle at 82% 12%, rgba(237,241,245,0.04), transparent 24%),
             linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%)
           `,
         }}
@@ -126,7 +126,7 @@ export function HarnessRoutingReel() {
           inset: 0,
           opacity: 0.18,
           backgroundImage:
-            "linear-gradient(rgba(244,236,223,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(244,236,223,0.08) 1px, transparent 1px)",
+            "linear-gradient(rgba(232,237,243,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(232,237,243,0.07) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
           maskImage:
             "radial-gradient(circle at center, black 28%, transparent 78%)",
@@ -245,19 +245,17 @@ export function HarnessRoutingReel() {
                 minHeight: 168,
                 borderRadius: 18,
                 border: `1px solid ${
-                  isActive ? "rgba(224,162,74,0.45)" : COLORS.line
+                  isActive ? "rgba(120,169,230,0.45)" : COLORS.line
                 }`,
                 background: isActive
-                  ? "linear-gradient(180deg, rgba(224,162,74,0.14), rgba(26,24,20,0.92))"
+                  ? "linear-gradient(180deg, rgba(120,169,230,0.12), rgba(29,34,41,0.94))"
                   : COLORS.surface,
                 padding: 18,
                 opacity: interpolate(enter, [0, 1], [0.28, 1]),
                 transform: `translateY(${interpolate(enter, [0, 1], [24, 0])}px) scale(${
                   isActive ? 1.02 : 0.985
                 })`,
-                boxShadow: isActive
-                  ? "0 18px 40px rgba(0,0,0,0.35)"
-                  : "none",
+                boxShadow: isActive ? "0 18px 40px rgba(0,0,0,0.35)" : "none",
               }}
             >
               <div
@@ -277,10 +275,10 @@ export function HarnessRoutingReel() {
                     width: 8,
                     height: 8,
                     borderRadius: 999,
-                    background: isActive ? COLORS.accent : "rgba(244,236,223,0.2)",
-                    boxShadow: isActive
-                      ? `0 0 12px ${COLORS.accent}`
-                      : "none",
+                    background: isActive
+                      ? COLORS.accent
+                      : "rgba(232,237,243,0.2)",
+                    boxShadow: isActive ? `0 0 12px ${COLORS.accent}` : "none",
                     opacity: isActive ? pulse : 1,
                   }}
                 />
@@ -295,7 +293,9 @@ export function HarnessRoutingReel() {
               >
                 {stage.title}
               </div>
-              <div style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.4 }}>
+              <div
+                style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.4 }}
+              >
                 {stage.detail}
               </div>
               <div
@@ -353,7 +353,7 @@ export function HarnessRoutingReel() {
           style={{
             borderRadius: 16,
             border: `1px solid ${COLORS.line}`,
-            background: "rgba(26,24,20,0.88)",
+            background: "rgba(29,34,41,0.9)",
             padding: "16px 18px",
             display: "grid",
             gap: 10,

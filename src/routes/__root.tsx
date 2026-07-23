@@ -5,6 +5,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import { TanStackDevtools } from "@tanstack/react-devtools"
 import { ConvexReactClient } from "convex/react"
 import { ConvexProviderWithClerk } from "convex/react-clerk"
+import { ThemeProvider } from "next-themes"
 
 import { DesktopUpdater } from "@/components/desktop-updater"
 import { Toaster } from "@/components/ui/sonner"
@@ -39,7 +40,7 @@ export const Route = createRootRoute({
       },
       {
         name: "theme-color",
-        content: "#070807",
+        content: "#f6f7f8",
       },
     ],
     links: [
@@ -102,34 +103,41 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        <ClerkProvider
-          appearance={{ theme: shadcn }}
-          signInFallbackRedirectUrl="/chat"
-          signUpFallbackRedirectUrl="/chat"
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
         >
-          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-            {children}
-            <DesktopUpdater />
-            <Toaster />
-            <TanStackDevtools
-              config={{
-                position: "bottom-right",
-              }}
-              plugins={[
-                {
-                  name: "Tanstack Router",
-                  render: <TanStackRouterDevtoolsPanel />,
-                },
-              ]}
-            />
-            <Scripts />
-          </ConvexProviderWithClerk>
-        </ClerkProvider>
+          <ClerkProvider
+            appearance={{ theme: shadcn }}
+            signInFallbackRedirectUrl="/chat"
+            signUpFallbackRedirectUrl="/chat"
+          >
+            <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+              {children}
+              <DesktopUpdater />
+              <Toaster />
+              <TanStackDevtools
+                config={{
+                  position: "bottom-right",
+                }}
+                plugins={[
+                  {
+                    name: "Tanstack Router",
+                    render: <TanStackRouterDevtoolsPanel />,
+                  },
+                ]}
+              />
+              <Scripts />
+            </ConvexProviderWithClerk>
+          </ClerkProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

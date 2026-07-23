@@ -17,8 +17,8 @@ export function LandingRoutingPlayer({ className }: LandingRoutingPlayerProps) {
   return (
     <div
       className={cn(
-        "landing-player overflow-hidden rounded-[1.5rem] border border-cinema-line/80 bg-cinema-surface shadow-[0_30px_80px_oklch(0_0_0/0.45)]",
-        className,
+        "landing-player overflow-hidden rounded-[1.5rem] border border-cinema-line/80 bg-cinema-surface shadow-[0_24px_60px_oklch(0_0_0/0.2)]",
+        className
       )}
     >
       <Player
