@@ -17,8 +17,11 @@ voice mode from the mobile sidebar closes the sidebar sheet first.
 - `bun run test` — 23 files and 68 tests passed
 - `bun run build`
 - Impeccable layout detector — no findings
+- Production renderer deployed to `app.a2zsoftware.ca`
+- Windows installer and updater assets published as `v0.1.4`
+- Published installer SHA-256 matched the clean local build
 
 ## Known limitation
 
 The authenticated provider state was not available for live visual browser
-verification. No deployment or desktop release was performed.
+verification.
