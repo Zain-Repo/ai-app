@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   desktopEntryUrl,
+  isAllowedDesktopAuthNavigation,
   isAllowedDesktopNavigation,
 } from "./desktop-navigation"
 
@@ -40,5 +41,34 @@ describe("desktop navigation", () => {
         "https://a2zsoftware.ca"
       )
     ).toBe(false)
+  })
+
+  it("allows only the exact Clerk and GitHub OAuth origins", () => {
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "https://accounts.a2zsoftware.ca/sign-in?redirect_url=%2Fdesktop"
+      )
+    ).toBe(true)
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "https://clerk.a2zsoftware.ca/v1/oauth_callback"
+      )
+    ).toBe(true)
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "https://github.com/login/oauth/authorize?client_id=test"
+      )
+    ).toBe(true)
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "https://github.com.evil.example/login/oauth/authorize"
+      )
+    ).toBe(false)
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "http://github.com/login/oauth/authorize"
+      )
+    ).toBe(false)
+    expect(isAllowedDesktopAuthNavigation("not a url")).toBe(false)
   })
 })

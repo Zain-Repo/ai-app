@@ -7,6 +7,7 @@ import type { DesktopCodexGenerateInput } from "../types"
 import { CodexAppServer } from "./codex-app-server"
 import {
   desktopEntryUrl,
+  isAllowedDesktopAuthNavigation,
   isAllowedDesktopNavigation,
 } from "./desktop-navigation"
 import { DesktopUpdater } from "./updater"
@@ -25,6 +26,7 @@ const CODEX_REASONING_EFFORTS = new Set([
 
 const codex = new CodexAppServer()
 let mainWindow: BrowserWindow | null = null
+let authWindow: BrowserWindow | null = null
 let updater: DesktopUpdater | null = null
 
 function readPackagedRendererUrl() {
@@ -124,6 +126,95 @@ async function waitForRenderer(url: URL) {
   throw new Error(`Renderer did not start at ${url.origin}`)
 }
 
+function openDesktopAuthWindow(
+  parent: BrowserWindow,
+  target: string,
+  rendererOrigin: string
+) {
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus()
+    void authWindow.loadURL(target)
+    return
+  }
+
+  const window = new BrowserWindow({
+    parent,
+    modal: true,
+    show: false,
+    width: 560,
+    height: 760,
+    minWidth: 420,
+    minHeight: 600,
+    title: "Sign in to AI Harness",
+    autoHideMenuBar: true,
+    backgroundColor: "#070807",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      session: parent.webContents.session,
+    },
+  })
+  authWindow = window
+
+  const completeAuthentication = (callbackUrl: string) => {
+    void parent.loadURL(callbackUrl)
+    if (!window.isDestroyed()) window.close()
+  }
+
+  const handleNavigation = (
+    event: Electron.Event,
+    navigationTarget: string
+  ) => {
+    if (isAllowedDesktopNavigation(navigationTarget, rendererOrigin)) {
+      event.preventDefault()
+      completeAuthentication(navigationTarget)
+      return
+    }
+    if (isAllowedDesktopAuthNavigation(navigationTarget)) return
+
+    event.preventDefault()
+    try {
+      const parsed = new URL(navigationTarget)
+      if (["http:", "https:"].includes(parsed.protocol))
+        void shell.openExternal(parsed.toString())
+    } catch {
+      // Invalid and non-web URLs remain blocked.
+    }
+  }
+
+  window.webContents.on("will-navigate", handleNavigation)
+  window.webContents.on("will-redirect", handleNavigation)
+  window.webContents.on("did-navigate", (_event, navigationTarget) => {
+    if (isAllowedDesktopNavigation(navigationTarget, rendererOrigin))
+      completeAuthentication(navigationTarget)
+  })
+  window.webContents.setWindowOpenHandler(({ url: navigationTarget }) => {
+    if (
+      isAllowedDesktopAuthNavigation(navigationTarget) ||
+      isAllowedDesktopNavigation(navigationTarget, rendererOrigin)
+    ) {
+      void window.loadURL(navigationTarget)
+    } else {
+      try {
+        const parsed = new URL(navigationTarget)
+        if (["http:", "https:"].includes(parsed.protocol))
+          void shell.openExternal(parsed.toString())
+      } catch {
+        // Invalid and non-web URLs remain blocked.
+      }
+    }
+    return { action: "deny" }
+  })
+  window.once("ready-to-show", () => window.show())
+  window.on("closed", () => {
+    if (authWindow === window) authWindow = null
+  })
+  void window.loadURL(target).catch(() => {
+    if (!window.isDestroyed()) window.close()
+  })
+}
+
 async function createWindow() {
   const renderer = parsedRendererUrl()
   await waitForRenderer(renderer)
@@ -151,6 +242,10 @@ async function createWindow() {
   updater = new DesktopUpdater(window)
 
   window.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (isAllowedDesktopAuthNavigation(target)) {
+      openDesktopAuthWindow(window, target, url.origin)
+      return { action: "deny" }
+    }
     try {
       const parsed = new URL(target)
       if (["http:", "https:"].includes(parsed.protocol))
@@ -163,6 +258,10 @@ async function createWindow() {
   window.webContents.on("will-navigate", (event, target) => {
     if (!isAllowedDesktopNavigation(target, url.origin)) {
       event.preventDefault()
+      if (isAllowedDesktopAuthNavigation(target)) {
+        openDesktopAuthWindow(window, target, url.origin)
+        return
+      }
       void window.loadURL(url.toString())
     }
   })
