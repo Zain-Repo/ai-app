@@ -10,6 +10,15 @@ const { sign: signDirectoryWithElectron } = require("@electron/windows-sign")
 
 const DEFAULT_TIMESTAMP_SERVER = "http://timestamp.digicert.com"
 const DEFAULT_WEBSITE = "https://github.com/Zain-Repo/ai-harness-releases"
+const SIGNATURE_INSPECTION_SCRIPT = `
+$signature = Get-AuthenticodeSignature -LiteralPath $env:AI_HARNESS_SIGNATURE_FILE -ErrorAction Stop
+[pscustomobject]@{
+  status = [string]$signature.Status
+  statusMessage = [string]$signature.StatusMessage
+  subject = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Subject }
+  issuer = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Issuer }
+} | ConvertTo-Json -Compress
+`
 
 function requiredEnvironmentValue(name, env) {
   const value = env[name]?.trim()
@@ -79,6 +88,62 @@ function runSigningTool(config, args, input) {
     )
 }
 
+function runPowerShellJson(script, env) {
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+      maxBuffer: 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    }
+  )
+  if (result.error)
+    throw new Error(
+      `Unable to inspect Windows signing trust: ${result.error.message}`
+    )
+  if (result.status !== 0)
+    throw new Error(
+      `Windows signing trust inspection failed: ${
+        result.stderr.trim() || result.stdout.trim() || "no diagnostic output"
+      }`
+    )
+  try {
+    return JSON.parse(result.stdout.trim())
+  } catch {
+    throw new Error("Windows signing trust inspection returned invalid data")
+  }
+}
+
+export function validateSignatureInspection(inspection, publisherName) {
+  if (inspection.status !== "Valid")
+    throw new Error(
+      `Windows does not trust the Authenticode signature (${inspection.status}): ${
+        inspection.statusMessage || "no diagnostic output"
+      }`
+    )
+  if (inspection.subject === inspection.issuer)
+    throw new Error(
+      "Self-signed Windows certificates are not allowed for release builds"
+    )
+  if (inspection.subject !== publisherName)
+    throw new Error(
+      `Signed file publisher does not match ${publisherName}: ${
+        inspection.subject || "unsigned"
+      }`
+    )
+  return inspection
+}
+
+export function assertTrustedSignature(filePath, publisherName) {
+  const inspection = runPowerShellJson(SIGNATURE_INSPECTION_SCRIPT, {
+    AI_HARNESS_SIGNATURE_FILE: path.resolve(filePath),
+  })
+  return validateSignatureInspection(inspection, publisherName)
+}
+
 export function assertSigningEnvironment(env = process.env) {
   const config = signingConfiguration(env)
   runSigningTool(config, ["--version"])
@@ -126,7 +191,13 @@ function replaceWithSignedFile(filePath, signedPath) {
 
 async function signFileInPlace(filePath, config) {
   const signedPath = createSignedFile(filePath, config)
-  replaceWithSignedFile(filePath, signedPath)
+  try {
+    assertTrustedSignature(signedPath, config.publisherName)
+    replaceWithSignedFile(filePath, signedPath)
+  } catch (error) {
+    fs.rmSync(signedPath, { force: true })
+    throw error
+  }
   console.log(`Signed ${filePath}`)
 }
 

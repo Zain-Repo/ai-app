@@ -4,7 +4,10 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 
 // @ts-expect-error Runtime signing hook is JavaScript for electron-builder.
-import { signArguments, signingConfiguration } from "./windows-signing.mjs"
+import * as windowsSigning from "./windows-signing.mjs"
+
+const { signArguments, signingConfiguration, validateSignatureInspection } =
+  windowsSigning
 
 describe("Windows signing command", () => {
   it("passes the certificate password through stdin instead of command arguments", () => {
@@ -39,5 +42,31 @@ describe("Windows signing command", () => {
     } finally {
       fs.rmSync(directory, { force: true, recursive: true })
     }
+  })
+
+  it("rejects signatures that Windows does not trust", () => {
+    expect(() =>
+      validateSignatureInspection(
+        {
+          status: "UnknownError",
+          statusMessage: "The root certificate is not trusted",
+          subject: "CN=AI Harness Test",
+          issuer: "CN=AI Harness Test",
+        },
+        "CN=AI Harness Test"
+      )
+    ).toThrow("Windows does not trust the Authenticode signature")
+
+    expect(() =>
+      validateSignatureInspection(
+        {
+          status: "Valid",
+          statusMessage: "Signature verified",
+          subject: "CN=AI Harness Test",
+          issuer: "CN=AI Harness Test",
+        },
+        "CN=AI Harness Test"
+      )
+    ).toThrow("Self-signed Windows certificates are not allowed")
   })
 })

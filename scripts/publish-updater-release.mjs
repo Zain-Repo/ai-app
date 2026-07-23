@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 
+import { assertTrustedSignature } from "./windows-signing.mjs"
+
 function arg(name) {
   const prefix = `--${name}=`
   return process.argv
@@ -31,6 +33,17 @@ if (
   !fs.existsSync(packageMetadata.outputPath)
 )
   throw new Error("Packaged app metadata is missing")
+const publisherName = packageMetadata.signing?.publisherName
+if (
+  packageMetadata.signing?.trust !== "windows" ||
+  typeof publisherName !== "string"
+)
+  throw new Error("Packaged app trust metadata is missing")
+assertTrustedSignature(
+  path.join(packageMetadata.outputPath, "ai-harness.exe"),
+  publisherName
+)
+assertTrustedSignature(installer, publisherName)
 const packagedCodex = path.join(
   packageMetadata.outputPath,
   "resources",

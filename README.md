@@ -87,5 +87,8 @@ values through local or CI secrets:
 - `WINDOWS_SIGN_WEBSITE` (optional)
 
 `bun run installer:windows` signs the packaged application binaries first, then
-the NSIS installer and embedded uninstaller. The build fails rather than produce
-an unsigned release. Never commit the certificate or its password.
+the NSIS installer and embedded uninstaller. The certificate must be an
+identity-validated code-signing certificate whose chain Windows trusts;
+self-signed certificates are rejected. Packaging also verifies every generated
+Authenticode signature, and publishing rechecks the exact packaged executable
+and installer. Never commit the certificate or its password.

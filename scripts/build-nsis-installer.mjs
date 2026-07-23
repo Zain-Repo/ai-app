@@ -4,6 +4,8 @@ import fs from "node:fs"
 import path from "node:path"
 import yaml from "js-yaml"
 
+import { assertTrustedSignature } from "./windows-signing.mjs"
+
 const root = path.resolve(import.meta.dirname, "..")
 const packageJsonPath = path.join(root, "package.json")
 const builderConfigPath = path.join(root, "electron-builder.json")
@@ -33,11 +35,16 @@ if (
 if (
   metadata.signing?.tool !== "osslsigncode" ||
   metadata.signing?.digest !== "sha256" ||
+  metadata.signing?.trust !== "windows" ||
   metadata.signing?.publisherName !== publisherName
 )
   throw new Error(
     "Packaged app was not signed by the configured Windows publisher"
   )
+assertTrustedSignature(
+  path.join(metadata.outputPath, `${builderConfig.executableName}.exe`),
+  publisherName
+)
 
 const appAsarPath = path.join(metadata.outputPath, "resources", "app.asar")
 const packagedPackageJson = JSON.parse(

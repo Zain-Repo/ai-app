@@ -12,6 +12,12 @@ for Authenticode signatures.
 - Signing uses SHA-256 and an RFC 3161 timestamp.
 - The certificate password is passed to `osslsigncode` over stdin rather than
   exposed in process arguments.
+- Windows validates the certificate chain, code-signing usage, exact publisher
+  subject, and each generated Authenticode signature before accepting a build.
+- Self-signed certificates are rejected even when they can produce a
+  syntactically valid signature.
+- Updater publishing rechecks the exact packaged executable and NSIS installer
+  against Windows trust before accessing GitHub.
 - `app-update.yml` now includes the full certificate publisher name so
   `electron-updater` verifies downloaded installer signatures.
 - Release packaging stops before Forge when required signing material is
@@ -19,21 +25,20 @@ for Authenticode signatures.
 
 ## Validation
 
-- `bun run installer:windows` produced a signed packaged app and NSIS
-  installer.
-- Independent `osslsigncode` verification passed for all 16 current PE
-  binaries and the updater publisher metadata.
-- Focused Vitest checks passed: 2 tests.
-- The full Vitest suite passed: 71 tests across 25 files.
+- The trust-gate Vitest checks pass: 3 tests.
+- A Microsoft-signed Windows executable passed the new verifier.
+- The existing `0.1.7` installer was correctly rejected with an untrusted-root
+  diagnostic.
+- The full Vitest suite passed: 73 tests across 26 files.
 - TypeScript type checking passed.
-- Focused ESLint and Prettier checks passed.
-- The repository-wide Prettier and ESLint commands still report unrelated
-  pre-existing issues outside the signing files.
+- Focused ESLint and Prettier checks and `git diff --check` passed.
+- A new release build was not run because no identity-validated signing
+  certificate is configured in the current environment.
 
 ## Remaining limitation
 
-The configured certificate is self-signed and intended only for local pipeline
-validation. Release
+Release
 [`v0.1.7`](https://github.com/Zain-Repo/ai-harness-releases/releases/tag/v0.1.7)
-uses this signed and timestamped pipeline, but public Windows trust still
-requires an identity-validated certificate or Artifact Signing profile.
+was signed with the old self-signed test certificate and remains untrusted.
+Replace it with an identity-validated certificate and publish a higher version;
+signatures on already-published installers cannot be repaired in place.
