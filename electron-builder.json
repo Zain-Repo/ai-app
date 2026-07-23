@@ -1,7 +1,7 @@
 {
   "appId": "com.zain.ai-harness",
   "productName": "AI Harness",
-  "artifactName": "ai-harness-setup-${version}.${ext}",
+  "artifactName": "ai-harness-setup.${ext}",
   "directories": {
     "output": "out/nsis"
   },
@@ -9,7 +9,7 @@
     {
       "provider": "github",
       "owner": "Zain-Repo",
-      "repo": "ai-app-releases"
+      "repo": "ai-harness-releases"
     }
   ],
   "executableName": "ai-harness",

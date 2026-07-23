@@ -703,9 +703,9 @@ function App() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
                 className="cinema-cta group/button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm"
-                href="/sign-up"
+                href="https://github.com/Zain-Repo/ai-harness-releases/releases/latest/download/ai-harness-setup.exe"
               >
-                Get your workspace ready
+                Download for Windows
                 <HugeiconsIcon
                   icon={ArrowRight01Icon}
                   strokeWidth={2}
@@ -713,8 +713,18 @@ function App() {
                   aria-hidden="true"
                 />
               </a>
-              <p className="cinema-kicker px-1">Windows x64 · Download soon</p>
+              <a
+                className="cinema-cta-ghost h-11 px-5"
+                href="https://github.com/Zain-Repo/ai-harness-releases/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Release notes
+              </a>
             </div>
+            <p className="cinema-kicker mt-3 px-1">
+              Windows x64 · NSIS installer
+            </p>
           </Reveal>
 
           <Reveal delay={0.08} className="md:col-span-5 md:col-start-8">
