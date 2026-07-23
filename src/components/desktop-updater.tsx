@@ -66,7 +66,8 @@ export function getDesktopUpdaterPresentation(
     return {
       action: "check",
       actionLabel: "Check again",
-      description: `Version ${state.currentVersion} is the newest available release.`,
+      description:
+        "No newer AI Harness release is available. Codex CLI updates ship with the app.",
       label: "Up to date",
       title: "AI Harness is up to date",
     }
@@ -74,7 +75,9 @@ export function getDesktopUpdaterPresentation(
     return {
       action: "download",
       actionLabel: "Download update",
-      description: `Version ${state.availableVersion ?? "a newer release"} can be downloaded in the background.`,
+      description: state.codex.includedVersion
+        ? `AI Harness ${state.availableVersion} includes Codex CLI ${state.codex.includedVersion}.`
+        : `Version ${state.availableVersion ?? "a newer release"} can be downloaded in the background.`,
       label: "Available",
       title: "An update is available",
     }
@@ -238,7 +241,7 @@ export function DesktopUpdater() {
         <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
           <DialogTitle>App updates</DialogTitle>
           <DialogDescription>
-            Keep the AI Harness desktop app current.
+            Keep AI Harness and its bundled Codex CLI current.
           </DialogDescription>
         </DialogHeader>
 
@@ -281,20 +284,61 @@ export function DesktopUpdater() {
             </div>
           </div>
 
-          <dl className="mt-5 grid grid-cols-2 gap-3 rounded-2xl bg-muted/40 p-4 text-sm">
-            <div>
-              <dt className="text-xs text-muted-foreground">Installed</dt>
-              <dd className="mt-1 font-medium tabular-nums">
-                {state?.currentVersion ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Available</dt>
-              <dd className="mt-1 font-medium tabular-nums">
-                {state?.availableVersion ?? "—"}
-              </dd>
-            </div>
-          </dl>
+          <div className="mt-5 overflow-hidden rounded-2xl bg-muted/40">
+            <table className="w-full text-sm">
+              <caption className="sr-only">
+                Installed and included update versions
+              </caption>
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 pt-3 pb-2 text-left font-medium">
+                    Component
+                  </th>
+                  <th className="px-2 pt-3 pb-2 text-right font-medium">
+                    Installed
+                  </th>
+                  <th className="px-4 pt-3 pb-2 text-right font-medium">
+                    Update
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">
+                    AI Harness
+                  </th>
+                  <td className="px-2 py-3 text-right tabular-nums">
+                    {state?.currentVersion ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium tabular-nums">
+                    {state?.availableVersion ?? "—"}
+                  </td>
+                </tr>
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">
+                    Codex CLI
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                      Updates with the signed app installer.
+                    </span>
+                  </th>
+                  <td className="px-2 py-3 text-right tabular-nums">
+                    {state?.codex.currentVersion ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium tabular-nums">
+                    {state?.codex.includedVersion ?? "—"}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            {state?.codex.error ? (
+              <p
+                className="border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground"
+                role="status"
+              >
+                {state.codex.error}
+              </p>
+            ) : null}
+          </div>
 
           {showProgress ? (
             <Progress className="mt-5" value={state.progress ?? 0}>

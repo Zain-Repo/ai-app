@@ -29,6 +29,11 @@ vi.mock("sonner", () => ({
 
 const idleState: DesktopUpdaterState = {
   availableVersion: null,
+  codex: {
+    currentVersion: "0.145.0",
+    error: null,
+    includedVersion: null,
+  },
   currentVersion: "0.1.1",
   error: null,
   progress: null,
@@ -69,6 +74,10 @@ describe("desktop updater dialog", () => {
     ).toBeTruthy()
     expect(
       screen.getByRole("button", { name: "Check for updates" })
+    ).toBeTruthy()
+    expect(screen.getByText("Codex CLI")).toBeTruthy()
+    expect(
+      screen.getByText("Updates with the signed app installer.")
     ).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }))

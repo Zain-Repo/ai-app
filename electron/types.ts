@@ -31,6 +31,11 @@ export type DesktopCodexGenerateResult = {
 
 export type DesktopUpdaterState = {
   availableVersion: string | null
+  codex: {
+    currentVersion: string | null
+    error: string | null
+    includedVersion: string | null
+  }
   currentVersion: string
   error: string | null
   progress: number | null

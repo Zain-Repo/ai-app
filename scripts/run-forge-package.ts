@@ -38,6 +38,7 @@ const forgeCli = path.join(
   "dist",
   "electron-forge.js"
 )
+const windowsSigningScript = path.join(root, "scripts", "windows-signing.mjs")
 const version = readReleaseVersion(path.join(root, "package.json"))
 const env = {
   ...process.env,
@@ -89,6 +90,14 @@ const nodeExecutable = forgeNode()
 console.log(
   `Running Electron Forge with ${nodeExecutable} (${nodeVersion(nodeExecutable) ?? "unknown"})`
 )
+const signingCheck = spawnSync(
+  nodeExecutable,
+  [windowsSigningScript, "--check"],
+  { cwd: root, env, stdio: "inherit", windowsHide: true }
+)
+if (signingCheck.error) throw signingCheck.error
+if ((signingCheck.status ?? 1) !== 0) process.exit(signingCheck.status ?? 1)
+
 const result = spawnSync(
   nodeExecutable,
   [forgeCli, "package", "--platform", platform, "--arch", arch],
@@ -119,5 +128,30 @@ if (packagedManifest.main !== ".vite/build/index.cjs")
   throw new Error("Packaged Electron main entry is not CommonJS")
 extractFile(appAsarPath, path.normalize(packagedManifest.main))
 extractFile(appAsarPath, path.join(".vite", "build", "preload.cjs"))
+
+const signingResult = spawnSync(
+  nodeExecutable,
+  [windowsSigningScript, "--directory", outputPath],
+  { cwd: root, env, stdio: "inherit", windowsHide: true }
+)
+if (signingResult.error) throw signingResult.error
+if ((signingResult.status ?? 1) !== 0) process.exit(signingResult.status ?? 1)
+
+fs.writeFileSync(
+  metadataPath,
+  `${JSON.stringify(
+    {
+      ...metadata,
+      signing: {
+        digest: "sha256",
+        publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
+        tool: "osslsigncode",
+      },
+    },
+    null,
+    2
+  )}\n`,
+  "utf8"
+)
 
 console.log(`Packaged client app at ${outputPath}`)

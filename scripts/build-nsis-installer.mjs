@@ -14,6 +14,11 @@ const metadataPath = path.join(
 )
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
 const builderConfig = JSON.parse(fs.readFileSync(builderConfigPath, "utf8"))
+const publisherName = process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim()
+if (!publisherName)
+  throw new Error(
+    "Missing WINDOWS_SIGN_PUBLISHER_NAME for updater signature verification"
+  )
 
 if (!fs.existsSync(metadataPath))
   throw new Error(
@@ -25,6 +30,14 @@ if (
   !fs.existsSync(metadata.outputPath)
 )
   throw new Error("Current package metadata does not point to a packaged app")
+if (
+  metadata.signing?.tool !== "osslsigncode" ||
+  metadata.signing?.digest !== "sha256" ||
+  metadata.signing?.publisherName !== publisherName
+)
+  throw new Error(
+    "Packaged app was not signed by the configured Windows publisher"
+  )
 
 const appAsarPath = path.join(metadata.outputPath, "resources", "app.asar")
 const packagedPackageJson = JSON.parse(
@@ -43,7 +56,11 @@ if (!publish || typeof publish !== "object")
 fs.writeFileSync(
   path.join(metadata.outputPath, "resources", "app-update.yml"),
   yaml.dump(
-    { ...publish, updaterCacheDirName: "ai-app-updater" },
+    {
+      ...publish,
+      publisherName: [publisherName],
+      updaterCacheDirName: "ai-app-updater",
+    },
     { noRefs: true }
   ),
   "utf8"
@@ -59,9 +76,19 @@ fs.writeFileSync(
   `${JSON.stringify(
     {
       ...builderConfig,
+      forceCodeSigning: true,
       extraMetadata: {
         ...(builderConfig.extraMetadata ?? {}),
         version: packageJson.version,
+      },
+      win: {
+        ...builderConfig.win,
+        signtoolOptions: {
+          ...(builderConfig.win?.signtoolOptions ?? {}),
+          publisherName,
+          sign: "./scripts/windows-signing.mjs",
+          signingHashAlgorithms: ["sha256"],
+        },
       },
     },
     null,

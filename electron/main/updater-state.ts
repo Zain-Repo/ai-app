@@ -2,6 +2,9 @@ import type { DesktopUpdaterState } from "../types"
 
 export type DesktopUpdaterEvent =
   | { type: "checking" }
+  | { type: "codex-current"; version: string }
+  | { type: "codex-error"; message: string }
+  | { type: "codex-included"; version: string }
   | { type: "download-started" }
   | { progress: number; type: "download-progress" }
   | { type: "error"; message: string }
@@ -16,6 +19,11 @@ export function createDesktopUpdaterState(
 ): DesktopUpdaterState {
   return {
     availableVersion: null,
+    codex: {
+      currentVersion: null,
+      error: null,
+      includedVersion: null,
+    },
     currentVersion,
     error: null,
     progress: null,
@@ -27,12 +35,42 @@ export function reduceDesktopUpdaterState(
   state: DesktopUpdaterState,
   event: DesktopUpdaterEvent
 ): DesktopUpdaterState {
+  if (event.type === "codex-current")
+    return {
+      ...state,
+      codex: {
+        ...state.codex,
+        currentVersion: event.version,
+        error: null,
+      },
+    }
+  if (event.type === "codex-error")
+    return {
+      ...state,
+      codex: { ...state.codex, error: event.message },
+    }
+  if (event.type === "codex-included")
+    return {
+      ...state,
+      codex: {
+        ...state.codex,
+        error: null,
+        includedVersion: event.version,
+      },
+    }
   if (event.type === "checking")
-    return { ...state, error: null, progress: null, status: "checking" }
+    return {
+      ...state,
+      codex: { ...state.codex, error: null, includedVersion: null },
+      error: null,
+      progress: null,
+      status: "checking",
+    }
   if (event.type === "update-not-available")
     return {
       ...state,
       availableVersion: null,
+      codex: { ...state.codex, includedVersion: null },
       error: null,
       progress: null,
       status: "up-to-date",
@@ -41,6 +79,7 @@ export function reduceDesktopUpdaterState(
     return {
       ...state,
       availableVersion: event.version,
+      codex: { ...state.codex, includedVersion: null },
       error: null,
       progress: null,
       status: "update-available",

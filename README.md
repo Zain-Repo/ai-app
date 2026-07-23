@@ -57,10 +57,11 @@ package metadata and a packaged version that differs from `package.json`.
 ## Updater releases
 
 The updater is configured for the separate release-asset repository
-`Zain-Repo/ai-app-releases`. Create it as a public repository so installed
+`Zain-Repo/ai-harness-releases`. Create it as a public repository so installed
 clients can read releases without an embedded GitHub credential, then
 authenticate GitHub CLI before publishing the first release. After building the
-installer, publish its installer, blockmap, and `latest.yml` assets with:
+installer, publish its installer, blockmap, `latest.yml`, and Codex runtime
+manifest assets with:
 
 ```powershell
 bun run updater:publish -- --notes="Release notes"
@@ -68,8 +69,23 @@ bun run updater:publish -- --notes="Release notes"
 
 The release tag defaults to `v<package-version>`. Override the destination with
 `--repo=owner/repository` when needed. Publishing is a separate, explicit step and
-is never performed by the installer build.
+is never performed by the installer build. Publishing reads the Codex version
+from the packaged executable and fails if it is behind OpenAI's latest stable
+`@openai/codex` release.
 
-Windows code signing is not configured. Unsigned installers can trigger Microsoft
-Defender SmartScreen warnings until a signing certificate and signing environment
-are added.
+## Windows code signing
+
+Windows release builds use the open-source `@electron/windows-sign` and
+`osslsigncode` tools. Install `osslsigncode` 2.14 or newer, then provide these
+values through local or CI secrets:
+
+- `AI_HARNESS_OSSLSIGNCODE_PATH` (optional when `osslsigncode` is on `PATH`)
+- `WINDOWS_CERTIFICATE_FILE` (PKCS#12/PFX code-signing certificate)
+- `WINDOWS_CERTIFICATE_PASSWORD`
+- `WINDOWS_SIGN_PUBLISHER_NAME` (the certificate's full subject DN)
+- `WINDOWS_TIMESTAMP_SERVER` (optional; defaults to DigiCert's RFC 3161 server)
+- `WINDOWS_SIGN_WEBSITE` (optional)
+
+`bun run installer:windows` signs the packaged application binaries first, then
+the NSIS installer and embedded uninstaller. The build fails rather than produce
+an unsigned release. Never commit the certificate or its password.

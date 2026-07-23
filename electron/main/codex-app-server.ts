@@ -1,5 +1,5 @@
 import { app, shell } from "electron"
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -11,6 +11,7 @@ import type {
   DesktopCodexGenerateResult,
   DesktopCodexModel,
 } from "../types"
+import { parseCodexVersion } from "./codex-runtime"
 
 type JsonObject = Record<string, unknown>
 type PendingRequest = {
@@ -170,6 +171,26 @@ export class CodexAppServer {
             : {}),
         },
       ]
+    })
+  }
+
+  async version() {
+    return await new Promise<string>((resolve, reject) => {
+      execFile(
+        resolveCodexExecutable(),
+        ["--version"],
+        { maxBuffer: 4_096, timeout: 10_000, windowsHide: true },
+        (error, stdout) => {
+          if (error) reject(new Error("Codex version could not be read"))
+          else {
+            try {
+              resolve(parseCodexVersion(stdout))
+            } catch (parseError) {
+              reject(parseError)
+            }
+          }
+        }
+      )
     })
   }
 

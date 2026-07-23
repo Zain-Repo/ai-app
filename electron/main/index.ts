@@ -239,7 +239,10 @@ async function createWindow() {
     },
   })
   mainWindow = window
-  updater = new DesktopUpdater(window)
+  updater = new DesktopUpdater(window, {
+    getVersion: () => codex.version(),
+    stop: () => codex.stop(),
+  })
 
   window.webContents.setWindowOpenHandler(({ url: target }) => {
     if (isAllowedDesktopAuthNavigation(target)) {

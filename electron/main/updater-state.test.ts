@@ -14,12 +14,25 @@ describe("desktop updater state", () => {
 
     state = reduceDesktopUpdaterState(state, { type: "checking" })
     expect(state.status).toBe("checking")
+    state = reduceDesktopUpdaterState(state, {
+      type: "codex-current",
+      version: "0.145.0",
+    })
 
     state = reduceDesktopUpdaterState(state, {
       type: "update-available",
       version: "0.1.2",
     })
     expect(canDownloadDesktopUpdate(state)).toBe(true)
+    state = reduceDesktopUpdaterState(state, {
+      type: "codex-included",
+      version: "0.146.0",
+    })
+    expect(state.codex).toEqual({
+      currentVersion: "0.145.0",
+      error: null,
+      includedVersion: "0.146.0",
+    })
 
     state = reduceDesktopUpdaterState(state, {
       progress: 140,
