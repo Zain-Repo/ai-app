@@ -1,7 +1,7 @@
 {
   "name": "ai-app",
   "productName": "AI Harness",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "AI Harness desktop client",
   "author": "Zain Ahmad",
   "main": ".vite/build/index.cjs",
