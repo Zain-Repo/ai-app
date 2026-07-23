@@ -121,6 +121,7 @@ import {
   SidebarMenuSkeleton,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 const MessageResponse = lazy(async () => {
@@ -219,6 +220,26 @@ export function ProjectConversationDisclosure({
     >
       {children}
     </motion.div>
+  )
+}
+
+function SidebarVoiceButton({ onActivate }: { onActivate: () => void }) {
+  const { setOpenMobile } = useSidebar()
+
+  return (
+    <Button
+      aria-label="Start voice mode"
+      className="rounded-lg"
+      onClick={() => {
+        setOpenMobile(false)
+        onActivate()
+      }}
+      size="icon-sm"
+      title="Start voice mode"
+      variant="outline"
+    >
+      <AudioWaveform aria-hidden="true" />
+    </Button>
   )
 }
 
@@ -1543,6 +1564,66 @@ function ChatWorkspace() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border/70 p-3">
+          <div
+            aria-label="Chat controls"
+            className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5"
+            role="group"
+          >
+            <Select
+              disabled={Boolean(conversationId) || sendState === "sending"}
+              onValueChange={(mode) => {
+                if (!mode) return
+                setOutputMode(mode)
+                if (mode === "image") setActiveProvider("openrouter")
+              }}
+              value={outputMode}
+            >
+              <SelectTrigger
+                aria-label="Output mode"
+                className="w-full min-w-0 justify-between rounded-lg bg-background/70 px-2"
+                size="sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start" alignItemWithTrigger={false}>
+                <SelectItem value="text">Chat</SelectItem>
+                {openRouter ? (
+                  <SelectItem value="image">Image</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+            <SidebarVoiceButton onActivate={() => setVoiceMode(true)} />
+            <Select
+              disabled={
+                Boolean(conversationId) ||
+                outputMode === "image" ||
+                sendState === "sending"
+              }
+              onValueChange={(provider) => {
+                if (provider) setActiveProvider(provider)
+              }}
+              value={activeProvider}
+            >
+              <SelectTrigger
+                aria-label="Model provider"
+                className="w-full min-w-0 justify-between rounded-lg bg-background/70 px-2"
+                size="sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end" alignItemWithTrigger={false}>
+                {outputMode === "text" && codex ? (
+                  <SelectItem value="codex">ChatGPT subscription</SelectItem>
+                ) : null}
+                {outputMode === "text" && openAi ? (
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                ) : null}
+                {openRouter ? (
+                  <SelectItem value="openrouter">OpenRouter</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex min-w-0 items-center gap-2.5">
             <UserButton>
               <UserButton.MenuItems>
@@ -2120,65 +2201,6 @@ function ChatWorkspace() {
                       connection.
                     </p>
                   ) : null}
-                  <div className="mb-2 flex justify-end gap-2">
-                    <Select
-                      disabled={
-                        Boolean(conversationId) || sendState === "sending"
-                      }
-                      onValueChange={(mode) => {
-                        if (!mode) return
-                        setOutputMode(mode)
-                        if (mode === "image") setActiveProvider("openrouter")
-                      }}
-                      value={outputMode}
-                    >
-                      <SelectTrigger aria-label="Output mode" size="sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent align="start" alignItemWithTrigger={false}>
-                        <SelectItem value="text">Chat</SelectItem>
-                        {openRouter ? (
-                          <SelectItem value="image">Image</SelectItem>
-                        ) : null}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      onClick={() => setVoiceMode(true)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <AudioWaveform aria-hidden="true" />
-                      Voice
-                    </Button>
-                    <Select
-                      disabled={
-                        Boolean(conversationId) ||
-                        outputMode === "image" ||
-                        sendState === "sending"
-                      }
-                      onValueChange={(provider) => {
-                        if (provider) setActiveProvider(provider)
-                      }}
-                      value={activeProvider}
-                    >
-                      <SelectTrigger aria-label="Model provider" size="sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent align="end" alignItemWithTrigger={false}>
-                        {outputMode === "text" && codex ? (
-                          <SelectItem value="codex">
-                            ChatGPT subscription
-                          </SelectItem>
-                        ) : null}
-                        {outputMode === "text" && openAi ? (
-                          <SelectItem value="openai">OpenAI</SelectItem>
-                        ) : null}
-                        {openRouter ? (
-                          <SelectItem value="openrouter">OpenRouter</SelectItem>
-                        ) : null}
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <AIInput
                     agents={modelProviders}
                     defaultAgent={modelProvider}
