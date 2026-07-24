@@ -44,8 +44,8 @@ describe("Windows signing command", () => {
     }
   })
 
-  it("rejects signatures that Windows does not trust", () => {
-    expect(() =>
+  it("accepts an untrusted signer with the configured publisher", () => {
+    expect(
       validateSignatureInspection(
         {
           status: "UnknownError",
@@ -55,18 +55,18 @@ describe("Windows signing command", () => {
         },
         "CN=AI Harness Test"
       )
-    ).toThrow("Windows does not trust the Authenticode signature")
+    ).toMatchObject({ subject: "CN=AI Harness Test" })
 
     expect(() =>
       validateSignatureInspection(
         {
-          status: "Valid",
-          statusMessage: "Signature verified",
+          status: "HashMismatch",
+          statusMessage: "The contents of the file have been altered",
           subject: "CN=AI Harness Test",
           issuer: "CN=AI Harness Test",
         },
         "CN=AI Harness Test"
       )
-    ).toThrow("Self-signed Windows certificates are not allowed")
+    ).toThrow("Authenticode signature validation failed")
   })
 })

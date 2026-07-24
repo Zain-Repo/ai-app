@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import yaml from "js-yaml"
 
-import { assertTrustedSignature } from "./windows-signing.mjs"
+import { assertPublisherSignature } from "./windows-signing.mjs"
 
 const root = path.resolve(import.meta.dirname, "..")
 const localOnly = process.argv.includes("--local-only")
@@ -42,13 +42,13 @@ if (localOnly) {
   if (
     metadata.signing?.tool !== "osslsigncode" ||
     metadata.signing?.digest !== "sha256" ||
-    metadata.signing?.trust !== "windows" ||
+    metadata.signing?.trust !== "publisher" ||
     metadata.signing?.publisherName !== publisherName
   )
     throw new Error(
       "Packaged app was not signed by the configured Windows publisher"
     )
-  assertTrustedSignature(
+  assertPublisherSignature(
     path.join(metadata.outputPath, `${builderConfig.executableName}.exe`),
     publisherName
   )
@@ -74,7 +74,6 @@ if (!localOnly) {
     yaml.dump(
       {
         ...publish,
-        publisherName: [publisherName],
         updaterCacheDirName: "ai-app-updater",
       },
       { noRefs: true }

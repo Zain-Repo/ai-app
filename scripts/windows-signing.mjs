@@ -118,15 +118,11 @@ function runPowerShellJson(script, env) {
 }
 
 export function validateSignatureInspection(inspection, publisherName) {
-  if (inspection.status !== "Valid")
+  if (!["UnknownError", "Valid"].includes(inspection.status))
     throw new Error(
-      `Windows does not trust the Authenticode signature (${inspection.status}): ${
+      `Authenticode signature validation failed (${inspection.status}): ${
         inspection.statusMessage || "no diagnostic output"
       }`
-    )
-  if (inspection.subject === inspection.issuer)
-    throw new Error(
-      "Self-signed Windows certificates are not allowed for release builds"
     )
   if (inspection.subject !== publisherName)
     throw new Error(
@@ -137,7 +133,7 @@ export function validateSignatureInspection(inspection, publisherName) {
   return inspection
 }
 
-export function assertTrustedSignature(filePath, publisherName) {
+export function assertPublisherSignature(filePath, publisherName) {
   const inspection = runPowerShellJson(SIGNATURE_INSPECTION_SCRIPT, {
     AI_HARNESS_SIGNATURE_FILE: path.resolve(filePath),
   })
@@ -192,7 +188,7 @@ function replaceWithSignedFile(filePath, signedPath) {
 async function signFileInPlace(filePath, config) {
   const signedPath = createSignedFile(filePath, config)
   try {
-    assertTrustedSignature(signedPath, config.publisherName)
+    assertPublisherSignature(signedPath, config.publisherName)
     replaceWithSignedFile(filePath, signedPath)
   } catch (error) {
     fs.rmSync(signedPath, { force: true })

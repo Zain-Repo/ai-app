@@ -156,7 +156,7 @@ fs.writeFileSync(
             digest: "sha256",
             publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
             tool: "osslsigncode",
-            trust: "windows",
+            trust: "publisher",
           },
         },
     null,
