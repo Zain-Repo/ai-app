@@ -9,6 +9,12 @@ import {
 } from "./updater-state"
 
 describe("desktop updater state", () => {
+  it("leaves Store-managed packages outside the GitHub updater", () => {
+    const state = createDesktopUpdaterState("0.1.8", true, true)
+    expect(state.status).toBe("store-managed")
+    expect(canCheckForDesktopUpdates(state)).toBe(false)
+  })
+
   it("moves through check, download, and install without stale fields", () => {
     let state = createDesktopUpdaterState("0.1.1", true)
 

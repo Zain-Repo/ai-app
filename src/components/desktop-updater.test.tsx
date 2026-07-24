@@ -125,4 +125,13 @@ describe("desktop updater dialog", () => {
       }).action
     ).toBeNull()
   })
+
+  it("explains that Microsoft Store packages use Store updates", () => {
+    const presentation = getDesktopUpdaterPresentation({
+      ...idleState,
+      status: "store-managed",
+    })
+    expect(presentation.action).toBeNull()
+    expect(presentation.title).toBe("Updates are managed by Microsoft Store")
+  })
 })

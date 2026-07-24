@@ -15,7 +15,8 @@ export type DesktopUpdaterEvent =
 
 export function createDesktopUpdaterState(
   currentVersion: string,
-  isPackaged: boolean
+  isPackaged: boolean,
+  isStoreManaged = false
 ): DesktopUpdaterState {
   return {
     availableVersion: null,
@@ -27,7 +28,7 @@ export function createDesktopUpdaterState(
     currentVersion,
     error: null,
     progress: null,
-    status: isPackaged ? "idle" : "disabled",
+    status: isStoreManaged ? "store-managed" : isPackaged ? "idle" : "disabled",
   }
 }
 
@@ -118,6 +119,7 @@ export function canCheckForDesktopUpdates(state: DesktopUpdaterState) {
     "downloading",
     "installing",
     "ready-to-install",
+    "store-managed",
   ].includes(state.status)
 }
 

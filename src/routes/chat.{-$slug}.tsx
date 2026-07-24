@@ -2659,6 +2659,11 @@ function MessageArea({
                                     Add OpenRouter credits
                                   </a>
                                 </span>
+                              ) : message.provider === "codex" ? (
+                                message.content ||
+                                "Codex could not complete this response."
+                              ) : message.provider === "openai" ? (
+                                "OpenAI could not complete this response."
                               ) : (
                                 "OpenRouter could not complete this response."
                               )

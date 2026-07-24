@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
+import { selectCompletedTurnItems } from "./codex-app-server"
 import { parseCodexRuntimeManifest, parseCodexVersion } from "./codex-runtime"
+
+vi.mock("electron", () => ({ app: {}, shell: {} }))
 
 describe("Codex runtime metadata", () => {
   it("accepts only the expected app release and a valid Codex version", () => {
@@ -20,5 +23,30 @@ describe("Codex runtime metadata", () => {
     expect(() => parseCodexVersion("codex-cli latest")).toThrow(
       "invalid version"
     )
+  })
+})
+
+describe("Codex app-server protocol", () => {
+  it("uses completed item notifications when the final turn omits items", () => {
+    expect(
+      selectCompletedTurnItems(
+        { items: [] },
+        [
+          {
+            item: { id: "answer", text: "OK", type: "agentMessage" },
+            turnId: "turn-1",
+          },
+        ],
+        "turn-1"
+      )
+    ).toEqual([{ id: "answer", text: "OK", type: "agentMessage" }])
+
+    expect(
+      selectCompletedTurnItems(
+        { items: [{ id: "legacy", text: "Fallback", type: "agentMessage" }] },
+        [],
+        "turn-1"
+      )
+    ).toEqual([{ id: "legacy", text: "Fallback", type: "agentMessage" }])
   })
 })

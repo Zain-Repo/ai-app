@@ -18,6 +18,10 @@ type PendingRequest = {
   reject: (error: Error) => void
   resolve: (value: unknown) => void
 }
+type CompletedItemNotification = {
+  item: JsonObject
+  turnId: string
+}
 
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const REQUEST_TIMEOUT_MS = 30_000
@@ -25,6 +29,20 @@ const TURN_TIMEOUT_MS = 10 * 60_000
 
 function isRecord(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+export function selectCompletedTurnItems(
+  completedTurn: JsonObject,
+  notifications: CompletedItemNotification[],
+  turnId: string
+) {
+  const notifiedItems = notifications
+    .filter((notification) => notification.turnId === turnId)
+    .map((notification) => notification.item)
+  if (notifiedItems.length) return notifiedItems
+  return Array.isArray(completedTurn.items)
+    ? completedTurn.items.filter(isRecord)
+    : []
 }
 
 function targetTriple() {
@@ -82,6 +100,9 @@ function trustedLoginUrl(value: unknown): value is string {
 export class CodexAppServer {
   private child: ChildProcessWithoutNullStreams | null = null
   private nextId = 1
+  private notificationObservers = new Set<
+    (method: string, params: JsonObject) => void
+  >()
   private notificationWaiters = new Set<{
     method: string
     predicate: (value: JsonObject) => boolean
@@ -226,59 +247,75 @@ export class CodexAppServer {
     if (!isRecord(thread) || typeof thread.id !== "string")
       throw new Error("Codex could not start a conversation")
 
-    const turnResult = await this.request("turn/start", {
-      threadId: thread.id,
-      input: [{ type: "text", text: transcript, text_elements: [] }],
-      model: input.model,
-      ...(input.effort ? { effort: input.effort } : {}),
-    })
-    const turn = isRecord(turnResult) ? turnResult.turn : null
-    if (!isRecord(turn) || typeof turn.id !== "string")
-      throw new Error("Codex could not start a response")
-
-    const completed = await this.waitForNotification(
-      "turn/completed",
-      (params) => {
-        const completedTurn = params.turn
-        return (
-          params.threadId === thread.id &&
-          isRecord(completedTurn) &&
-          completedTurn.id === turn.id
-        )
-      },
-      TURN_TIMEOUT_MS
-    )
-    const completedTurn = isRecord(completed.turn) ? completed.turn : null
-    if (!completedTurn || completedTurn.status !== "completed") {
-      const error =
-        completedTurn && isRecord(completedTurn.error)
-          ? completedTurn.error.message
-          : null
-      throw new Error(
-        typeof error === "string" ? error : "Codex response failed"
+    const completedItems: CompletedItemNotification[] = []
+    const stopObserving = this.observeNotifications((method, params) => {
+      if (
+        method === "item/completed" &&
+        params.threadId === thread.id &&
+        typeof params.turnId === "string" &&
+        isRecord(params.item)
       )
-    }
+        completedItems.push({ item: params.item, turnId: params.turnId })
+    })
+    try {
+      const turnResult = await this.request("turn/start", {
+        threadId: thread.id,
+        input: [{ type: "text", text: transcript, text_elements: [] }],
+        model: input.model,
+        ...(input.effort ? { effort: input.effort } : {}),
+      })
+      const turn = isRecord(turnResult) ? turnResult.turn : null
+      if (!isRecord(turn) || typeof turn.id !== "string")
+        throw new Error("Codex could not start a response")
 
-    const items = Array.isArray(completedTurn.items) ? completedTurn.items : []
-    const content = items
-      .flatMap((item) =>
-        isRecord(item) &&
-        item.type === "agentMessage" &&
-        typeof item.text === "string"
-          ? [item.text]
+      const completed = await this.waitForNotification(
+        "turn/completed",
+        (params) => {
+          const completedTurn = params.turn
+          return (
+            params.threadId === thread.id &&
+            isRecord(completedTurn) &&
+            completedTurn.id === turn.id
+          )
+        },
+        TURN_TIMEOUT_MS
+      )
+      const completedTurn = isRecord(completed.turn) ? completed.turn : null
+      if (!completedTurn || completedTurn.status !== "completed") {
+        const error =
+          completedTurn && isRecord(completedTurn.error)
+            ? completedTurn.error.message
+            : null
+        throw new Error(
+          typeof error === "string" ? error : "Codex response failed"
+        )
+      }
+
+      const items = selectCompletedTurnItems(
+        completedTurn,
+        completedItems,
+        turn.id
+      )
+      const content = items
+        .flatMap((item) =>
+          item.type === "agentMessage" && typeof item.text === "string"
+            ? [item.text]
+            : []
+        )
+        .join("\n\n")
+        .trim()
+      const reasoningSteps = items.flatMap((item) =>
+        item.type === "reasoning" && Array.isArray(item.summary)
+          ? item.summary.filter(
+              (part): part is string => typeof part === "string"
+            )
           : []
       )
-      .join("\n\n")
-      .trim()
-    const reasoningSteps = items.flatMap((item) =>
-      isRecord(item) && item.type === "reasoning" && Array.isArray(item.summary)
-        ? item.summary.filter(
-            (part): part is string => typeof part === "string"
-          )
-        : []
-    )
-    if (!content) throw new Error("Codex returned an empty response")
-    return { content, reasoningSteps }
+      if (!content) throw new Error("Codex returned an empty response")
+      return { content, reasoningSteps }
+    } finally {
+      stopObserving()
+    }
   }
 
   async stop() {
@@ -349,6 +386,8 @@ export class CodexAppServer {
       return
     }
     if (typeof message.method !== "string" || !isRecord(message.params)) return
+    for (const observer of this.notificationObservers)
+      observer(message.method, message.params)
     for (const waiter of [...this.notificationWaiters]) {
       if (
         waiter.method === message.method &&
@@ -366,6 +405,13 @@ export class CodexAppServer {
     for (const waiter of this.notificationWaiters) waiter.reject(error)
     this.notificationWaiters.clear()
     this.child = null
+  }
+
+  private observeNotifications(
+    observer: (method: string, params: JsonObject) => void
+  ) {
+    this.notificationObservers.add(observer)
+    return () => this.notificationObservers.delete(observer)
   }
 
   private async request(method: string, params?: unknown) {

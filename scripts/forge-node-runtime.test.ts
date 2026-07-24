@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  forgePackageMode,
   isLocalOnlyPackage,
   isSupportedForgeNodeVersion,
 } from "./forge-node-runtime"
@@ -14,9 +15,14 @@ describe("Forge Node runtime guard", () => {
 })
 
 describe("Forge package mode guard", () => {
-  it("skips signing only for the exact local-only flag", () => {
+  it("recognizes only explicit unsigned package modes", () => {
     expect(isLocalOnlyPackage(["--local-only"])).toBe(true)
     expect(isLocalOnlyPackage(["--local-only=true"])).toBe(false)
     expect(isLocalOnlyPackage([])).toBe(false)
+    expect(forgePackageMode(["--store"])).toBe("store")
+    expect(forgePackageMode(["--store=true"])).toBe("release")
+    expect(() => forgePackageMode(["--local-only", "--store"])).toThrow(
+      "cannot be both"
+    )
   })
 })

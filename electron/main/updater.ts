@@ -15,7 +15,11 @@ import {
 import type { DesktopUpdaterEvent } from "./updater-state"
 
 export class DesktopUpdater {
-  private state = createDesktopUpdaterState(app.getVersion(), app.isPackaged)
+  private state = createDesktopUpdaterState(
+    app.getVersion(),
+    app.isPackaged,
+    process.windowsStore
+  )
 
   constructor(
     private readonly window: BrowserWindow,
@@ -24,6 +28,7 @@ export class DesktopUpdater {
       stop: () => Promise<void>
     }
   ) {
+    if (process.windowsStore) return
     log.initialize()
     autoUpdater.logger = log
     autoUpdater.autoDownload = false

@@ -284,7 +284,7 @@ async function createWindow() {
     if (mainWindow === window) mainWindow = null
   })
   await window.loadURL(url.toString())
-  if (app.isPackaged)
+  if (app.isPackaged && !process.windowsStore)
     setTimeout(
       () => void updater?.check().catch(() => undefined),
       30_000

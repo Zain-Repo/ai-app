@@ -8,3 +8,11 @@ export function isSupportedForgeNodeVersion(version: string) {
 export function isLocalOnlyPackage(args: readonly string[]) {
   return args.includes("--local-only")
 }
+
+export function forgePackageMode(args: readonly string[]) {
+  const localOnly = isLocalOnlyPackage(args)
+  const store = args.includes("--store")
+  if (localOnly && store)
+    throw new Error("Package mode cannot be both local-only and Store")
+  return localOnly ? "local-only" : store ? "store" : "release"
+}

@@ -115,6 +115,15 @@ export function getDesktopUpdaterPresentation(
       label: "Unavailable",
       title: "App updates are unavailable",
     }
+  if (state.status === "store-managed")
+    return {
+      action: null,
+      actionLabel: null,
+      description:
+        "Microsoft Store installs AI Harness updates. Codex CLI updates ship inside the Store package.",
+      label: "Store managed",
+      title: "Updates are managed by Microsoft Store",
+    }
   if (state.status === "error")
     return {
       action: "check",
@@ -318,7 +327,9 @@ export function DesktopUpdater() {
                   <th className="px-4 py-3 text-left font-medium">
                     Codex CLI
                     <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                      Updates with the signed app installer.
+                      {state?.status === "store-managed"
+                        ? "Updates with the Microsoft Store package."
+                        : "Updates with the signed app installer."}
                     </span>
                   </th>
                   <td className="px-2 py-3 text-right tabular-nums">

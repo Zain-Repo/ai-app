@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 
 import {
-  isLocalOnlyPackage,
+  forgePackageMode,
   isSupportedForgeNodeVersion,
 } from "./forge-node-runtime"
 import { readReleaseVersion } from "./release-version"
@@ -21,7 +21,8 @@ const root = path.resolve(import.meta.dirname, "..")
 const role = arg("role") || "client"
 const platform = arg("platform") || "win32"
 const arch = arg("arch") || "x64"
-const localOnly = isLocalOnlyPackage(process.argv.slice(2))
+const packageMode = forgePackageMode(process.argv.slice(2))
+const unsignedPackage = packageMode !== "release"
 const runId = new Date().toISOString().replace(/[:.]/gu, "-")
 const outputRoot = path.join(
   root,
@@ -94,7 +95,7 @@ const nodeExecutable = forgeNode()
 console.log(
   `Running Electron Forge with ${nodeExecutable} (${nodeVersion(nodeExecutable) ?? "unknown"})`
 )
-if (!localOnly) {
+if (!unsignedPackage) {
   const signingCheck = spawnSync(
     nodeExecutable,
     [windowsSigningScript, "--check"],
@@ -135,7 +136,7 @@ if (packagedManifest.main !== ".vite/build/index.cjs")
 extractFile(appAsarPath, path.normalize(packagedManifest.main))
 extractFile(appAsarPath, path.join(".vite", "build", "preload.cjs"))
 
-if (!localOnly) {
+if (!unsignedPackage) {
   const signingResult = spawnSync(
     nodeExecutable,
     [windowsSigningScript, "--directory", outputPath],
@@ -148,17 +149,19 @@ if (!localOnly) {
 fs.writeFileSync(
   metadataPath,
   `${JSON.stringify(
-    localOnly
+    packageMode === "local-only"
       ? { ...metadata, localOnly: true }
-      : {
-          ...metadata,
-          signing: {
-            digest: "sha256",
-            publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
-            tool: "osslsigncode",
-            trust: "publisher",
+      : packageMode === "store"
+        ? { ...metadata, distribution: "microsoft-store" }
+        : {
+            ...metadata,
+            signing: {
+              digest: "sha256",
+              publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
+              tool: "osslsigncode",
+              trust: "publisher",
+            },
           },
-        },
     null,
     2
   )}\n`,
@@ -166,5 +169,5 @@ fs.writeFileSync(
 )
 
 console.log(
-  `${localOnly ? "Packaged unsigned local-only client app" : "Packaged client app"} at ${outputPath}`
+  `${packageMode === "release" ? "Packaged client app" : packageMode === "store" ? "Packaged unsigned Microsoft Store client app" : "Packaged unsigned local-only client app"} at ${outputPath}`
 )

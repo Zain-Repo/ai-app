@@ -51,6 +51,7 @@ export type DesktopUpdaterState = {
     | "idle"
     | "installing"
     | "ready-to-install"
+    | "store-managed"
     | "update-available"
     | "up-to-date"
 }
