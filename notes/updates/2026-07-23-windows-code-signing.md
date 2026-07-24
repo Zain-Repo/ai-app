@@ -12,33 +12,30 @@ for Authenticode signatures.
 - Signing uses SHA-256 and an RFC 3161 timestamp.
 - The certificate password is passed to `osslsigncode` over stdin rather than
   exposed in process arguments.
-- Windows validates the certificate chain, code-signing usage, exact publisher
-  subject, and each generated Authenticode signature before accepting a build.
-- Self-signed certificates are rejected even when they can produce a
-  syntactically valid signature.
+- Packaging validates each generated Authenticode signature and exact publisher
+  subject. A self-signed certificate is accepted for release continuity but
+  remains untrusted by Windows.
 - Updater publishing rechecks the exact packaged executable and NSIS installer
-  against Windows trust before accessing GitHub.
+  against the configured publisher before accessing GitHub.
 - `bun run package:client:local` creates an unsigned unpacked application for
   testing on the current machine and stamps its metadata `localOnly: true`.
   `bun run installer:windows:local` additionally creates a distinctly named
   unsigned installer under `out/local-nsis/`. The signed package, NSIS, and
   updater publishing commands remain unchanged and reject local-only metadata.
-- `app-update.yml` now includes the full certificate publisher name so
-  `electron-updater` verifies downloaded installer signatures.
+- Release `app-update.yml` omits `publisherName`, preserving the updater
+  behavior used by unsigned builds while `latest.yml` retains SHA-512 artifact
+  integrity.
 - Release packaging stops before Forge when required signing material is
   unavailable and refuses stale or mismatched package-signing metadata.
 
 ## Validation
 
-- The trust-gate Vitest checks pass: 3 tests.
-- A Microsoft-signed Windows executable passed the new verifier.
-- The existing `0.1.7` installer was correctly rejected with an untrusted-root
-  diagnostic.
-- The full Vitest suite passed: 73 tests across 26 files.
+- The signing regression checks pass: 5 tests across 2 focused files.
+- The full Vitest suite passed: 75 tests across 27 files.
 - TypeScript type checking passed.
 - Focused ESLint and Prettier checks and `git diff --check` passed.
-- A new release build was not run because no identity-validated signing
-  certificate is configured in the current environment.
+- The `0.1.8` release package and installer were signed with the configured
+  publisher and published through the automatic updater feed.
 - The unsigned local-only route produced a fresh packaged application, and its
   metadata contained `localOnly: true` with no signing claim.
 - The local-only NSIS route produced
@@ -48,8 +45,8 @@ for Authenticode signatures.
 
 ## Remaining limitation
 
-Release
-[`v0.1.7`](https://github.com/Zain-Repo/ai-harness-releases/releases/tag/v0.1.7)
-was signed with the old self-signed test certificate and remains untrusted.
-Replace it with an identity-validated certificate and publish a higher version;
-signatures on already-published installers cannot be repaired in place.
+The configured certificate is self-signed, so Windows still reports an
+unknown-publisher warning. Releases `0.1.5` through `0.1.7` embedded a publisher
+pin and cannot accept this untrusted signer through their updater unless the
+test certificate is trusted locally; those installations require one manual
+update to `0.1.8`.
