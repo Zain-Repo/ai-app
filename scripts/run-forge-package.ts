@@ -4,7 +4,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { isSupportedForgeNodeVersion } from "./forge-node-runtime"
+import {
+  isLocalOnlyPackage,
+  isSupportedForgeNodeVersion,
+} from "./forge-node-runtime"
 import { readReleaseVersion } from "./release-version"
 
 function arg(name: string) {
@@ -18,6 +21,7 @@ const root = path.resolve(import.meta.dirname, "..")
 const role = arg("role") || "client"
 const platform = arg("platform") || "win32"
 const arch = arg("arch") || "x64"
+const localOnly = isLocalOnlyPackage(process.argv.slice(2))
 const runId = new Date().toISOString().replace(/[:.]/gu, "-")
 const outputRoot = path.join(
   root,
@@ -90,13 +94,15 @@ const nodeExecutable = forgeNode()
 console.log(
   `Running Electron Forge with ${nodeExecutable} (${nodeVersion(nodeExecutable) ?? "unknown"})`
 )
-const signingCheck = spawnSync(
-  nodeExecutable,
-  [windowsSigningScript, "--check"],
-  { cwd: root, env, stdio: "inherit", windowsHide: true }
-)
-if (signingCheck.error) throw signingCheck.error
-if ((signingCheck.status ?? 1) !== 0) process.exit(signingCheck.status ?? 1)
+if (!localOnly) {
+  const signingCheck = spawnSync(
+    nodeExecutable,
+    [windowsSigningScript, "--check"],
+    { cwd: root, env, stdio: "inherit", windowsHide: true }
+  )
+  if (signingCheck.error) throw signingCheck.error
+  if ((signingCheck.status ?? 1) !== 0) process.exit(signingCheck.status ?? 1)
+}
 
 const result = spawnSync(
   nodeExecutable,
@@ -129,30 +135,36 @@ if (packagedManifest.main !== ".vite/build/index.cjs")
 extractFile(appAsarPath, path.normalize(packagedManifest.main))
 extractFile(appAsarPath, path.join(".vite", "build", "preload.cjs"))
 
-const signingResult = spawnSync(
-  nodeExecutable,
-  [windowsSigningScript, "--directory", outputPath],
-  { cwd: root, env, stdio: "inherit", windowsHide: true }
-)
-if (signingResult.error) throw signingResult.error
-if ((signingResult.status ?? 1) !== 0) process.exit(signingResult.status ?? 1)
+if (!localOnly) {
+  const signingResult = spawnSync(
+    nodeExecutable,
+    [windowsSigningScript, "--directory", outputPath],
+    { cwd: root, env, stdio: "inherit", windowsHide: true }
+  )
+  if (signingResult.error) throw signingResult.error
+  if ((signingResult.status ?? 1) !== 0) process.exit(signingResult.status ?? 1)
+}
 
 fs.writeFileSync(
   metadataPath,
   `${JSON.stringify(
-    {
-      ...metadata,
-      signing: {
-        digest: "sha256",
-        publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
-        tool: "osslsigncode",
-        trust: "windows",
-      },
-    },
+    localOnly
+      ? { ...metadata, localOnly: true }
+      : {
+          ...metadata,
+          signing: {
+            digest: "sha256",
+            publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
+            tool: "osslsigncode",
+            trust: "windows",
+          },
+        },
     null,
     2
   )}\n`,
   "utf8"
 )
 
-console.log(`Packaged client app at ${outputPath}`)
+console.log(
+  `${localOnly ? "Packaged unsigned local-only client app" : "Packaged client app"} at ${outputPath}`
+)

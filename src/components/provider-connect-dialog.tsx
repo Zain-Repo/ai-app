@@ -85,6 +85,9 @@ export function ProviderConnectDialog({
   const connectDesktopCodex = useMutation(
     api.providerConnections.connectDesktopCodex
   )
+  const connectDesktopCursor = useMutation(
+    api.providerConnections.connectDesktopCursor
+  )
   const getCreditStatus = useAction(api.providerOAuth.getCreditStatus)
   const connectOpenAI = useAction(api.providerOAuth.connectOpenAI)
   const [internalOpen, setInternalOpen] = useState(false)
@@ -97,6 +100,9 @@ export function ProviderConnectDialog({
     connected: boolean
     email: string | null
     planType: string | null
+  } | null>(null)
+  const [desktopCursorAccount, setDesktopCursorAccount] = useState<{
+    connected: boolean
   } | null>(null)
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null)
   const [creditState, setCreditState] = useState<
@@ -111,6 +117,9 @@ export function ProviderConnectDialog({
   )
   const codex = connections?.find(
     (connection) => connection.provider === "codex"
+  )
+  const cursor = connections?.find(
+    (connection) => connection.provider === "cursor"
   )
   const open = controlledOpen ?? internalOpen
   const showCodex =
@@ -130,6 +139,9 @@ export function ProviderConnectDialog({
     "Anthropic",
     "Google",
   ])
+  const showCursor =
+    desktopCodexAvailable &&
+    matchesProviderSearch(searchQuery, ["Cursor", "Cursor CLI", "local"])
   const showOpenAi = matchesProviderSearch(searchQuery, [
     "OpenAI",
     "API key",
@@ -143,7 +155,11 @@ export function ProviderConnectDialog({
     ])
   )
   const hasSearchResults =
-    showCodex || showOpenRouter || showOpenAi || filteredProviders.length > 0
+    showCodex ||
+    showCursor ||
+    showOpenRouter ||
+    showOpenAi ||
+    filteredProviders.length > 0
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(nextOpen)
     onOpenChange?.(nextOpen)
@@ -160,6 +176,14 @@ export function ProviderConnectDialog({
       },
       () => {
         if (!cancelled) setDesktopCodexAccount(null)
+      }
+    )
+    void desktop.cursor.account().then(
+      (account) => {
+        if (!cancelled) setDesktopCursorAccount(account)
+      },
+      () => {
+        if (!cancelled) setDesktopCursorAccount(null)
       }
     )
     return () => {
@@ -248,6 +272,24 @@ export function ProviderConnectDialog({
         cause instanceof Error
           ? cause.message
           : "Could not connect ChatGPT subscription"
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function connectCursor() {
+    const desktop = window.aiHarnessDesktop
+    if (!desktop) return
+    setPending(true)
+    setError("")
+    try {
+      const account = await desktop.cursor.login()
+      await connectDesktopCursor({})
+      setDesktopCursorAccount(account)
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not connect Cursor"
       )
     } finally {
       setPending(false)
@@ -360,7 +402,7 @@ export function ProviderConnectDialog({
             </div>
           ) : (
             <div className="divide-y divide-border/70">
-              {showCodex || showOpenRouter ? (
+              {showCodex || showCursor || showOpenRouter ? (
                 <section
                   aria-labelledby="recommended-provider-heading"
                   className="py-5"
@@ -424,6 +466,45 @@ export function ProviderConnectDialog({
                             ? "Opening..."
                             : desktopCodexAccount?.connected ||
                                 codex?.status === "connected"
+                              ? "Reconnect"
+                              : "Connect"}
+                        </span>
+                      </button>
+                    ) : null}
+
+                    {showCursor ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => void connectCursor()}
+                        className="group flex min-h-20 w-full items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted font-heading text-xs font-semibold shadow-sm">
+                          CU
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2 font-medium">
+                            Cursor Agent
+                            {desktopCursorAccount?.connected ||
+                            cursor?.status === "connected" ? (
+                              <HugeiconsIcon
+                                aria-label="Connected"
+                                className="size-4 text-emerald-600"
+                                icon={CheckmarkCircle02Icon}
+                                strokeWidth={2}
+                              />
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                            Connect the Cursor CLI already signed in on this
+                            device.
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold text-foreground">
+                          {pending
+                            ? "Opening..."
+                            : desktopCursorAccount?.connected ||
+                                cursor?.status === "connected"
                               ? "Reconnect"
                               : "Connect"}
                         </span>

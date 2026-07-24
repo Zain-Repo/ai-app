@@ -17,6 +17,11 @@ const api: AiHarnessDesktopApi = {
     generate: (input: DesktopCodexGenerateInput) =>
       ipcRenderer.invoke("desktop:codex-generate", input),
   },
+  cursor: {
+    account: () => ipcRenderer.invoke("desktop:cursor-account"),
+    login: () => ipcRenderer.invoke("desktop:cursor-login"),
+    logout: () => ipcRenderer.invoke("desktop:cursor-logout"),
+  },
   updater: {
     getState: () => ipcRenderer.invoke("desktop:updater-get-state"),
     check: () => ipcRenderer.invoke("desktop:updater-check"),

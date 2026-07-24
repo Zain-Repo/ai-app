@@ -4,6 +4,10 @@ export type DesktopCodexAccount = {
   planType: string | null
 }
 
+export type DesktopCursorAccount = {
+  connected: boolean
+}
+
 export type DesktopCodexModel = {
   defaultReasoningEffort?: string
   description?: string
@@ -59,6 +63,11 @@ export type AiHarnessDesktopApi = {
     ) => Promise<DesktopCodexGenerateResult>
     listModels: () => Promise<DesktopCodexModel[]>
     login: () => Promise<DesktopCodexAccount>
+    logout: () => Promise<void>
+  }
+  cursor: {
+    account: () => Promise<DesktopCursorAccount>
+    login: () => Promise<DesktopCursorAccount>
     logout: () => Promise<void>
   }
   isDesktop: true

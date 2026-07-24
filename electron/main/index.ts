@@ -5,6 +5,7 @@ import path from "node:path"
 
 import type { DesktopCodexGenerateInput } from "../types"
 import { CodexAppServer } from "./codex-app-server"
+import { CursorCli } from "./cursor-cli"
 import {
   desktopEntryUrl,
   isAllowedDesktopAuthNavigation,
@@ -25,6 +26,7 @@ const CODEX_REASONING_EFFORTS = new Set([
 ])
 
 const codex = new CodexAppServer()
+const cursor = new CursorCli()
 let mainWindow: BrowserWindow | null = null
 let authWindow: BrowserWindow | null = null
 let updater: DesktopUpdater | null = null
@@ -105,6 +107,9 @@ function registerIpc() {
     if (!isCodexGenerateInput(value)) throw new Error("Invalid Codex request")
     return codex.generate(value)
   })
+  handle("desktop:cursor-account", () => cursor.account())
+  handle("desktop:cursor-login", () => cursor.login())
+  handle("desktop:cursor-logout", () => cursor.logout())
   handle("desktop:updater-get-state", () => updater?.getState())
   handle("desktop:updater-check", () => updater?.check())
   handle("desktop:updater-download", () => updater?.download())

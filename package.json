@@ -1,7 +1,7 @@
 {
   "name": "ai-app",
   "productName": "AI Harness",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "AI Harness desktop client",
   "author": "Zain Ahmad",
   "main": ".vite/build/index.cjs",
@@ -24,8 +24,10 @@
     "terminal:image:build": "docker build -t ai-harness-terminal:local workers/terminal/image",
     "terminal:worker": "bun workers/terminal/index.ts",
     "package:client": "bun scripts/run-forge-package.ts --role=client --platform=win32",
+    "package:client:local": "bun scripts/run-forge-package.ts --role=client --platform=win32 --local-only",
     "installer:nsis": "bun scripts/build-nsis-installer.mjs",
     "installer:windows": "bun run package:client && bun run installer:nsis",
+    "installer:windows:local": "bun run package:client:local && bun scripts/build-nsis-installer.mjs --local-only",
     "updater:publish": "bun scripts/publish-updater-release.mjs"
   },
   "dependencies": {

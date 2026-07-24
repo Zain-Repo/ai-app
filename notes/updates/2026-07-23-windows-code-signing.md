@@ -18,6 +18,11 @@ for Authenticode signatures.
   syntactically valid signature.
 - Updater publishing rechecks the exact packaged executable and NSIS installer
   against Windows trust before accessing GitHub.
+- `bun run package:client:local` creates an unsigned unpacked application for
+  testing on the current machine and stamps its metadata `localOnly: true`.
+  `bun run installer:windows:local` additionally creates a distinctly named
+  unsigned installer under `out/local-nsis/`. The signed package, NSIS, and
+  updater publishing commands remain unchanged and reject local-only metadata.
 - `app-update.yml` now includes the full certificate publisher name so
   `electron-updater` verifies downloaded installer signatures.
 - Release packaging stops before Forge when required signing material is
@@ -34,6 +39,12 @@ for Authenticode signatures.
 - Focused ESLint and Prettier checks and `git diff --check` passed.
 - A new release build was not run because no identity-validated signing
   certificate is configured in the current environment.
+- The unsigned local-only route produced a fresh packaged application, and its
+  metadata contained `localOnly: true` with no signing claim.
+- The local-only NSIS route produced
+  `out/local-nsis/ai-harness-local-setup.exe` without publishing or uploading
+  release assets. It removes generated blockmap and `latest.yml` files so only
+  the manual installer remains.
 
 ## Remaining limitation
 

@@ -16,7 +16,8 @@ const status = v.union(
 const provider = v.union(
   v.literal("openrouter"),
   v.literal("openai"),
-  v.literal("codex")
+  v.literal("codex"),
+  v.literal("cursor")
 )
 
 export const listMine = query({
@@ -40,7 +41,8 @@ export const listMine = query({
 
     return connections.map((connection) => ({
       connectionId: connection._id,
-      provider: connection.provider as "openrouter" | "openai" | "codex",
+      provider: connection.provider as
+        "openrouter" | "openai" | "codex" | "cursor",
       authMethod: connection.authMethod,
       status: connection.status,
       ...(connection.displayName
@@ -86,6 +88,36 @@ export const connectDesktopCodex = mutation({
       ...metadata,
       ownerId: user._id,
       provider: "codex",
+    })
+  },
+})
+
+export const connectDesktopCursor = mutation({
+  args: {},
+  returns: v.id("providerConnections"),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx)
+    const existing = await ctx.db
+      .query("providerConnections")
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerId", user._id).eq("provider", "cursor")
+      )
+      .unique()
+    const metadata = {
+      authMethod: "oauth" as const,
+      displayName: "Cursor subscription",
+      scopes: ["cursor_cli"],
+      status: "connected" as const,
+      updatedAt: Date.now(),
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, metadata)
+      return existing._id
+    }
+    return await ctx.db.insert("providerConnections", {
+      ...metadata,
+      ownerId: user._id,
+      provider: "cursor",
     })
   },
 })
