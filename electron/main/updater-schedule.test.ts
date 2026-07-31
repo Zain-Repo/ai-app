@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   DEFAULT_BACKGROUND_CHECK_INTERVAL_MS,
+  DEFAULT_STARTUP_CHECK_COOLDOWN_MS,
   DEFAULT_STARTUP_CHECK_DELAY_MS,
   initialDesktopUpdaterCheckDelay,
   normalizeDesktopUpdaterScheduleState,
@@ -24,7 +25,7 @@ describe("desktop updater automatic-check schedule", () => {
         { lastCheckedAt: new Date(now - 60_000).toISOString(), launchCount: 2 },
         now
       )
-    ).toBe(DEFAULT_BACKGROUND_CHECK_INTERVAL_MS)
+    ).toBe(DEFAULT_STARTUP_CHECK_COOLDOWN_MS - 60_000)
   })
 
   it("uses the startup delay when a previous check is no longer cooling down", () => {
