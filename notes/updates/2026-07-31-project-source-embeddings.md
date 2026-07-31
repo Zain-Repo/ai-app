@@ -22,27 +22,31 @@ response.
   embedding behavior continues to use OpenRouter through the same bridge.
 - Deterministic text normalization, fingerprinting, overlapping chunking,
   batched embedding, stale-job checks, and bounded cleanup make indexing
-  idempotent and prevent superseded vectors from entering retrieval.
+  idempotent and prevent superseded vectors from entering retrieval. Large
+  sources are streamed once for full-content fingerprinting while retaining
+  only the bounded text window used for indexing.
 - Response generation embeds the latest user request with the Project's pinned
   credential, hydrates only authorized current-profile chunks, and adds the
   selected excerpts as untrusted user-level reference data, never as system
   instructions. A file remains available through the direct-attachment path
   until its current index is ready or partially ready; indexed attachments are
   retained as a fallback when retrieval is unavailable, fails, or returns no
-  usable chunks.
+  usable chunks. Projects without a current searchable source skip query
+  embedding entirely, avoiding unnecessary provider charges.
 - Reconfiguring the same provider connection remains idempotent only while the
   stored provider, model, dimensions, ownership, and revision still match the
   current embedding policy. Policy drift creates a canonical new revision and
   re-indexes the Project.
 - The Project Sources interface exposes provider configuration, explicit
   provider switching and re-index confirmation, indexing progress, durable
-  errors, retry, indexed chunk counts, and source removal.
+  errors, retry, indexed chunk counts, and source removal. Retry remains
+  disabled for every non-connected pinned provider until reconnection.
 
 ## Validation
 
 - `bun run typecheck`
 - Scoped ESLint for the changed Convex implementation and tests
-- Full test suite: 33 files and 126 tests passed
+- Full test suite: 33 files and 128 tests passed
 - Production client and SSR build
 - `git diff --check`
 
@@ -50,7 +54,8 @@ The tests cover provider and owner authorization, profile revisions, model and
 dimension integrity, exact vector validation, stale-profile and cross-owner
 retrieval rejection, queued-file fallback, ready-file retrieval behavior,
 retrieval failure fallback, user-priority source context, policy-driven profile
-revisioning, and bounded source, Project, and superseded-profile cleanup.
+revisioning, empty-index retrieval avoidance, bounded source streaming, and
+bounded Project and superseded-profile cleanup.
 
 ## Known limitations
 

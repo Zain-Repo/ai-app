@@ -188,45 +188,48 @@ describe("project source embeddings", () => {
     ).toBe("needs_reauthentication")
   })
 
-  it("enables retry after the pinned provider is reconnected", () => {
-    const retry = vi.fn()
-    const disconnectedOpenAi: ProjectEmbeddingConnection = {
-      ...openAiConnection,
-      status: "needs_reauthentication",
-    }
-    const reauthenticationSource: ProjectSourceItem = {
-      ...source,
-      indexErrorCode: "needs_reauthentication",
-    }
-    const props = {
-      onConnectProvider: vi.fn(),
-      onPinProvider: vi.fn(),
-      onRemoveSource: vi.fn(),
-      onRetryIndexing: retry,
-      profile: {
-        providerConnectionId: openAiConnection.connectionId,
-        model: "text-embedding-3-small",
-        provider: "openai" as const,
-        revision: 1,
-      },
-      sources: [reauthenticationSource],
-    }
-    const view = render(
-      <ProjectSourcesPanel {...props} connections={[disconnectedOpenAi]} />
-    )
-    const retryButton = view.getByRole("button", {
-      name: "Retry indexing brief.md",
-    })
+  it.each(["needs_reauthentication", "disconnected"] as const)(
+    "enables retry after the pinned provider reconnects from %s",
+    (status) => {
+      const retry = vi.fn()
+      const unavailableOpenAi: ProjectEmbeddingConnection = {
+        ...openAiConnection,
+        status,
+      }
+      const reauthenticationSource: ProjectSourceItem = {
+        ...source,
+        indexErrorCode: "needs_reauthentication",
+      }
+      const props = {
+        onConnectProvider: vi.fn(),
+        onPinProvider: vi.fn(),
+        onRemoveSource: vi.fn(),
+        onRetryIndexing: retry,
+        profile: {
+          providerConnectionId: openAiConnection.connectionId,
+          model: "text-embedding-3-small",
+          provider: "openai" as const,
+          revision: 1,
+        },
+        sources: [reauthenticationSource],
+      }
+      const view = render(
+        <ProjectSourcesPanel {...props} connections={[unavailableOpenAi]} />
+      )
+      const retryButton = view.getByRole("button", {
+        name: "Retry indexing brief.md",
+      })
 
-    expect(retryButton).toHaveProperty("disabled", true)
-    view.rerender(
-      <ProjectSourcesPanel {...props} connections={[openAiConnection]} />
-    )
-    fireEvent.click(
-      view.getByRole("button", { name: "Retry indexing brief.md" })
-    )
-    expect(retry).toHaveBeenCalledWith(source._id)
-  })
+      expect(retryButton).toHaveProperty("disabled", true)
+      view.rerender(
+        <ProjectSourcesPanel {...props} connections={[openAiConnection]} />
+      )
+      fireEvent.click(
+        view.getByRole("button", { name: "Retry indexing brief.md" })
+      )
+      expect(retry).toHaveBeenCalledWith(source._id)
+    }
+  )
 
   it("requires confirmation before removing a source", () => {
     const removeSource = vi.fn()

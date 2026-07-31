@@ -448,6 +448,23 @@ export const getProjectRetrievalContext = internalQuery({
       profile.model !== getProjectEmbeddingModel(profile.provider)
     )
       return null
+    const indexStates = await ctx.db
+      .query("projectSourceIndexStates")
+      .withIndex("by_embedding_profile_id_and_updated_at", (query) =>
+        query.eq("embeddingProfileId", profile._id)
+      )
+      .order("desc")
+      .take(MAX_PROJECT_SOURCES)
+    const hasSearchableSource = indexStates.some(
+      (state) =>
+        state.ownerId === args.ownerId &&
+        state.projectId === project._id &&
+        state.embeddingProfileRevision === profile.revision &&
+        (state.status === "ready" || state.status === "partial") &&
+        state.chunkCount > 0 &&
+        state.sourceFingerprint !== undefined
+    )
+    if (!hasSearchableSource) return null
     const connection = await ctx.db.get(profile.providerConnectionId)
     if (
       !connection ||

@@ -132,9 +132,7 @@ export default defineSchema({
     revision: v.number(),
     status: v.union(v.literal("active"), v.literal("superseded")),
     updatedAt: v.number(),
-  })
-    .index("by_project_id_and_revision", ["projectId", "revision"])
-    .index("by_provider_connection_id", ["providerConnectionId"]),
+  }).index("by_project_id_and_revision", ["projectId", "revision"]),
 
   projectSourceIndexStates: defineTable({
     ownerId: v.id("users"),
@@ -170,8 +168,7 @@ export default defineSchema({
       "embeddingProfileId",
       "updatedAt",
     ])
-    .index("by_project_id_and_updated_at", ["projectId", "updatedAt"])
-    .index("by_project_id_and_status", ["projectId", "status"]),
+    .index("by_project_id_and_updated_at", ["projectId", "updatedAt"]),
 
   projectSourceChunks: defineTable({
     ownerId: v.id("users"),

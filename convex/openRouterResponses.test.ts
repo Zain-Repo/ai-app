@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { createHash } from "node:crypto"
 
 import type { Id } from "./_generated/dataModel"
 import {
@@ -9,8 +10,10 @@ import {
   inlineTextAttachments,
   normalizeGeneratedTitle,
   parseOpenRouterImageResponse,
+  readProjectSourceForIndexing,
   toModelPrompt,
 } from "./openRouterResponses"
+import { MAX_PROJECT_SOURCE_TEXT_CHARS } from "./projectEmbeddingPolicy"
 
 describe("AI SDK provider bridge", () => {
   it("keeps untrusted project excerpts out of system instructions", () => {
@@ -84,6 +87,19 @@ describe("AI SDK provider bridge", () => {
       },
       { content: "Answer from the project", role: "user" },
     ])
+  })
+
+  it("streams the full source fingerprint while retaining only indexable text", async () => {
+    const content = `${"first line\n".repeat(
+      Math.ceil(MAX_PROJECT_SOURCE_TEXT_CHARS / 11)
+    )}trailing text that must only affect the fingerprint`
+    const source = new Blob([content])
+
+    await expect(readProjectSourceForIndexing(source)).resolves.toEqual({
+      indexedText: content.slice(0, MAX_PROJECT_SOURCE_TEXT_CHARS),
+      sourceFingerprint: createHash("sha256").update(content).digest("hex"),
+      textWasTruncated: true,
+    })
   })
 
   it("inlines stored text files instead of sending unsupported file inputs", async () => {

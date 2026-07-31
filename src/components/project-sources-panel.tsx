@@ -228,8 +228,9 @@ export function ProjectSourcesPanel({
   const profileConnection = connections?.find(
     (connection) => connection.connectionId === selectedConnectionId
   )
-  const profileNeedsAuthentication =
-    profileConnection?.status === "needs_reauthentication"
+  const profileNeedsAuthentication = Boolean(
+    profile && profileConnection?.status !== "connected"
+  )
   const canIndex = sources.length > 0 && embeddingConnections.length > 0
   const pendingConnection = embeddingConnections.find(
     (connection) => connection.connectionId === pendingConnectionId

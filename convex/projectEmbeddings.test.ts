@@ -300,6 +300,12 @@ describe("project embedding profiles and indexes", () => {
         })
     )
     await expect(
+      t.query(internal.projectEmbeddings.getProjectRetrievalContext, {
+        ownerId: adaId,
+        projectId,
+      })
+    ).resolves.toBeNull()
+    await expect(
       t.mutation(internal.projectEmbeddings.applyProjectSourceChunks, {
         stateId: state._id,
         sourceFingerprint: "fingerprint-v1",
@@ -321,6 +327,25 @@ describe("project embedding profiles and indexes", () => {
         ],
       })
     ).toBe(true)
+    await expect(
+      t.query(internal.projectEmbeddings.getProjectRetrievalContext, {
+        ownerId: adaId,
+        projectId,
+      })
+    ).resolves.toMatchObject({
+      connectionId: openaiId,
+      profileId: state.embeddingProfileId,
+      profileRevision: state.embeddingProfileRevision,
+    })
+    await t.run(
+      async (ctx) => await ctx.db.patch(state._id, { status: "partial" })
+    )
+    await expect(
+      t.query(internal.projectEmbeddings.getProjectRetrievalContext, {
+        ownerId: adaId,
+        projectId,
+      })
+    ).resolves.toMatchObject({ profileId: state.embeddingProfileId })
     const chunk = await t.run(
       async (ctx) =>
         await ctx.db

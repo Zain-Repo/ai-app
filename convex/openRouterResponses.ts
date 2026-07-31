@@ -648,6 +648,41 @@ function projectIndexErrorCode(cause: unknown) {
   return "indexing_failed" as const
 }
 
+export async function readProjectSourceForIndexing(blob: Blob) {
+  const hash = createHash("sha256")
+  const decoder = new TextDecoder()
+  const reader = blob.stream().getReader()
+  let indexedText = ""
+  let textWasTruncated = false
+
+  const appendIndexedText = (text: string) => {
+    const remaining = MAX_PROJECT_SOURCE_TEXT_CHARS - indexedText.length
+    if (text.length > remaining) textWasTruncated = true
+    if (remaining > 0) indexedText += text.slice(0, remaining)
+  }
+
+  try {
+    let streamComplete = false
+    while (!streamComplete) {
+      const readResult = await reader.read()
+      streamComplete = readResult.done
+      if (!readResult.done) {
+        hash.update(readResult.value)
+        appendIndexedText(decoder.decode(readResult.value, { stream: true }))
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  appendIndexedText(decoder.decode())
+
+  return {
+    indexedText,
+    sourceFingerprint: hash.digest("hex"),
+    textWasTruncated,
+  }
+}
+
 export const indexProjectSource = internalAction({
   args: { stateId: v.id("projectSourceIndexStates") },
   returns: v.null(),
@@ -682,12 +717,9 @@ export const indexProjectSource = internalAction({
       connectionId = context.connectionId
       const blob = await ctx.storage.get(context.storageId)
       if (!blob) throw new Error("Project source storage unavailable")
-      const bytes = Buffer.from(await blob.arrayBuffer())
-      const sourceFingerprint = createHash("sha256").update(bytes).digest("hex")
-      const fullText = await blob.text()
-      const chunks = chunkProjectSourceText(
-        fullText.slice(0, MAX_PROJECT_SOURCE_TEXT_CHARS)
-      )
+      const { indexedText, sourceFingerprint, textWasTruncated } =
+        await readProjectSourceForIndexing(blob)
+      const chunks = chunkProjectSourceText(indexedText)
       if (!chunks.length) {
         await ctx.runMutation(
           internal.projectEmbeddings.failProjectSourceIndex,
@@ -696,8 +728,7 @@ export const indexProjectSource = internalAction({
         return null
       }
       const partial =
-        fullText.length > MAX_PROJECT_SOURCE_TEXT_CHARS ||
-        chunks.length === MAX_PROJECT_SOURCE_CHUNKS
+        textWasTruncated || chunks.length === MAX_PROJECT_SOURCE_CHUNKS
       const stillCurrent = await ctx.runMutation(
         internal.projectEmbeddings.setProjectSourceIndexStatus,
         { stateId: args.stateId, status: "indexing" }
@@ -904,13 +935,12 @@ export const generate = internalAction({
         ...(context.projectId ? { projectId: context.projectId } : {}),
         query: context.lastUserMessage,
       })
-      const messagesWithProjectSourceFallback =
-        projectSourceContext
-          ? context.messages
-          : addProjectSourceFallbackAttachments(
-              context.messages,
-              context.projectSourceFallbackAttachments
-            )
+      const messagesWithProjectSourceFallback = projectSourceContext
+        ? context.messages
+        : addProjectSourceFallbackAttachments(
+            context.messages,
+            context.projectSourceFallbackAttachments
+          )
       const hydratedMessages = await inlineTextAttachments(
         messagesWithProjectSourceFallback,
         async (storageId) => await ctx.storage.get(storageId)
