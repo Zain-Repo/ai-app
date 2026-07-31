@@ -1,7 +1,7 @@
 {
   "name": "ai-app",
   "productName": "AI Harness",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "AI Harness desktop client",
   "author": "Zain Ahmad",
   "main": ".vite/build/index.cjs",
@@ -41,7 +41,7 @@
     "@fontsource-variable/raleway": "^5.3.0",
     "@hugeicons/core-free-icons": "^4.2.2",
     "@hugeicons/react": "^1.1.9",
-    "@openai/codex": "^0.145.0",
+    "@openai/codex": "^0.146.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@remotion/player": "^4.0.496",
     "@shadcn/react": "^0.2.1",
