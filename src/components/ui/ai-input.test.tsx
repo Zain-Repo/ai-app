@@ -48,9 +48,9 @@ describe("AIInput attachments", () => {
 })
 
 describe("AIInput controlled defaults", () => {
-  it("keeps the submitted agent and model aligned when restored defaults change", async () => {
+  it("keeps the submitted provider and model aligned when restored defaults change", async () => {
     const onSend = vi.fn()
-    const agents = [
+    const providers = [
       { label: "OpenAI", value: "openai" },
       { label: "DeepSeek", value: "deepseek" },
     ]
@@ -77,26 +77,26 @@ describe("AIInput controlled defaults", () => {
     ]
     const view = render(
       <AIInput
-        agents={agents}
-        defaultAgent="openai"
+        defaultProvider="openai"
         defaultSettings={{
           model: "deepseek/deepseek-v4-pro",
           routingProvider: "auto",
         }}
         onSend={onSend}
+        providers={providers}
         settingGroups={settingGroups}
       />
     )
 
     view.rerender(
       <AIInput
-        agents={agents}
-        defaultAgent="deepseek"
+        defaultProvider="deepseek"
         defaultSettings={{
           model: "deepseek/deepseek-v4-flash",
           routingProvider: "auto",
         }}
         onSend={onSend}
+        providers={providers}
         settingGroups={settingGroups}
       />
     )
@@ -107,11 +107,49 @@ describe("AIInput controlled defaults", () => {
 
     await waitFor(() => expect(onSend).toHaveBeenCalledOnce())
     expect(onSend.mock.calls[0]?.[1]).toEqual({
-      agent: "deepseek",
+      provider: "deepseek",
       settings: {
         model: "deepseek/deepseek-v4-flash",
         routingProvider: "auto",
       },
     })
+  })
+})
+
+describe("AIInput provider selector", () => {
+  it("switches providers while the composer is disabled", () => {
+    const onProviderChange = vi.fn()
+    render(
+      <AIInput
+        defaultProvider="openai"
+        disabled
+        onProviderChange={onProviderChange}
+        providers={[
+          { label: "OpenAI", value: "openai" },
+          { label: "DeepSeek", value: "deepseek" },
+        ]}
+      />
+    )
+
+    const trigger = screen.getByLabelText("Select provider")
+    expect(trigger.hasAttribute("disabled")).toBe(false)
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    const openAiOption = screen.getByRole("menuitemradio", {
+      name: "OpenAI",
+    })
+    fireEvent.keyDown(openAiOption, { key: "Escape" })
+    expect(document.activeElement).toBe(trigger)
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "OpenAI" }), {
+      key: "ArrowDown",
+    })
+    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: "DeepSeek" }), {
+      key: "Enter",
+    })
+
+    expect(onProviderChange).toHaveBeenCalledWith("deepseek")
+    expect(trigger.textContent).toContain("DeepSeek")
   })
 })

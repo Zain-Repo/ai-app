@@ -1455,6 +1455,7 @@ function OptionMenu({
   align = "start",
   ariaLabel,
   chipClassName,
+  disabled = false,
   onChange,
   options,
   value,
@@ -1462,6 +1463,7 @@ function OptionMenu({
   align?: "start" | "end"
   ariaLabel: string
   chipClassName: string
+  disabled?: boolean
   onChange: (value: string) => void
   options: AIInputOption[]
   value: string
@@ -1469,54 +1471,169 @@ function OptionMenu({
   const [open, setOpen] = useState(false)
   const [upward, setUpward] = useState(false)
   const [hoveredValue, setHoveredValue] = useState<string | null>(null)
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value)
+  )
+  const [activeIndex, setActiveIndex] = useState(selectedIndex)
   const hoverLayoutId = useId()
+  const menuId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const closeMenu = useCallback((restoreTriggerFocus = false) => {
+    setOpen(false)
+    setHoveredValue(null)
+    if (restoreTriggerFocus) triggerRef.current?.focus()
+  }, [])
+
+  const focusOption = useCallback(
+    (index: number) => {
+      const nextIndex = Math.max(0, Math.min(index, options.length - 1))
+      setActiveIndex(nextIndex)
+      optionRefs.current[nextIndex]?.focus()
+    },
+    [options.length]
+  )
+
+  const openMenu = useCallback(
+    (initialIndex: number) => {
+      if (disabled || options.length === 0) return
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        setUpward(window.innerHeight - rect.bottom < 160)
+      }
+      setHoveredValue(null)
+      setActiveIndex(initialIndex)
+      setOpen(true)
+    },
+    [disabled, options.length]
+  )
 
   useEffect(() => {
     if (!open) return
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (containerRef.current?.contains(event.target as Node)) return
-      setOpen(false)
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false)
+      if (!containerRef.current?.contains(event.target as Node)) closeMenu()
     }
 
     document.addEventListener("pointerdown", handlePointerDown)
-    document.addEventListener("keydown", handleKeyDown)
 
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown)
-      document.removeEventListener("keydown", handleKeyDown)
     }
-  }, [open])
+  }, [closeMenu, open])
+
+  useEffect(() => {
+    if (!open) return
+    optionRefs.current[activeIndex]?.focus()
+  }, [activeIndex, open])
+
+  useEffect(() => {
+    if (options.length === 0) {
+      closeMenu()
+      return
+    }
+    setActiveIndex((current) => Math.min(current, options.length - 1))
+  }, [closeMenu, options.length])
+
+  useEffect(() => {
+    if (disabled) closeMenu()
+  }, [closeMenu, disabled])
 
   const selected =
     options.find((option) => option.value === value) ?? options[0]
 
+  const selectOption = (option: AIInputOption) => {
+    onChange(option.value)
+    closeMenu(true)
+  }
+
+  const handleTriggerKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>
+  ) => {
+    if (disabled) return
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      openMenu(0)
+      return
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault()
+      openMenu(options.length - 1)
+      return
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      openMenu(selectedIndex)
+    }
+  }
+
+  const handleOptionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+    option: AIInputOption
+  ) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      focusOption((index + 1) % options.length)
+      return
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault()
+      focusOption((index - 1 + options.length) % options.length)
+      return
+    }
+    if (event.key === "Home") {
+      event.preventDefault()
+      focusOption(0)
+      return
+    }
+    if (event.key === "End") {
+      event.preventDefault()
+      focusOption(options.length - 1)
+      return
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      selectOption(option)
+      return
+    }
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeMenu(true)
+      return
+    }
+    if (event.key === "Tab") closeMenu()
+  }
+
+  const reducedMotion = useReducedMotion() ?? false
+
   return (
     <div className="relative min-w-0" ref={containerRef}>
       <button
+        aria-controls={open ? menuId : undefined}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={ariaLabel}
         className={chipClassName}
+        disabled={disabled}
         onClick={() => {
-          if (!open && containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect()
-            setUpward(window.innerHeight - rect.bottom < 160)
+          if (open) {
+            closeMenu()
+          } else {
+            openMenu(selectedIndex)
           }
-          setHoveredValue(null)
-          setOpen((previous) => !previous)
         }}
+        onKeyDown={handleTriggerKeyDown}
+        ref={triggerRef}
         type="button"
       >
         <span className="truncate">{selected.label}</span>
         <ChevronDown
           aria-hidden="true"
-          className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          className={`size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
         />
       </button>
       <AnimatePresence>
@@ -1526,22 +1643,32 @@ function OptionMenu({
             aria-label={ariaLabel}
             className={`absolute z-50 max-h-[min(24rem,calc(100vh-2rem))] w-max max-w-[calc(100vw-2rem)] min-w-52 overflow-y-auto rounded-2xl border border-border bg-card p-1 shadow-[0_10px_28px_-18px_rgba(0,0,0,0.25)] ${align === "end" ? "right-0" : "left-0"} ${upward ? `bottom-full mb-2 ${align === "end" ? "origin-bottom-right" : "origin-bottom-left"}` : `top-full mt-2 ${align === "end" ? "origin-top-right" : "origin-top-left"}`}`}
             exit={{ opacity: 0, scale: 0.97, y: upward ? 4 : -4 }}
+            id={menuId}
             initial={{ opacity: 0, scale: 0.96, y: upward ? 6 : -6 }}
             onMouseLeave={() => setHoveredValue(null)}
             role="menu"
-            transition={{ duration: 0.16, ease: "easeOut" }}
+            transition={
+              reducedMotion
+                ? { duration: 0 }
+                : { duration: 0.16, ease: "easeOut" }
+            }
           >
-            {options.map((option) => (
+            {options.map((option, index) => (
               <button
                 aria-checked={option.value === selected.value}
-                className="relative isolate flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm"
+                className="relative isolate flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-card"
                 key={option.value}
-                onClick={() => {
-                  onChange(option.value)
-                  setOpen(false)
+                onClick={() => selectOption(option)}
+                onKeyDown={(event) => handleOptionKeyDown(event, index, option)}
+                onMouseEnter={() => {
+                  setActiveIndex(index)
+                  setHoveredValue(option.value)
                 }}
-                onMouseEnter={() => setHoveredValue(option.value)}
+                ref={(element) => {
+                  optionRefs.current[index] = element
+                }}
                 role="menuitemradio"
+                tabIndex={index === activeIndex ? 0 : -1}
                 type="button"
               >
                 {hoveredValue === option.value ? (
@@ -1872,11 +1999,13 @@ function PlusMenu({
 // ─── Public component ────────────────────────────────────────────────────────
 
 export type AIInputProps = {
-  /** Options for the agent chip on the left. */
-  agents?: AIInputOption[]
-  defaultAgent?: string
+  /** Options for the provider chip on the left. */
+  providers?: AIInputOption[]
+  defaultProvider?: string
   /** Disable the composer and all direct submission controls. */
   disabled?: boolean
+  /** Disable the provider selector independently of the composer. */
+  providerDisabled?: boolean
   /** Setting groups for the settings dropdown (model, effort, etc.). */
   settingGroups?: PromptSettingGroup[]
   defaultSettings?: Record<string, string>
@@ -1889,7 +2018,7 @@ export type AIInputProps = {
   showMessages?: boolean
   onSend?: (
     message: string,
-    meta: { agent: string; settings: Record<string, string> },
+    meta: { provider: string; settings: Record<string, string> },
     files: File[]
   ) => void | Promise<void>
   onMicClick?: () => void
@@ -1899,17 +2028,18 @@ export type AIInputProps = {
   onMenuSelect?: (value: string) => void
   /** Fired when a toggle item in the plus menu changes. */
   onMenuToggle?: (value: string, checked: boolean) => void
-  /** Fired when the agent chip selection changes. */
-  onAgentChange?: (value: string) => void
+  /** Fired when the provider chip selection changes. */
+  onProviderChange?: (value: string) => void
   /** Fired when any setting in the settings dropdown changes. */
   onSettingsChange?: (settings: Record<string, string>) => void
   className?: string
 }
 
 export function AIInput({
-  agents = [],
-  defaultAgent,
+  providers = [],
+  defaultProvider,
   disabled = false,
+  providerDisabled = false,
   settingGroups = [],
   defaultSettings,
   menuActions = [],
@@ -1921,7 +2051,7 @@ export function AIInput({
   onPlusClick,
   onMenuSelect,
   onMenuToggle,
-  onAgentChange,
+  onProviderChange,
   onSettingsChange,
   className,
 }: AIInputProps) {
@@ -1931,13 +2061,13 @@ export function AIInput({
   const [attachmentError, setAttachmentError] = useState("")
   const [isFileDragActive, setIsFileDragActive] = useState(false)
   const [waveRun, setWaveRun] = useState(0)
-  const [agent, setAgent] = useState(
-    () => defaultAgent || agents.at(0)?.value || ""
+  const [provider, setProvider] = useState(
+    () => defaultProvider || providers.at(0)?.value || ""
   )
   const [internalSettings, setInternalSettings] = useState(() =>
     getDefaultSettings(settingGroups, defaultSettings)
   )
-  const previousDefaultAgentRef = useRef(defaultAgent)
+  const previousDefaultProviderRef = useRef(defaultProvider)
   const previousDefaultSettingsRef = useRef(defaultSettings)
   const nextMessageIdRef = useRef(0)
   const waveTimeoutRef = useRef<number | undefined>(undefined)
@@ -2069,20 +2199,20 @@ export function AIInput({
   }, [addFiles, disabled])
 
   useEffect(() => {
-    const previousDefaultAgent = previousDefaultAgentRef.current
-    setAgent((current) => {
+    const previousDefaultProvider = previousDefaultProviderRef.current
+    setProvider((current) => {
       if (
-        defaultAgent !== previousDefaultAgent &&
-        agents.some((option) => option.value === defaultAgent)
+        defaultProvider !== previousDefaultProvider &&
+        providers.some((option) => option.value === defaultProvider)
       )
-        return defaultAgent ?? ""
-      if (agents.some((option) => option.value === current)) return current
-      return agents.some((option) => option.value === defaultAgent)
-        ? (defaultAgent ?? "")
-        : (agents.at(0)?.value ?? "")
+        return defaultProvider ?? ""
+      if (providers.some((option) => option.value === current)) return current
+      return providers.some((option) => option.value === defaultProvider)
+        ? (defaultProvider ?? "")
+        : (providers.at(0)?.value ?? "")
     })
-    previousDefaultAgentRef.current = defaultAgent
-  }, [agents, defaultAgent])
+    previousDefaultProviderRef.current = defaultProvider
+  }, [defaultProvider, providers])
 
   useEffect(() => {
     const previousDefaults = previousDefaultSettingsRef.current
@@ -2134,7 +2264,7 @@ export function AIInput({
     try {
       await onSend?.(
         trimmed,
-        { agent, settings: internalSettings },
+        { provider, settings: internalSettings },
         attachments
       )
       nextMessageIdRef.current += 1
@@ -2165,7 +2295,7 @@ export function AIInput({
       sendingRef.current = false
     }
   }, [
-    agent,
+    provider,
     attachments,
     disabled,
     internalSettings,
@@ -2318,16 +2448,17 @@ export function AIInput({
             </button>
           ) : null}
 
-          {agents.length > 0 ? (
+          {providers.length > 0 ? (
             <OptionMenu
-              ariaLabel="Select agent"
-              chipClassName="flex w-full min-w-14 items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 font-medium text-foreground text-sm transition-colors hover:bg-accent sm:px-3.5 sm:py-2"
+              ariaLabel="Select provider"
+              chipClassName="flex min-h-9 min-w-14 items-center gap-1.5 rounded-full border border-border/60 bg-muted/75 px-3 py-1.5 font-medium text-foreground text-sm shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color] hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:min-h-10 sm:px-3.5 sm:py-2"
+              disabled={providerDisabled}
               onChange={(next) => {
-                setAgent(next)
-                onAgentChange?.(next)
+                setProvider(next)
+                onProviderChange?.(next)
               }}
-              options={agents}
-              value={agent}
+              options={providers}
+              value={provider}
             />
           ) : null}
 

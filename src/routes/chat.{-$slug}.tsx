@@ -1,4 +1,3 @@
-import { UserButton } from "@clerk/tanstack-react-start"
 import { auth } from "@clerk/tanstack-react-start/server"
 import {
   Add01Icon,
@@ -12,8 +11,6 @@ import {
   Link01Icon,
   MoreHorizontalIcon,
   Search01Icon,
-  Settings02Icon,
-  SystemUpdate02Icon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -47,10 +44,12 @@ import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
+import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
 import type {
   AIInputMenuItem,
+  AIInputOption,
   PromptSettingGroup,
 } from "@/components/ui/ai-input"
 import { AIInput } from "@/components/ui/ai-input"
@@ -148,36 +147,73 @@ const requireAuth = createServerFn().handler(async () => {
   if (!(await auth()).isAuthenticated) throw redirect({ href: "/sign-in" })
 })
 
-const providerLabels: Record<string, string> = {
-  anthropic: "Anthropic",
-  "black-forest-labs": "Black Forest Labs",
-  cohere: "Cohere",
-  deepseek: "DeepSeek",
-  google: "Google",
-  meta: "Meta",
-  microsoft: "Microsoft",
-  mistralai: "Mistral AI",
-  openai: "OpenAI",
-  perplexity: "Perplexity",
-  poolside: "Poolside",
-  qwen: "Qwen",
-  sourceful: "Sourceful",
-  "x-ai": "xAI",
+const providerSelectorOptions = [
+  {
+    label: "ChatGPT subscription",
+    provider: "codex",
+    requiresDesktop: true,
+  },
+  {
+    label: "Cursor Agent",
+    provider: "cursor",
+    requiresDesktop: true,
+  },
+  { label: "OpenAI", provider: "openai", requiresDesktop: false },
+  { label: "OpenRouter", provider: "openrouter", requiresDesktop: false },
+] as const
+
+type ProviderSelectorOption = (typeof providerSelectorOptions)[number]
+type ActiveProvider = ProviderSelectorOption["provider"]
+
+const providerFallbackOrder: readonly ActiveProvider[] = [
+  "codex",
+  "openai",
+  "openrouter",
+  "cursor",
+]
+
+type ProviderConnectionOption = {
+  provider: string
+  status: string
 }
 
-const preferredProviders = [
-  "openai",
-  "anthropic",
-  "google",
-  "x-ai",
-  "meta",
-  "mistralai",
-  "deepseek",
-  "qwen",
-  "microsoft",
-  "cohere",
-  "perplexity",
-]
+export function getConnectedProviderOptions(
+  connections: readonly ProviderConnectionOption[] | undefined,
+  desktopAvailable: boolean
+) {
+  return providerSelectorOptions.filter(
+    (option) =>
+      (!option.requiresDesktop || desktopAvailable) &&
+      connections?.some(
+        (connection) =>
+          connection.provider === option.provider &&
+          connection.status === "connected"
+      )
+  )
+}
+
+export function getExecutionProviderOptions(
+  options: readonly ProviderSelectorOption[],
+  outputMode: "image" | "text"
+): AIInputOption[] {
+  return options
+    .filter(
+      (option) => outputMode === "text" || option.provider === "openrouter"
+    )
+    .map(({ label, provider }) => ({ label, value: provider }))
+}
+
+export function isActiveProvider(value: string): value is ActiveProvider {
+  return providerSelectorOptions.some((option) => option.provider === value)
+}
+
+export function getPreferredProvider(
+  options: readonly ProviderSelectorOption[]
+) {
+  return providerFallbackOrder.find((provider) =>
+    options.some((option) => option.provider === provider)
+  )
+}
 
 const IMAGE_MODEL_PRIORITY = [
   "black-forest-labs/flux.2-klein-4b",
@@ -500,10 +536,8 @@ function ChatWorkspace() {
   const [endpointState, setEndpointState] = useState<
     "failed" | "idle" | "loading" | "ready"
   >("idle")
-  const [modelProvider, setModelProvider] = useState("")
-  const [activeProvider, setActiveProvider] = useState<
-    "codex" | "openrouter" | "openai"
-  >("openrouter")
+  const [activeProvider, setActiveProvider] =
+    useState<ActiveProvider>("openrouter")
   const [desktopAvailable, setDesktopAvailable] = useState(false)
   const [outputMode, setOutputMode] = useState<"image" | "text">("text")
   const [selectedModelId, setSelectedModelId] = useState("")
@@ -524,45 +558,40 @@ function ChatWorkspace() {
     (connection) =>
       connection.provider === "openrouter" && connection.status === "connected"
   )
-  const openAi = connections?.find(
-    (connection) =>
-      connection.provider === "openai" && connection.status === "connected"
+  const connectedProviderOptions = useMemo(
+    () => getConnectedProviderOptions(connections, desktopAvailable),
+    [connections, desktopAvailable]
   )
-  const codex = desktopAvailable
-    ? connections?.find(
-        (connection) =>
-          connection.provider === "codex" && connection.status === "connected"
+  const executionProviderOptions = useMemo(
+    () => getExecutionProviderOptions(connectedProviderOptions, outputMode),
+    [connectedProviderOptions, outputMode]
+  )
+  const activeConnection = connections?.find(
+    (connection) =>
+      connection.provider === activeProvider &&
+      connection.status === "connected" &&
+      connectedProviderOptions.some(
+        (option) => option.provider === connection.provider
       )
-    : undefined
-  const activeConnection =
-    activeProvider === "codex"
-      ? codex
-      : activeProvider === "openai"
-        ? openAi
-        : openRouter
+  )
   const activeConnectionId = activeConnection?.connectionId
 
   useEffect(() => {
-    if (selected?.providerConnectionId) {
-      const provider = connections?.find(
-        (connection) =>
-          connection.connectionId === selected.providerConnectionId
-      )?.provider
-      if (
-        provider === "openai" ||
-        provider === "openrouter" ||
-        (provider === "codex" && desktopAvailable)
-      )
-        setActiveProvider(provider)
-    } else if (codex) setActiveProvider("codex")
-    else if (openAi) setActiveProvider("openai")
-  }, [
-    codex,
-    connections,
-    desktopAvailable,
-    openAi,
-    selected?.providerConnectionId,
-  ])
+    const selectedProvider = connections?.find(
+      (connection) => connection.connectionId === selected?.providerConnectionId
+    )?.provider
+    const provider = connectedProviderOptions.find(
+      (option) => option.provider === selectedProvider
+    )?.provider
+
+    if (provider) {
+      setActiveProvider(provider)
+      return
+    }
+
+    const preferredProvider = getPreferredProvider(connectedProviderOptions)
+    if (preferredProvider) setActiveProvider(preferredProvider)
+  }, [connections, connectedProviderOptions, selected?.providerConnectionId])
 
   useEffect(() => {
     if (conversationId && selected) setOutputMode(selected.outputMode ?? "text")
@@ -600,7 +629,9 @@ function ChatWorkspace() {
                 : {}),
             }))
           )
-        : listModels({ provider: activeProvider })
+        : activeProvider === "cursor"
+          ? Promise.resolve([])
+          : listModels({ provider: activeProvider })
     void (
       modelsPromise ?? Promise.reject(new Error("Desktop unavailable"))
     ).then(
@@ -625,67 +656,17 @@ function ChatWorkspace() {
     () => catalog.filter((model) => model.outputMode === outputMode),
     [catalog, outputMode]
   )
-  const modelProviders = useMemo(() => {
-    const providers = Array.from(
-      new Map(
-        availableModels.map((model) => [
-          model.provider,
-          {
-            value: model.provider,
-            label: providerLabels[model.provider] ?? model.provider,
-          },
-        ])
-      ).values()
-    )
-
-    return providers.sort((left, right) => {
-      const leftPriority = preferredProviders.indexOf(left.value)
-      const rightPriority = preferredProviders.indexOf(right.value)
-      if (leftPriority !== -1 || rightPriority !== -1) {
+  const providerModels = useMemo(
+    () =>
+      [...availableModels].sort((left, right) => {
+        const leftPriority = IMAGE_MODEL_PRIORITY.indexOf(left.value)
+        const rightPriority = IMAGE_MODEL_PRIORITY.indexOf(right.value)
+        if (leftPriority === -1 && rightPriority === -1) return 0
         if (leftPriority === -1) return 1
         if (rightPriority === -1) return -1
         return leftPriority - rightPriority
-      }
-      return left.label.localeCompare(right.label)
-    })
-  }, [availableModels])
-
-  useEffect(() => {
-    if (!modelProviders.some((provider) => provider.value === modelProvider)) {
-      setModelProvider(
-        modelProviders.find(
-          (provider) =>
-            provider.value ===
-            (outputMode === "image" ? "black-forest-labs" : "openai")
-        )?.value ??
-          modelProviders.at(0)?.value ??
-          ""
-      )
-    }
-  }, [modelProvider, modelProviders, outputMode])
-
-  useEffect(() => {
-    const provider = (selected?.model ?? preferences?.defaultModel)?.split(
-      "/",
-      1
-    )[0]
-    if (provider && modelProviders.some((option) => option.value === provider))
-      setModelProvider(provider)
-  }, [modelProviders, preferences?.defaultModel, selected?.model])
-
-  const providerModels = useMemo(
-    () =>
-      availableModels
-        .filter((model) => model.provider === modelProvider)
-        .sort((left, right) => {
-          const leftPriority = IMAGE_MODEL_PRIORITY.indexOf(left.value)
-          const rightPriority = IMAGE_MODEL_PRIORITY.indexOf(right.value)
-          if (leftPriority === -1 && rightPriority === -1) return 0
-          if (leftPriority === -1) return 1
-          if (rightPriority === -1) return -1
-          return leftPriority - rightPriority
-        }),
-    [availableModels, modelProvider]
+      }),
+    [availableModels]
   )
   useEffect(() => {
     const preferredModel = selected?.model ?? preferences?.defaultModel
@@ -1161,26 +1142,34 @@ function ChatWorkspace() {
 
   const send = async (
     content: string,
-    meta: { settings: Record<string, string> },
+    meta: { provider: string; settings: Record<string, string> },
     files: File[]
   ) => {
     let draftAttachmentIds: Id<"draftAttachments">[] = []
-    const desktopCodexMessages =
-      activeProvider === "codex" && conversationId
-        ? (messages ?? [])
-            .filter(
-              (message) =>
-                message.status === "complete" &&
-                (message.role === "assistant" || message.role === "user")
-            )
-            .map((message) => ({
-              content: message.content,
-              role: message.role as "assistant" | "user",
-            }))
-        : []
     setSendState("sending")
     try {
-      if (activeProvider === "codex" && files.length)
+      if (!isActiveProvider(meta.provider))
+        throw new Error("Provider unavailable")
+      const provider = meta.provider
+      const providerConnectionId = connections?.find(
+        (connection) =>
+          connection.provider === provider && connection.status === "connected"
+      )?.connectionId
+      const desktopCodexMessages =
+        provider === "codex" && conversationId
+          ? (messages ?? [])
+              .filter(
+                (message) =>
+                  message.status === "complete" &&
+                  (message.role === "assistant" || message.role === "user")
+              )
+              .map((message) => ({
+                content: message.content,
+                role: message.role as "assistant" | "user",
+              }))
+          : []
+
+      if (provider === "codex" && files.length)
         throw new Error("Attachments are not available with Codex yet")
       draftAttachmentIds = await uploadDraftFiles(files)
 
@@ -1192,7 +1181,7 @@ function ChatWorkspace() {
           content,
           ...(draftAttachmentIds.length ? { draftAttachmentIds } : {}),
           model: meta.settings.model,
-          ...(activeProvider === "openrouter" && meta.settings.routingProvider
+          ...(provider === "openrouter" && meta.settings.routingProvider
             ? { routingProvider: meta.settings.routingProvider }
             : {}),
           ...(meta.settings.effort
@@ -1200,7 +1189,7 @@ function ChatWorkspace() {
             : {}),
         })
       } else {
-        if (!activeConnectionId || !meta.settings.model)
+        if (!providerConnectionId || !meta.settings.model)
           throw new Error("Model unavailable")
         const slug = await startConversation({
           content,
@@ -1208,8 +1197,8 @@ function ChatWorkspace() {
           model: meta.settings.model,
           outputMode,
           projectId: search.projectId,
-          providerConnectionId: activeConnectionId,
-          ...(activeProvider === "openrouter" && meta.settings.routingProvider
+          providerConnectionId,
+          ...(provider === "openrouter" && meta.settings.routingProvider
             ? { routingProvider: meta.settings.routingProvider }
             : {}),
           ...(meta.settings.effort
@@ -1219,7 +1208,7 @@ function ChatWorkspace() {
         targetConversationId = slug
         await open({ slug, projectId: search.projectId })
       }
-      if (activeProvider === "codex" && targetConversationId) {
+      if (provider === "codex" && targetConversationId) {
         const desktop = window.aiHarnessDesktop
         if (!desktop)
           throw new Error("Codex is only available in the desktop app")
@@ -1279,7 +1268,7 @@ function ChatWorkspace() {
   const renderConversation = (conversation: Doc<"conversations">) => (
     <SidebarMenuItem key={conversation._id}>
       <SidebarMenuButton
-        className="rounded-lg px-2.5 transition-[width,height,padding,background-color,color] duration-150 data-active:bg-sidebar-accent/90"
+        className="rounded-xl px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
         isActive={conversationId === conversation._id}
         render={
           <button
@@ -1343,13 +1332,13 @@ function ChatWorkspace() {
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <Sidebar collapsible="offcanvas">
-        <SidebarHeader className="gap-2 border-b border-sidebar-border/70 p-3">
+        <SidebarHeader className="gap-3 border-b border-sidebar-border/50 p-3.5">
           <a
             aria-label="AI Harness home"
-            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            className="flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/chat"
           >
-            <span className="inline-flex size-9 shrink-0 overflow-hidden rounded-lg bg-background ring-1 ring-sidebar-border">
+            <span className="inline-flex size-10 shrink-0 overflow-hidden rounded-xl bg-background shadow-sm ring-1 ring-sidebar-border/70">
               <img
                 alt=""
                 className="size-full"
@@ -1359,16 +1348,16 @@ function ChatWorkspace() {
               />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold tracking-tight">
+              <span className="block truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
                 AI Harness
               </span>
-              <span className="block text-[11px] text-sidebar-foreground/55">
-                Model workspace
+              <span className="mt-0.5 block truncate text-[10px] font-medium tracking-[0.14em] text-sidebar-foreground/45 uppercase">
+                Workspace
               </span>
             </span>
           </a>
           <Button
-            className="h-9 w-full justify-start rounded-lg"
+            className="h-9 w-full justify-start rounded-xl shadow-sm transition-[background-color,box-shadow,transform] duration-150 hover:shadow-md active:scale-[0.98]"
             onClick={() =>
               open({ mode: "chat-new", projectId: search.projectId })
             }
@@ -1394,16 +1383,16 @@ function ChatWorkspace() {
             />
             <SidebarInput
               aria-label="Search recent chats"
-              className="h-9 rounded-lg border-sidebar-border bg-background/70 pl-8 focus-visible:bg-background"
+              className="h-9 rounded-xl border-sidebar-border/60 bg-background/55 pl-8 transition-colors focus-visible:bg-background"
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search chats"
               value={searchQuery}
             />
           </div>
         </SidebarHeader>
-        <SidebarContent className="gap-0 px-1 py-2">
-          <SidebarGroup className="p-2">
-            <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold tracking-wide text-sidebar-foreground/55">
+        <SidebarContent className="gap-0 px-2 py-3">
+          <SidebarGroup className="p-1.5">
+            <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
               Projects
             </SidebarGroupLabel>
             <SidebarGroupAction
@@ -1418,7 +1407,7 @@ function ChatWorkspace() {
               />
             </SidebarGroupAction>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
+              <SidebarMenu className="gap-0.5">
                 {projects === undefined ? (
                   <SidebarMenuSkeleton />
                 ) : (
@@ -1428,7 +1417,7 @@ function ChatWorkspace() {
                     return (
                       <SidebarMenuItem key={project._id}>
                         <SidebarMenuButton
-                          className="rounded-lg px-2.5 pr-14 transition-[width,height,padding,background-color,color] duration-150 data-active:bg-sidebar-accent/90"
+                          className="rounded-xl px-2.5 pr-14 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
                           isActive={isActive}
                           render={
                             <button
@@ -1510,7 +1499,7 @@ function ChatWorkspace() {
                         </DropdownMenu>
                         <ProjectConversationDisclosure open={isExpanded}>
                           {isActive ? (
-                            <SidebarMenu className="mt-1 ml-4 w-[calc(100%-1rem)] gap-0.5 border-l border-sidebar-border pl-2">
+                            <SidebarMenu className="mt-1 ml-3 w-[calc(100%-0.75rem)] gap-0.5 border-l border-sidebar-border/50 pl-2">
                               {filteredProjectConversations === undefined ? (
                                 <SidebarMenuSkeleton />
                               ) : filteredProjectConversations.length === 0 ? (
@@ -1542,12 +1531,12 @@ function ChatWorkspace() {
               ) : null}
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup className="p-2 pt-1">
-            <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold tracking-wide text-sidebar-foreground/55">
+          <SidebarGroup className="p-1.5 pt-3">
+            <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
               Recent chats
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
+              <SidebarMenu className="gap-0.5">
                 {filteredRecentConversations === undefined ? (
                   <SidebarMenuSkeleton />
                 ) : filteredRecentConversations.length === 0 ? (
@@ -1563,10 +1552,10 @@ function ChatWorkspace() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border/70 p-3">
+        <SidebarFooter className="gap-2.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2.5">
           <div
             aria-label="Chat controls"
-            className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5"
+            className="flex items-center gap-2 rounded-xl border border-sidebar-border/45 bg-sidebar-accent/25 p-1.5"
             role="group"
           >
             <Select
@@ -1580,7 +1569,7 @@ function ChatWorkspace() {
             >
               <SelectTrigger
                 aria-label="Output mode"
-                className="w-full min-w-0 justify-between rounded-lg bg-background/70 px-2"
+                className="min-w-0 flex-1 justify-between rounded-lg border-transparent bg-background/55 px-2.5 shadow-none hover:bg-background/75"
                 size="sm"
               >
                 <SelectValue />
@@ -1593,97 +1582,16 @@ function ChatWorkspace() {
               </SelectContent>
             </Select>
             <SidebarVoiceButton onActivate={() => setVoiceMode(true)} />
-            <Select
-              disabled={
-                Boolean(conversationId) ||
-                outputMode === "image" ||
-                sendState === "sending"
-              }
-              onValueChange={(provider) => {
-                if (provider) setActiveProvider(provider)
-              }}
-              value={activeProvider}
-            >
-              <SelectTrigger
-                aria-label="Model provider"
-                className="w-full min-w-0 justify-between rounded-lg bg-background/70 px-2"
-                size="sm"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end" alignItemWithTrigger={false}>
-                {outputMode === "text" && codex ? (
-                  <SelectItem value="codex">ChatGPT subscription</SelectItem>
-                ) : null}
-                {outputMode === "text" && openAi ? (
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                ) : null}
-                {openRouter ? (
-                  <SelectItem value="openrouter">OpenRouter</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
           </div>
-          <div className="flex min-w-0 items-center gap-2.5">
-            <UserButton>
-              <UserButton.MenuItems>
-                {desktopAvailable ? (
-                  <UserButton.Action
-                    label="App updates"
-                    labelIcon={
-                      <HugeiconsIcon
-                        aria-hidden="true"
-                        icon={SystemUpdate02Icon}
-                        strokeWidth={1.8}
-                      />
-                    }
-                    onClick={openDesktopUpdaterDialog}
-                  />
-                ) : null}
-                <UserButton.Action
-                  label="Archived chats"
-                  labelIcon={
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={Archive02Icon}
-                      strokeWidth={1.8}
-                    />
-                  }
-                  onClick={() => setArchivedOpen(true)}
-                />
-                <UserButton.Action
-                  label="Memory"
-                  labelIcon={
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={AiBrain01Icon}
-                      strokeWidth={1.8}
-                    />
-                  }
-                  onClick={() => setMemoryOpen(true)}
-                />
-                <UserButton.Action
-                  label="Preferences"
-                  labelIcon={
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={Settings02Icon}
-                      strokeWidth={1.8}
-                    />
-                  }
-                  onClick={() => setPreferencesOpen(true)}
-                />
-              </UserButton.MenuItems>
-            </UserButton>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium">
-                {viewer?.name ?? "Your account"}
-              </span>
-              <span className="block truncate text-[11px] text-sidebar-foreground/55">
-                {viewer?.email ?? "Signed in"}
-              </span>
-            </span>
-          </div>
+          <SidebarUserMenu
+            desktopAvailable={desktopAvailable}
+            email={viewer?.email}
+            name={viewer?.name}
+            onOpenAppUpdates={openDesktopUpdaterDialog}
+            onOpenArchivedChats={() => setArchivedOpen(true)}
+            onOpenMemory={() => setMemoryOpen(true)}
+            onOpenPreferences={() => setPreferencesOpen(true)}
+          />
           <UserPreferencesDialog
             models={catalog}
             onOpenChange={setPreferencesOpen}
@@ -2179,9 +2087,11 @@ function ChatWorkspace() {
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
                 onAction={(value) => {
-                  void send(value, { settings: defaultSettings }, []).catch(
-                    () => undefined
-                  )
+                  void send(
+                    value,
+                    { provider: activeProvider, settings: defaultSettings },
+                    []
+                  ).catch(() => undefined)
                 }}
               />
               <div className="sticky bottom-0 z-10 w-full bg-gradient-to-t from-background from-70% to-transparent px-4 pt-8 pb-4">
@@ -2202,8 +2112,7 @@ function ChatWorkspace() {
                     </p>
                   ) : null}
                   <AIInput
-                    agents={modelProviders}
-                    defaultAgent={modelProvider}
+                    defaultProvider={activeProvider}
                     defaultSettings={defaultSettings}
                     disabled={
                       sendState === "sending" ||
@@ -2212,7 +2121,9 @@ function ChatWorkspace() {
                       catalogState !== "ready" ||
                       providerModels.length === 0
                     }
-                    onAgentChange={setModelProvider}
+                    onProviderChange={(value) => {
+                      if (isActiveProvider(value)) setActiveProvider(value)
+                    }}
                     onSettingsChange={(settings) =>
                       setSelectedModelId(settings.model)
                     }
@@ -2227,12 +2138,18 @@ function ChatWorkspace() {
                             ? "Loading provider models..."
                             : catalogState === "failed"
                               ? "Reconnect your provider to continue"
-                              : selectedModel
-                                ? outputMode === "image"
-                                  ? `Describe an image for ${selectedModel.label}`
-                                  : `Message ${selectedModel.label}`
-                                : "Choose a model"
+                              : activeProvider === "cursor"
+                                ? "Cursor chat is not available yet"
+                                : selectedModel
+                                  ? outputMode === "image"
+                                    ? `Describe an image for ${selectedModel.label}`
+                                    : `Message ${selectedModel.label}`
+                                  : "Choose a model"
                     }
+                    providerDisabled={
+                      Boolean(conversationId) || sendState === "sending"
+                    }
+                    providers={executionProviderOptions}
                     settingGroups={settingGroups}
                     showMessages={false}
                   />
