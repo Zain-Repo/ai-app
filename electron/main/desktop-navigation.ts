@@ -6,6 +6,16 @@ const DESKTOP_AUTH_ORIGINS = new Set([
   "https://github.com",
 ])
 
+const DESKTOP_AUTH_CALLBACK_ORIGINS = new Set([
+  "https://accounts.a2zsoftware.ca",
+  "https://clerk.a2zsoftware.ca",
+])
+
+const DESKTOP_AUTH_CALLBACK_PATHS = new Set([
+  "/oauth_callback",
+  "/v1/oauth_callback",
+])
+
 const ALLOWED_PATHS = [
   "/chat",
   "/desktop/sign-in",
@@ -47,6 +57,18 @@ export function isAllowedDesktopAuthNavigation(target: string) {
   try {
     const url = new URL(target)
     return url.protocol === "https:" && DESKTOP_AUTH_ORIGINS.has(url.origin)
+  } catch {
+    return false
+  }
+}
+
+export function isDesktopAuthCallback(target: string) {
+  try {
+    const url = new URL(target)
+    return (
+      DESKTOP_AUTH_CALLBACK_ORIGINS.has(url.origin) &&
+      DESKTOP_AUTH_CALLBACK_PATHS.has(url.pathname)
+    )
   } catch {
     return false
   }

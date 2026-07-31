@@ -21,3 +21,9 @@ Convex agent skills for common tasks can be installed by running
 - Mirror completed changes and decisions to the [AI-APP Engineering Notes](https://app.notion.com/p/3a65615a45578113b272cfb82c0ff235) page.
 - Create or update planned features in the [AI-APP tasks](https://app.notion.com/p/3a55615a455780f385c6f7388200365e) database.
 - Search local notes and Notion before creating a new record to avoid duplicates.
+
+## Pull Request Reviews
+
+- Use Codex as the repository's automated pull request reviewer.
+- Request a review by commenting `@codex review` on the pull request.
+- Do not enable or use CodeRabbit for this repository.
