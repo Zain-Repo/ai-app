@@ -13,6 +13,7 @@ import { getCurrentUser } from "./authHelpers"
 import { messageAttachmentValidator } from "./attachmentPolicy"
 import { consumeDraftAttachments } from "./attachments"
 import { getMemorySearchScopes } from "./memories"
+import { isIndexableProjectSource } from "./projectEmbeddingPolicy"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
 import { terminalRunValidator } from "./terminalPolicy"
 import { MAX_GENERATIVE_UI_PAYLOAD_LENGTH } from "../shared/generative-ui"
@@ -522,9 +523,31 @@ export const getOpenRouterResponseContext = internalQuery({
     const projectFileNames = projectSources.flatMap((source) =>
       source.kind === "file" ? [source.name] : []
     )
+    const indexedProjectSourceIds = new Set<Id<"projectSources">>()
+    if (project?.embeddingProfileId)
+      for (const source of projectSources) {
+        if (
+          source.kind !== "file" ||
+          !isIndexableProjectSource(source.contentType, source.name)
+        )
+          continue
+        const states = await ctx.db
+          .query("projectSourceIndexStates")
+          .withIndex("by_source_id_and_updated_at", (indexQuery) =>
+            indexQuery.eq("sourceId", source._id)
+          )
+          .order("desc")
+          .take(20)
+        const currentState = states.find(
+          (state) =>
+            state.embeddingProfileId === project.embeddingProfileId &&
+            (state.status === "ready" || state.status === "partial")
+        )
+        if (currentState) indexedProjectSourceIds.add(source._id)
+      }
     const projectFiles = await Promise.all(
       projectSources.flatMap((source) =>
-        source.kind === "file"
+        source.kind === "file" && !indexedProjectSourceIds.has(source._id)
           ? [
               (async () => {
                 const url = await ctx.storage.getUrl(source.storageId)

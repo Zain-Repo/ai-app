@@ -91,6 +91,8 @@ export default defineSchema({
     ownerId: v.id("users"),
     name: v.string(),
     instructions: v.optional(v.string()),
+    embeddingProfileId: v.optional(v.id("projectEmbeddingProfiles")),
+    embeddingProfileRevision: v.optional(v.number()),
     memoryScope: v.optional(
       v.union(v.literal("project_only"), v.literal("all_chats"))
     ),
@@ -119,6 +121,84 @@ export default defineSchema({
       })
     )
   ).index("by_project_id_and_created_at", ["projectId", "createdAt"]),
+
+  projectEmbeddingProfiles: defineTable({
+    ownerId: v.id("users"),
+    projectId: v.id("projects"),
+    providerConnectionId: v.id("providerConnections"),
+    provider: v.union(v.literal("openrouter"), v.literal("openai")),
+    model: v.string(),
+    dimensions: v.number(),
+    revision: v.number(),
+    status: v.union(v.literal("active"), v.literal("superseded")),
+    updatedAt: v.number(),
+  })
+    .index("by_project_id_and_revision", ["projectId", "revision"])
+    .index("by_provider_connection_id", ["providerConnectionId"]),
+
+  projectSourceIndexStates: defineTable({
+    ownerId: v.id("users"),
+    projectId: v.id("projects"),
+    sourceId: v.id("projectSources"),
+    embeddingProfileId: v.optional(v.id("projectEmbeddingProfiles")),
+    embeddingProfileRevision: v.optional(v.number()),
+    sourceFingerprint: v.optional(v.string()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("extracting"),
+      v.literal("indexing"),
+      v.literal("ready"),
+      v.literal("partial"),
+      v.literal("failed"),
+      v.literal("unsupported")
+    ),
+    errorCode: v.optional(
+      v.union(
+        v.literal("provider_required"),
+        v.literal("needs_reauthentication"),
+        v.literal("insufficient_credits"),
+        v.literal("unsupported"),
+        v.literal("indexing_failed")
+      )
+    ),
+    chunkCount: v.number(),
+    attempts: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_source_id_and_updated_at", ["sourceId", "updatedAt"])
+    .index("by_embedding_profile_id_and_updated_at", [
+      "embeddingProfileId",
+      "updatedAt",
+    ])
+    .index("by_project_id_and_updated_at", ["projectId", "updatedAt"])
+    .index("by_project_id_and_status", ["projectId", "status"]),
+
+  projectSourceChunks: defineTable({
+    ownerId: v.id("users"),
+    projectId: v.id("projects"),
+    sourceId: v.id("projectSources"),
+    embeddingProfileId: v.id("projectEmbeddingProfiles"),
+    embeddingProfileRevision: v.number(),
+    sourceFingerprint: v.string(),
+    searchScope: v.string(),
+    chunkIndex: v.number(),
+    content: v.string(),
+    embedding: v.array(v.float64()),
+  })
+    .index("by_source_id_and_embedding_profile_revision", [
+      "sourceId",
+      "embeddingProfileRevision",
+    ])
+    .index("by_project_id_and_embedding_profile_revision", [
+      "projectId",
+      "embeddingProfileRevision",
+    ])
+    .index("by_embedding_profile_id", ["embeddingProfileId"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["searchScope"],
+    }),
 
   draftAttachments: defineTable({
     ownerId: v.id("users"),

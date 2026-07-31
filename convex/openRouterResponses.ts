@@ -1,15 +1,13 @@
 "use node"
 
+import { createHash } from "node:crypto"
+
 import { createOpenAI } from "@ai-sdk/openai"
 import type { OpenAILanguageModelResponsesOptions } from "@ai-sdk/openai"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
-import type {
-  OpenRouterChatSettings,
-  OpenRouterEmbeddingSettings,
-} from "@openrouter/ai-sdk-provider"
+import type { OpenRouterChatSettings } from "@openrouter/ai-sdk-provider"
 import {
   APICallError,
-  embedMany,
   generateText,
   Output,
   stepCountIs,
@@ -26,8 +24,6 @@ import type { ActionCtx } from "./_generated/server"
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
 import {
   buildMemoryContext,
-  MEMORY_EMBEDDING_DIMENSIONS,
-  MEMORY_EMBEDDING_MODEL,
   MEMORY_EXTRACTION_MODEL,
   memoryExtractionInstructions,
   memoryExtractionSchema,
@@ -35,6 +31,17 @@ import {
   selectRelevantMemoryFacts,
 } from "./memoryPolicy"
 import type { MemoryCandidate } from "./memoryPolicy"
+import {
+  createProviderEmbeddings,
+  getPrivateOpenRouterEmbeddingSettings,
+  ProviderEmbeddingError,
+} from "./providerEmbeddings"
+import {
+  buildProjectRetrievalContext,
+  chunkProjectSourceText,
+  MAX_PROJECT_SOURCE_CHUNKS,
+  MAX_PROJECT_SOURCE_TEXT_CHARS,
+} from "./projectEmbeddingPolicy"
 import { decryptProviderToken } from "./providerCrypto"
 import {
   createTerminalSandboxSession,
@@ -60,6 +67,9 @@ const OPENAI_TITLE_MODEL = "gpt-4o-mini"
 const OPENROUTER_TITLE_MODEL = `openai/${OPENAI_TITLE_MODEL}`
 const MAX_RELEVANT_MEMORIES = 8
 const MIN_MEMORY_SCORE = 0.35
+const MAX_RELEVANT_PROJECT_CHUNKS = 8
+const MIN_PROJECT_CHUNK_SCORE = 0.3
+const PROJECT_EMBEDDING_BATCH_SIZE = 32
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
@@ -246,15 +256,7 @@ export function getOpenRouterModelSettings(
   }
 }
 
-export function getPrivateOpenRouterEmbeddingSettings(): OpenRouterEmbeddingSettings {
-  return {
-    extraBody: {
-      dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-      encoding_format: "float",
-      provider: PRIVATE_PROVIDER_ROUTING,
-    },
-  }
-}
+export { getPrivateOpenRouterEmbeddingSettings }
 
 function getPrivateOpenRouterModelSettings(): OpenRouterChatSettings {
   return {
@@ -386,26 +388,7 @@ export function normalizeGeneratedTitle(value: string) {
 async function createEmbeddings(token: string, input: string[]) {
   if (!input.length) return []
   try {
-    const openrouter = createOpenRouter({
-      apiKey: token,
-      compatibility: "strict",
-    })
-    const { embeddings } = await embedMany({
-      model: openrouter.textEmbeddingModel(
-        MEMORY_EMBEDDING_MODEL,
-        getPrivateOpenRouterEmbeddingSettings()
-      ),
-      values: input,
-      abortSignal: AbortSignal.timeout(MEMORY_REQUEST_TIMEOUT_MS),
-    })
-    return embeddings.length === input.length &&
-      embeddings.every(
-        (embedding) =>
-          embedding.length === MEMORY_EMBEDDING_DIMENSIONS &&
-          embedding.every(Number.isFinite)
-      )
-      ? embeddings
-      : null
+    return await createProviderEmbeddings(token, "openrouter", input)
   } catch {
     return null
   }
@@ -603,6 +586,180 @@ async function generateConversationTitle(
   }
 }
 
+function projectIndexErrorCode(cause: unknown) {
+  const status =
+    cause instanceof ProviderEmbeddingError ? cause.statusCode : undefined
+  if (status === 401 || status === 403) return "needs_reauthentication" as const
+  if (status === 402) return "insufficient_credits" as const
+  return "indexing_failed" as const
+}
+
+export const indexProjectSource = internalAction({
+  args: { stateId: v.id("projectSourceIndexStates") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    let connectionId: Id<"providerConnections"> | undefined
+    try {
+      const started = await ctx.runMutation(
+        internal.projectEmbeddings.setProjectSourceIndexStatus,
+        { stateId: args.stateId, status: "extracting" }
+      )
+      if (!started) return null
+      const context = await ctx.runQuery(
+        internal.projectEmbeddings.getProjectSourceIndexingContext,
+        args
+      )
+      if (!context) return null
+      if (context.kind === "error") {
+        if (context.connectionId)
+          await ctx.runMutation(
+            internal.providerConnections.markProviderNeedsAuthentication,
+            { connectionId: context.connectionId }
+          )
+        await ctx.runMutation(
+          internal.projectEmbeddings.failProjectSourceIndex,
+          {
+            stateId: args.stateId,
+            errorCode: context.errorCode,
+          }
+        )
+        return null
+      }
+      connectionId = context.connectionId
+      const blob = await ctx.storage.get(context.storageId)
+      if (!blob) throw new Error("Project source storage unavailable")
+      const bytes = Buffer.from(await blob.arrayBuffer())
+      const sourceFingerprint = createHash("sha256").update(bytes).digest("hex")
+      const fullText = await blob.text()
+      const chunks = chunkProjectSourceText(
+        fullText.slice(0, MAX_PROJECT_SOURCE_TEXT_CHARS)
+      )
+      if (!chunks.length) {
+        await ctx.runMutation(
+          internal.projectEmbeddings.failProjectSourceIndex,
+          { stateId: args.stateId, errorCode: "unsupported" }
+        )
+        return null
+      }
+      const partial =
+        fullText.length > MAX_PROJECT_SOURCE_TEXT_CHARS ||
+        chunks.length === MAX_PROJECT_SOURCE_CHUNKS
+      const stillCurrent = await ctx.runMutation(
+        internal.projectEmbeddings.setProjectSourceIndexStatus,
+        { stateId: args.stateId, status: "indexing" }
+      )
+      if (!stillCurrent) return null
+      const token = await decryptProviderToken(
+        context.ciphertext,
+        context.iv,
+        env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+        context.provider
+      )
+      const embeddings: number[][] = []
+      for (
+        let index = 0;
+        index < chunks.length;
+        index += PROJECT_EMBEDDING_BATCH_SIZE
+      ) {
+        embeddings.push(
+          ...(await createProviderEmbeddings(
+            token,
+            context.provider,
+            chunks.slice(index, index + PROJECT_EMBEDDING_BATCH_SIZE)
+          ))
+        )
+      }
+      await ctx.runMutation(
+        internal.projectEmbeddings.applyProjectSourceChunks,
+        {
+          stateId: args.stateId,
+          sourceFingerprint,
+          partial,
+          chunks: chunks.map((content, chunkIndex) => ({
+            chunkIndex,
+            content,
+            embedding: embeddings[chunkIndex],
+          })),
+        }
+      )
+    } catch (cause) {
+      const errorCode = projectIndexErrorCode(cause)
+      if (connectionId && errorCode === "needs_reauthentication")
+        await ctx.runMutation(
+          internal.providerConnections.markProviderNeedsAuthentication,
+          { connectionId }
+        )
+      await ctx.runMutation(internal.projectEmbeddings.failProjectSourceIndex, {
+        stateId: args.stateId,
+        errorCode,
+      })
+    }
+    return null
+  },
+})
+
+async function retrieveRelevantProjectSources(
+  ctx: ActionCtx,
+  args: {
+    ownerId: Id<"users">
+    projectId?: Id<"projects">
+    query: string
+  }
+) {
+  if (!args.projectId || !args.query.trim()) return ""
+  let connectionId: Id<"providerConnections"> | undefined
+  try {
+    const context = await ctx.runQuery(
+      internal.projectEmbeddings.getProjectRetrievalContext,
+      { ownerId: args.ownerId, projectId: args.projectId }
+    )
+    if (!context) return ""
+    connectionId = context.connectionId
+    const token = await decryptProviderToken(
+      context.ciphertext,
+      context.iv,
+      env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+      context.provider
+    )
+    const [embedding] = await createProviderEmbeddings(
+      token,
+      context.provider,
+      [args.query]
+    )
+    const hits = await ctx.vectorSearch("projectSourceChunks", "by_embedding", {
+      vector: embedding,
+      limit: MAX_RELEVANT_PROJECT_CHUNKS,
+      filter: (query) => query.eq("searchScope", context.searchScope),
+    })
+    const relevantHits = hits.filter(
+      (hit) => hit._score >= MIN_PROJECT_CHUNK_SCORE
+    )
+    if (!relevantHits.length) return ""
+    const chunks = await ctx.runQuery(
+      internal.projectEmbeddings.hydrateProjectSearchResults,
+      {
+        ownerId: args.ownerId,
+        projectId: args.projectId,
+        profileId: context.profileId,
+        profileRevision: context.profileRevision,
+        chunkIds: relevantHits.map((hit) => hit._id),
+      }
+    )
+    return buildProjectRetrievalContext(chunks)
+  } catch (cause) {
+    if (
+      connectionId &&
+      cause instanceof ProviderEmbeddingError &&
+      (cause.statusCode === 401 || cause.statusCode === 403)
+    )
+      await ctx.runMutation(
+        internal.providerConnections.markProviderNeedsAuthentication,
+        { connectionId }
+      )
+    return ""
+  }
+}
+
 export const generate = internalAction({
   args: {
     assistantMessageId: v.id("messages"),
@@ -688,13 +845,19 @@ export const generate = internalAction({
         memoryStillCurrent ? context.memoryPreferences : [],
         memoryStillCurrent ? relevantMemories : []
       )
+      const projectSourceContext = await retrieveRelevantProjectSources(ctx, {
+        ownerId: context.memoryOwnerId,
+        ...(context.projectId ? { projectId: context.projectId } : {}),
+        query: context.lastUserMessage,
+      })
+      const supplementalContext = `${memoryContext}${projectSourceContext}`
       const hydratedMessages = await inlineTextAttachments(
         context.messages,
         async (storageId) => await ctx.storage.get(storageId)
       )
       const messages = hydratedMessages.map((message, index) =>
-        index === 0 && message.role === "system" && memoryContext
-          ? { ...message, content: `${message.content}${memoryContext}` }
+        index === 0 && message.role === "system" && supplementalContext
+          ? { ...message, content: `${message.content}${supplementalContext}` }
           : message
       )
       const prompt = toModelPrompt(messages)

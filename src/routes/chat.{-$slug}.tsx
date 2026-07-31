@@ -44,6 +44,15 @@ import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
+import {
+  getEmbeddingConnections,
+  ProjectSourcesPanel,
+} from "@/components/project-sources-panel"
+import type {
+  ProjectEmbeddingConnection,
+  ProjectEmbeddingProfile,
+  ProjectSourceItem,
+} from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
@@ -71,6 +80,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import {
   Select,
   SelectContent,
@@ -475,6 +485,12 @@ function ChatWorkspace() {
       ? { projectId: search.projectId }
       : "skip"
   )
+  const projectEmbeddingProfile = useQuery(
+    api.projects.getEmbeddingProfile,
+    search.mode === "project" && search.projectId
+      ? { projectId: search.projectId }
+      : "skip"
+  )
   const recentConversations = useQuery(api.conversations.listRecent, {
     limit: 30,
     unassignedOnly: true,
@@ -496,6 +512,13 @@ function ChatWorkspace() {
   const removeConversation = useMutation(api.conversations.remove)
   const createProject = useMutation(api.projects.create)
   const addProjectSources = useMutation(api.projects.addSources)
+  const configureProjectEmbeddings = useMutation(
+    api.projects.configureEmbedding
+  )
+  const retryProjectSourceIndexing = useMutation(
+    api.projects.retrySourceEmbedding
+  )
+  const removeProjectSource = useMutation(api.projects.removeSource)
   const renameProjectMutation = useMutation(api.projects.rename)
   const removeProject = useMutation(api.projects.remove)
   const moveToProject = useMutation(api.conversations.moveToProject)
@@ -514,6 +537,12 @@ function ChatWorkspace() {
   const [projectSourceLinks, setProjectSourceLinks] = useState<string[]>([])
   const [projectSourceUrl, setProjectSourceUrl] = useState("")
   const [projectSourceError, setProjectSourceError] = useState("")
+  const [projectEmbeddingConnectionId, setProjectEmbeddingConnectionId] =
+    useState<Id<"providerConnections"> | "">("")
+  const [projectEmbeddingActionError, setProjectEmbeddingActionError] =
+    useState("")
+  const [projectEmbeddingActionPending, setProjectEmbeddingActionPending] =
+    useState(false)
   const [projectState, setProjectState] = useState<
     "creating" | "failed" | "idle"
   >("idle")
@@ -564,6 +593,19 @@ function ChatWorkspace() {
     () => getConnectedProviderOptions(connections, desktopAvailable),
     [connections, desktopAvailable]
   )
+  const embeddingConnections = useMemo(
+    () => getEmbeddingConnections(connections),
+    [connections]
+  )
+  useEffect(() => {
+    if (
+      projectEmbeddingConnectionId &&
+      !embeddingConnections.some(
+        (connection) => connection.connectionId === projectEmbeddingConnectionId
+      )
+    )
+      setProjectEmbeddingConnectionId("")
+  }, [embeddingConnections, projectEmbeddingConnectionId])
   const executionProviderOptions = useMemo(
     () => getExecutionProviderOptions(connectedProviderOptions, outputMode),
     [connectedProviderOptions, outputMode]
@@ -1033,6 +1075,9 @@ function ChatWorkspace() {
         ...(projectSourceLinks.length
           ? { sourceLinks: projectSourceLinks }
           : {}),
+        ...(projectEmbeddingConnectionId
+          ? { embeddingProviderConnectionId: projectEmbeddingConnectionId }
+          : {}),
       })
       draftAttachmentIds = []
       setProjectName("")
@@ -1042,6 +1087,7 @@ function ChatWorkspace() {
       setProjectSourceLinks([])
       setProjectSourceUrl("")
       setProjectSourceError("")
+      setProjectEmbeddingConnectionId("")
       setProjectState("idle")
       await open({ projectId, mode: "chat-new" })
     } catch {
@@ -1079,6 +1125,58 @@ function ChatWorkspace() {
         )
       )
       throw new Error("The project files could not be added. Try again.")
+    }
+  }
+
+  const pinProjectEmbeddingProvider = async (
+    projectId: Id<"projects">,
+    providerConnectionId: Id<"providerConnections">
+  ) => {
+    setProjectEmbeddingActionError("")
+    setProjectEmbeddingActionPending(true)
+    try {
+      await configureProjectEmbeddings({ projectId, providerConnectionId })
+    } catch {
+      setProjectEmbeddingActionError(
+        "The embedding provider could not be updated. Check the connection and try again."
+      )
+    } finally {
+      setProjectEmbeddingActionPending(false)
+    }
+  }
+
+  const retryProjectSource = async (
+    projectId: Id<"projects">,
+    sourceId?: Id<"projectSources">
+  ) => {
+    if (!sourceId) return
+    setProjectEmbeddingActionError("")
+    setProjectEmbeddingActionPending(true)
+    try {
+      await retryProjectSourceIndexing({ projectId, sourceId })
+    } catch {
+      setProjectEmbeddingActionError(
+        "The source could not be queued for indexing. Try again."
+      )
+    } finally {
+      setProjectEmbeddingActionPending(false)
+    }
+  }
+
+  const removeProjectSourceFromProject = async (
+    projectId: Id<"projects">,
+    sourceId: Id<"projectSources">
+  ) => {
+    setProjectEmbeddingActionError("")
+    setProjectEmbeddingActionPending(true)
+    try {
+      await removeProjectSource({ projectId, sourceId })
+    } catch {
+      setProjectEmbeddingActionError(
+        "The source could not be removed. Try again."
+      )
+    } finally {
+      setProjectEmbeddingActionPending(false)
     }
   }
 
@@ -1634,12 +1732,26 @@ function ChatWorkspace() {
           {search.mode === "project" ? (
             selectedProject ? (
               <ProjectWorkspace
+                embeddingActionError={projectEmbeddingActionError}
+                embeddingActionPending={projectEmbeddingActionPending}
+                embeddingConnections={connections}
+                embeddingProfile={projectEmbeddingProfile}
                 conversations={projectConversations}
+                onConnectEmbeddingProvider={() => setConnectorOpen(true)}
                 onNewChat={() =>
                   open({ mode: "chat-new", projectId: selectedProject._id })
                 }
                 onOpenChat={(slug) =>
                   open({ projectId: selectedProject._id, slug })
+                }
+                onPinEmbeddingProvider={(connectionId) =>
+                  pinProjectEmbeddingProvider(selectedProject._id, connectionId)
+                }
+                onRetrySource={(sourceId) =>
+                  retryProjectSource(selectedProject._id, sourceId)
+                }
+                onRemoveSource={(sourceId) =>
+                  removeProjectSourceFromProject(selectedProject._id, sourceId)
                 }
                 onUploadFiles={(files, reportProgress) =>
                   uploadProjectSourceFiles(
@@ -1811,6 +1923,63 @@ function ChatWorkspace() {
                     </TabsContent>
 
                     <TabsContent className="grid gap-5" value="sources">
+                      <section
+                        aria-labelledby="new-project-embedding-heading"
+                        className="rounded-2xl bg-muted/35 p-4 ring-1 ring-border/70"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h2
+                              className="text-sm font-semibold"
+                              id="new-project-embedding-heading"
+                            >
+                              Semantic search
+                            </h2>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                              Pin one provider for source indexing and project
+                              retrieval. You can re-index with another provider
+                              later.
+                            </p>
+                          </div>
+                          {embeddingConnections.length ? (
+                            <NativeSelect
+                              aria-label="Project embedding provider"
+                              className="w-full sm:w-auto"
+                              onChange={(event) =>
+                                setProjectEmbeddingConnectionId(
+                                  event.target
+                                    .value as Id<"providerConnections">
+                                )
+                              }
+                              value={projectEmbeddingConnectionId}
+                            >
+                              <NativeSelectOption value="">
+                                Index later
+                              </NativeSelectOption>
+                              {embeddingConnections.map((connection) => (
+                                <NativeSelectOption
+                                  key={connection.connectionId}
+                                  value={connection.connectionId}
+                                >
+                                  {connection.displayName ??
+                                    (connection.provider === "openai"
+                                      ? "OpenAI"
+                                      : "OpenRouter")}
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                          ) : (
+                            <Button
+                              onClick={() => setConnectorOpen(true)}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              Connect OpenAI or OpenRouter
+                            </Button>
+                          )}
+                        </div>
+                      </section>
                       <div className="grid gap-5 md:grid-cols-2">
                         <section aria-labelledby="source-link-heading">
                           <div className="mb-2 flex items-center gap-2">
@@ -2186,16 +2355,6 @@ function ChatWorkspace() {
   )
 }
 
-type ProjectSource = {
-  _id: Id<"projectSources">
-  contentType?: string
-  createdAt: number
-  kind: "file" | "link"
-  name: string
-  size?: number
-  url: string | null
-}
-
 function formatProjectDate(value: number) {
   return new Intl.DateTimeFormat(undefined, {
     day: "numeric",
@@ -2209,21 +2368,39 @@ function formatProjectDate(value: number) {
 
 function ProjectWorkspace({
   conversations,
+  embeddingActionError,
+  embeddingActionPending,
+  embeddingConnections,
+  embeddingProfile,
+  onConnectEmbeddingProvider,
   onNewChat,
   onOpenChat,
+  onPinEmbeddingProvider,
+  onRemoveSource,
+  onRetrySource,
   onUploadFiles,
   project,
   sources,
 }: {
   conversations: Doc<"conversations">[] | undefined
+  embeddingActionError: string
+  embeddingActionPending: boolean
+  embeddingConnections: readonly ProjectEmbeddingConnection[] | undefined
+  embeddingProfile: ProjectEmbeddingProfile | null | undefined
+  onConnectEmbeddingProvider: () => void
   onNewChat: () => void
   onOpenChat: (slug: string) => void
+  onPinEmbeddingProvider: (
+    connectionId: Id<"providerConnections">
+  ) => Promise<void>
+  onRemoveSource: (sourceId: Id<"projectSources">) => Promise<void>
+  onRetrySource: (sourceId?: Id<"projectSources">) => Promise<void>
   onUploadFiles: (
     files: File[],
     reportProgress: (progress: number) => void
   ) => Promise<void>
   project: Doc<"projects">
-  sources: ProjectSource[] | undefined
+  sources: ProjectSourceItem[] | undefined
 }) {
   const [activeTab, setActiveTab] = useState("chats")
   const inputId = `project-${project._id}-source-files`
@@ -2347,66 +2524,18 @@ function ProjectWorkspace({
             <TabsContent value="sources">
               {sources === undefined ? (
                 <ChatStatus loading message="Loading project sources..." />
-              ) : sources.length === 0 ? (
-                <Empty className="min-h-56 border-0">
-                  <EmptyHeader>
-                    <EmptyTitle>No sources yet</EmptyTitle>
-                    <EmptyDescription>
-                      This project does not have any files or links.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
               ) : (
-                <div className="divide-y">
-                  {sources.map((source) => {
-                    const content = (
-                      <>
-                        <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/50 text-muted-foreground">
-                          {source.kind === "file" ? (
-                            <FileText aria-hidden="true" className="size-4" />
-                          ) : (
-                            <HugeiconsIcon
-                              aria-hidden="true"
-                              icon={Link01Icon}
-                              strokeWidth={1.8}
-                            />
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold">
-                            {source.name}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {source.kind === "file" && source.size !== undefined
-                              ? formatFileSize(source.size)
-                              : "Link"}
-                          </span>
-                        </span>
-                        <time className="shrink-0 text-xs text-muted-foreground">
-                          {formatProjectDate(source.createdAt)}
-                        </time>
-                      </>
-                    )
-                    return source.url ? (
-                      <a
-                        className="flex items-center gap-3 px-3 py-4 transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                        href={source.url}
-                        key={source._id}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {content}
-                      </a>
-                    ) : (
-                      <div
-                        className="flex items-center gap-3 px-3 py-4"
-                        key={source._id}
-                      >
-                        {content}
-                      </div>
-                    )
-                  })}
-                </div>
+                <ProjectSourcesPanel
+                  actionError={embeddingActionError}
+                  actionPending={embeddingActionPending}
+                  connections={embeddingConnections}
+                  onConnectProvider={onConnectEmbeddingProvider}
+                  onPinProvider={onPinEmbeddingProvider}
+                  onRemoveSource={onRemoveSource}
+                  onRetryIndexing={onRetrySource}
+                  profile={embeddingProfile}
+                  sources={sources}
+                />
               )}
             </TabsContent>
           </Tabs>
