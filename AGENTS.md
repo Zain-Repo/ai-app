@@ -28,7 +28,7 @@ Convex agent skills for common tasks can be installed by running
 - After the feature is implemented and locally validated, push the same branch to GitHub and request review by commenting `@codex review` on the pull request.
 - Stop after requesting review so the user can inspect the changes and trigger the fix workflow themselves.
 - When a review fix is handed back, apply the requested fixes on the existing feature branch, run the relevant validation again, push the same branch, and request another `@codex review`.
-- Repeat the fix, push, and re-review cycle until no new actionable fixes are reported.
+- After each repush, poll the updated review for new actionable fixes and repeat the fix, push, and re-review cycle until none remain.
 
 ## Pull Request Reviews
 
