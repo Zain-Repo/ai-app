@@ -38,7 +38,10 @@ describe("Windows signing command", () => {
           WINDOWS_CERTIFICATE_PASSWORD: "password",
           WINDOWS_SIGN_PUBLISHER_NAME: "CN=AI Harness",
         })
-      ).toMatchObject({ certificateFile })
+      ).toMatchObject({
+        certificateFile,
+        website: "https://github.com/Zain-Repo/ai-app",
+      })
     } finally {
       fs.rmSync(directory, { force: true, recursive: true })
     }

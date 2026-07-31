@@ -16,7 +16,7 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8")
 )
 const version = packageJson.version
-const repository = arg("repo") || "Zain-Repo/ai-harness-releases"
+const repository = arg("repo") || "Zain-Repo/ai-app"
 const tag = arg("tag") || `v${version}`
 const notes = arg("notes") || `AI Harness ${version} desktop release.`
 const installer = path.resolve(

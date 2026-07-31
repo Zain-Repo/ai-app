@@ -33,7 +33,7 @@ export async function fetchReleaseCodexVersion(appVersion: string) {
   if (!isVersion(appVersion))
     throw new Error("The app update version is invalid")
   const response = await fetch(
-    `https://github.com/Zain-Repo/ai-harness-releases/releases/download/v${encodeURIComponent(appVersion)}/codex-runtime.json`,
+    `https://github.com/Zain-Repo/ai-app/releases/download/v${encodeURIComponent(appVersion)}/codex-runtime.json`,
     { signal: AbortSignal.timeout(10_000) }
   )
   if (!response.ok)
