@@ -8,6 +8,7 @@ import {
   getProjectEmbeddingSearchScope,
   getProjectEmbeddingModel,
   isIndexableProjectSource,
+  matchesProjectEmbeddingPolicy,
   MAX_PROJECT_SOURCE_CHUNKS,
   PROJECT_EMBEDDING_DIMENSIONS,
 } from "./projectEmbeddingPolicy"
@@ -124,8 +125,12 @@ export async function configureEmbeddingProfile(
     ? await ctx.db.get(project.embeddingProfileId)
     : null
   if (
-    currentProfile?.providerConnectionId === connection._id &&
-    currentProfile.status === "active"
+    currentProfile?.ownerId === ownerId &&
+    currentProfile.projectId === projectId &&
+    currentProfile.providerConnectionId === connection._id &&
+    currentProfile.revision === project.embeddingProfileRevision &&
+    currentProfile.status === "active" &&
+    matchesProjectEmbeddingPolicy(currentProfile, connection.provider)
   )
     return currentProfile._id
 

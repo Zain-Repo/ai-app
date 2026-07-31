@@ -14,6 +14,21 @@ export function getProjectEmbeddingModel(provider: ProjectEmbeddingProvider) {
     : OPENAI_EMBEDDING_MODEL
 }
 
+export function matchesProjectEmbeddingPolicy(
+  profile: {
+    dimensions: number
+    model: string
+    provider: ProjectEmbeddingProvider
+  },
+  provider: ProjectEmbeddingProvider
+) {
+  return (
+    profile.provider === provider &&
+    profile.model === getProjectEmbeddingModel(provider) &&
+    profile.dimensions === PROJECT_EMBEDDING_DIMENSIONS
+  )
+}
+
 const SUPPORTED_APPLICATION_TYPES = new Set([
   "application/javascript",
   "application/json",

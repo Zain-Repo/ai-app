@@ -426,6 +426,9 @@ const responseContextValidator = v.object({
   lastUserMessageId: v.id("messages"),
   hasSearchableMemoryFacts: v.boolean(),
   hasProjectLinks: v.boolean(),
+  projectSourceFallbackAttachments: v.array(
+    messageAttachmentValidator.extend({ url: v.string() })
+  ),
   memoryEnabled: v.boolean(),
   memoryKeys: v.array(
     v.object({
@@ -547,7 +550,7 @@ export const getOpenRouterResponseContext = internalQuery({
       }
     const projectFiles = await Promise.all(
       projectSources.flatMap((source) =>
-        source.kind === "file" && !indexedProjectSourceIds.has(source._id)
+        source.kind === "file"
           ? [
               (async () => {
                 const url = await ctx.storage.getUrl(source.storageId)
@@ -556,6 +559,19 @@ export const getOpenRouterResponseContext = internalQuery({
             ]
           : []
       )
+    )
+    const projectSourceFallbackAttachments = projectFiles.flatMap((source) =>
+      source && indexedProjectSourceIds.has(source._id)
+        ? [
+            {
+              contentType: source.contentType,
+              name: source.name,
+              size: source.size,
+              storageId: source.storageId,
+              url: source.url,
+            },
+          ]
+        : []
     )
     const memoryEnabled = owner.memoryEnabled ?? false
     const includeUserMemory = project?.memoryScope !== "project_only"
@@ -624,6 +640,7 @@ export const getOpenRouterResponseContext = internalQuery({
       iv: credential.iv,
       hasSearchableMemoryFacts,
       hasProjectLinks: projectLinks.length > 0,
+      projectSourceFallbackAttachments,
       lastUserMessage: lastUserMessage.content,
       lastUserMessageCreatedAt: lastUserMessage._creationTime,
       lastUserMessageId: lastUserMessage._id,
@@ -654,7 +671,7 @@ export const getOpenRouterResponseContext = internalQuery({
           ? [
               {
                 attachments: projectFiles.flatMap((source) =>
-                  source
+                  source && !indexedProjectSourceIds.has(source._id)
                     ? [
                         {
                           contentType: source.contentType,

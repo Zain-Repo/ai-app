@@ -324,6 +324,60 @@ export async function inlineTextAttachments(
   return hydrated
 }
 
+export function addGenerationContexts(
+  messages: ProviderMessage[],
+  memoryContext: string,
+  projectSourceContext: string
+) {
+  const messagesWithMemory = messages.map((message, index) =>
+    index === 0 && message.role === "system" && memoryContext
+      ? { ...message, content: `${message.content}${memoryContext}` }
+      : message
+  )
+  if (!projectSourceContext) return messagesWithMemory
+
+  const latestUserIndex = messagesWithMemory.findLastIndex(
+    (message) => message.role === "user"
+  )
+  const insertionIndex =
+    latestUserIndex === -1 ? messagesWithMemory.length : latestUserIndex
+  return [
+    ...messagesWithMemory.slice(0, insertionIndex),
+    {
+      content: `Reference context for the next user request:${projectSourceContext}`,
+      role: "user" as const,
+    },
+    ...messagesWithMemory.slice(insertionIndex),
+  ]
+}
+
+export function addProjectSourceFallbackAttachments(
+  messages: ProviderMessage[],
+  fallbackAttachments: NonNullable<ProviderMessage["attachments"]>
+) {
+  if (!fallbackAttachments.length) return messages
+  const projectSourceIndex = messages.findIndex(
+    (message) => message.role === "user"
+  )
+  if (projectSourceIndex === -1)
+    return [
+      {
+        attachments: fallbackAttachments,
+        content: "Use the attached project sources as reference material.",
+        role: "user" as const,
+      },
+      ...messages,
+    ]
+  return messages.map((message, index) =>
+    index === projectSourceIndex
+      ? {
+          ...message,
+          attachments: [...(message.attachments ?? []), ...fallbackAttachments],
+        }
+      : message
+  )
+}
+
 export function toModelPrompt(messages: ProviderMessage[]) {
   const instructions = messages
     .filter((message) => message.role === "system")
@@ -850,15 +904,21 @@ export const generate = internalAction({
         ...(context.projectId ? { projectId: context.projectId } : {}),
         query: context.lastUserMessage,
       })
-      const supplementalContext = `${memoryContext}${projectSourceContext}`
+      const messagesWithProjectSourceFallback =
+        projectSourceContext
+          ? context.messages
+          : addProjectSourceFallbackAttachments(
+              context.messages,
+              context.projectSourceFallbackAttachments
+            )
       const hydratedMessages = await inlineTextAttachments(
-        context.messages,
+        messagesWithProjectSourceFallback,
         async (storageId) => await ctx.storage.get(storageId)
       )
-      const messages = hydratedMessages.map((message, index) =>
-        index === 0 && message.role === "system" && supplementalContext
-          ? { ...message, content: `${message.content}${supplementalContext}` }
-          : message
+      const messages = addGenerationContexts(
+        hydratedMessages,
+        memoryContext,
+        projectSourceContext
       )
       const prompt = toModelPrompt(messages)
       const terminalSandbox = createTerminalSandboxSession({
