@@ -4,6 +4,7 @@ import {
   forgePackageMode,
   isLocalOnlyPackage,
   isSupportedForgeNodeVersion,
+  unsignedPackageMetadata,
 } from "./forge-node-runtime"
 
 describe("Forge Node runtime guard", () => {
@@ -15,7 +16,7 @@ describe("Forge Node runtime guard", () => {
 })
 
 describe("Forge package mode guard", () => {
-  it("recognizes only explicit unsigned package modes", () => {
+  it("recognizes explicit package modes", () => {
     expect(isLocalOnlyPackage(["--local-only"])).toBe(true)
     expect(isLocalOnlyPackage(["--local-only=true"])).toBe(false)
     expect(isLocalOnlyPackage([])).toBe(false)
@@ -24,5 +25,28 @@ describe("Forge package mode guard", () => {
     expect(() => forgePackageMode(["--local-only", "--store"])).toThrow(
       "cannot be both"
     )
+  })
+
+  it("records every package mode as unsigned without signing claims", () => {
+    expect(
+      unsignedPackageMetadata("release", {
+        distribution: "microsoft-store",
+        localOnly: true,
+        outputPath: "out/app",
+        signing: { trust: "publisher" },
+      })
+    ).toEqual({
+      distribution: "github-updater",
+      outputPath: "out/app",
+      unsigned: true,
+    })
+    expect(unsignedPackageMetadata("local-only", {})).toEqual({
+      localOnly: true,
+      unsigned: true,
+    })
+    expect(unsignedPackageMetadata("store", {})).toEqual({
+      distribution: "microsoft-store",
+      unsigned: true,
+    })
   })
 })

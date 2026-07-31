@@ -53,6 +53,8 @@ assisted NSIS installer. Outputs are written to:
 
 Packaging rejects missing or non-HTTPS renderer URLs. It also rejects stale
 package metadata and a packaged version that differs from `package.json`.
+Windows installers are intentionally unsigned, so Windows may show an unknown
+publisher or SmartScreen warning during installation.
 
 ## Updater releases
 
@@ -79,32 +81,20 @@ After CI succeeds for a push to `master`, CI calls the Windows release workflow
 with the exact tested commit. Pull requests, manual CI runs, failed validation,
 and pushes to other branches cannot invoke the release job. The release workflow
 also verifies that the tested commit is still the tip of `origin/master` before
-using any signing credentials.
+packaging and again immediately before publishing.
 
 `package.json` is the release-version source of truth. Version `MAJOR.MINOR.PATCH`
 produces Git tag `vMAJOR.MINOR.PATCH`; bump the package version in the change that
 should create the next desktop release. If that version is already published,
 the release workflow exits successfully without rebuilding or replacing its
-assets. A new version checksum-verifies the official upstream Windows
-`osslsigncode` 2.14 archive, builds and signs the installer, and atomically
-publishes the updater assets to `Zain-Repo/ai-app`.
+assets. A new version builds the unsigned installer and atomically publishes the
+updater assets to `Zain-Repo/ai-app`.
 
 Configure these GitHub repository settings before the first release:
-
-Required secrets:
-
-- `WINDOWS_CERTIFICATE_BASE64`: the base64-encoded PKCS#12/PFX signing certificate.
-- `WINDOWS_CERTIFICATE_PASSWORD`: the certificate password.
 
 Required variables:
 
 - `AI_HARNESS_DESKTOP_URL`: the absolute HTTPS URL loaded by the desktop client.
-- `WINDOWS_SIGN_PUBLISHER_NAME`: the certificate's full subject DN.
-
-Optional variables:
-
-- `WINDOWS_TIMESTAMP_SERVER`: RFC 3161 timestamp server; the signing-script default applies when unset.
-- `WINDOWS_SIGN_WEBSITE`: signing metadata website; defaults to this repository when unset.
 
 The release workflow uses its scoped GitHub Actions token to create and upload
 the Git tag and GitHub release; no personal access token is required. Keep the
@@ -112,23 +102,10 @@ repository public so installed clients can download updater assets without
 credentials. The workflow is intentionally not configured for manual release
 dispatch or publication to another repository.
 
-## Windows code signing
+## Unsigned Windows releases
 
-Windows release builds use the open-source `@electron/windows-sign` and
-`osslsigncode` tools. For local release builds, install `osslsigncode` 2.14 or
-newer, then provide these values through local environment configuration:
-
-- `AI_HARNESS_OSSLSIGNCODE_PATH` (optional when `osslsigncode` is on `PATH`)
-- `WINDOWS_CERTIFICATE_FILE` (PKCS#12/PFX code-signing certificate)
-- `WINDOWS_CERTIFICATE_PASSWORD`
-- `WINDOWS_SIGN_PUBLISHER_NAME` (the certificate's full subject DN)
-- `WINDOWS_TIMESTAMP_SERVER` (optional; defaults to DigiCert's RFC 3161 server)
-- `WINDOWS_SIGN_WEBSITE` (optional)
-
-`bun run installer:windows` signs the packaged application binaries first, then
-the NSIS installer and embedded uninstaller. Packaging verifies every generated
-Authenticode signature against the configured publisher, and publishing
-rechecks the exact packaged executable and installer. An identity-validated
-certificate avoids Windows unknown-publisher warnings; a self-signed
-certificate keeps the release pipeline and updater compatible but remains
-untrusted by Windows. Never commit the certificate or its password.
+Windows release builds do not use Authenticode signing certificates or signing
+secrets. `bun run installer:windows` packages the application and NSIS installer
+unsigned for both local builds and GitHub releases. Users should expect Windows
+to identify the publisher as unknown and may need to confirm a SmartScreen
+warning before installation.

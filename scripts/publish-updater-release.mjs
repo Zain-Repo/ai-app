@@ -6,7 +6,6 @@ import {
   publishUpdaterRelease,
   UPDATER_REPOSITORY,
 } from "./github-updater-release.mjs"
-import { assertPublisherSignature } from "./windows-signing.mjs"
 
 function arg(name) {
   const prefix = `--${name}=`
@@ -35,21 +34,23 @@ const packageMetadata = JSON.parse(
   )
 )
 if (
+  packageMetadata.distribution !== "github-updater" ||
+  packageMetadata.unsigned !== true ||
+  packageMetadata.localOnly === true ||
+  "signing" in packageMetadata ||
   typeof packageMetadata.outputPath !== "string" ||
   !fs.existsSync(packageMetadata.outputPath)
 )
   throw new Error("Packaged app metadata is missing")
-const publisherName = packageMetadata.signing?.publisherName
+const packagedExecutable = path.join(
+  packageMetadata.outputPath,
+  "ai-harness.exe"
+)
 if (
-  packageMetadata.signing?.trust !== "publisher" ||
-  typeof publisherName !== "string"
+  !fs.existsSync(packagedExecutable) ||
+  !fs.statSync(packagedExecutable).isFile()
 )
-  throw new Error("Packaged app signature metadata is missing")
-assertPublisherSignature(
-  path.join(packageMetadata.outputPath, "ai-harness.exe"),
-  publisherName
-)
-assertPublisherSignature(installer, publisherName)
+  throw new Error("The packaged app executable is missing")
 const packagedCodex = path.join(
   packageMetadata.outputPath,
   "resources",
@@ -98,7 +99,11 @@ const assets = [
   runtimeManifest,
 ]
 for (const asset of assets)
-  if (!fs.existsSync(asset))
+  if (
+    !fs.existsSync(asset) ||
+    !fs.statSync(asset).isFile() ||
+    fs.statSync(asset).size === 0
+  )
     throw new Error(`Updater asset not found: ${asset}`)
 
 function gh(args) {

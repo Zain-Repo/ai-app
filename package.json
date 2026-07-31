@@ -89,7 +89,6 @@
     "@electron-forge/shared-types": "^7.11.1",
     "@electron/asar": "^3.4.1",
     "@electron/fuses": "^1.8.0",
-    "@electron/windows-sign": "1.2.2",
     "@cloudflare/vite-plugin": "^1.45.0",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/eslint-config": "latest",

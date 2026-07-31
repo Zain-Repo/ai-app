@@ -7,13 +7,6 @@ on:
         description: Exact master commit that passed CI
         required: true
         type: string
-    secrets:
-      WINDOWS_CERTIFICATE_BASE64:
-        description: Base64-encoded Windows signing certificate
-        required: true
-      WINDOWS_CERTIFICATE_PASSWORD:
-        description: Password for the Windows signing certificate
-        required: true
 
 permissions:
   contents: write
@@ -24,7 +17,7 @@ concurrency:
 
 jobs:
   release:
-    name: Package and publish signed Windows installer
+    name: Package and publish unsigned Windows installer
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -132,113 +125,12 @@ jobs:
             throw "AI_HARNESS_DESKTOP_URL must be an absolute HTTPS URL."
           }
 
-      - name: Install osslsigncode
-        if: env.SHOULD_PUBLISH == 'true'
-        shell: pwsh
-        run: |
-          $archiveUrl = 'https://github.com/mtrojnar/osslsigncode/releases/download/2.14/osslsigncode-2.14-windows-x64-mingw.zip'
-          $expectedHash = '9a1722aaf62a27852c4eb9c35749a0248065052d0ae0a93d4ed6bb49def027f2'
-          $archivePath = Join-Path $env:RUNNER_TEMP "osslsigncode-2.14-$env:GITHUB_RUN_ID.zip"
-          $extractPath = Join-Path $env:RUNNER_TEMP "osslsigncode-2.14-$env:GITHUB_RUN_ID"
-
-          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
-          $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualHash -ne $expectedHash) {
-            throw "The downloaded osslsigncode archive did not match its expected SHA-256."
-          }
-
-          Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
-          $matches = @(Get-ChildItem -LiteralPath $extractPath -Filter osslsigncode.exe -File -Recurse)
-          if ($matches.Count -ne 1) {
-            throw "Expected exactly one osslsigncode.exe in the verified archive."
-          }
-          $osslsigncodePath = $matches[0].FullName
-          $version = (& $osslsigncodePath --version 2>&1 | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch '\b2\.14\b') {
-            throw "Verified osslsigncode 2.14 could not be executed."
-          }
-          "AI_HARNESS_OSSLSIGNCODE_PATH=$osslsigncodePath" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Restore signing certificate
-        if: env.SHOULD_PUBLISH == 'true'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          WINDOWS_SIGN_PUBLISHER_NAME: ${{ vars.WINDOWS_SIGN_PUBLISHER_NAME }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
-            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_BASE64."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_PASSWORD."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_PUBLISHER_NAME)) {
-            throw "Missing required GitHub variable WINDOWS_SIGN_PUBLISHER_NAME."
-          }
-
-          try {
-            $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
-          } catch {
-            throw "WINDOWS_CERTIFICATE_BASE64 is not valid base64."
-          }
-          if ($certificateBytes.Length -eq 0) {
-            throw "WINDOWS_CERTIFICATE_BASE64 decoded to an empty certificate."
-          }
-
-          $certificatePath = Join-Path $env:RUNNER_TEMP "ai-harness-signing-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.pfx"
-          [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
-          $importedCertificates = @()
-          try {
-            $securePassword = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
-            $importedCertificates = @(
-              Import-PfxCertificate `
-                -FilePath $certificatePath `
-                -CertStoreLocation Cert:\CurrentUser\My `
-                -Password $securePassword `
-                -Exportable:$false
-            )
-            if ($importedCertificates.Count -ne 1) {
-              throw "The signing PFX must import exactly one certificate."
-            }
-
-            $importedCertificate = $importedCertificates[0]
-            if ($importedCertificate.Subject -cne $env:WINDOWS_SIGN_PUBLISHER_NAME) {
-              throw "The imported signing certificate subject does not match WINDOWS_SIGN_PUBLISHER_NAME."
-            }
-            if (-not $importedCertificate.HasPrivateKey) {
-              throw "The imported signing certificate does not contain a private key."
-            }
-
-            "WINDOWS_CERTIFICATE_FILE=$certificatePath" |
-              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            "WINDOWS_CERTIFICATE_THUMBPRINT=$($importedCertificate.Thumbprint)" |
-              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          } catch {
-            foreach ($certificate in $importedCertificates) {
-              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
-            }
-            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
-            throw
-          }
-
-      - name: Build signed Windows NSIS installer
+      - name: Build unsigned Windows NSIS installer
         if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
           AI_HARNESS_DESKTOP_URL: ${{ vars.AI_HARNESS_DESKTOP_URL }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          WINDOWS_SIGN_PUBLISHER_NAME: ${{ vars.WINDOWS_SIGN_PUBLISHER_NAME }}
-          WINDOWS_TIMESTAMP_SERVER: ${{ vars.WINDOWS_TIMESTAMP_SERVER }}
-          WINDOWS_SIGN_WEBSITE: ${{ vars.WINDOWS_SIGN_WEBSITE }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_PASSWORD."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_PUBLISHER_NAME)) {
-            throw "Missing required GitHub variable WINDOWS_SIGN_PUBLISHER_NAME."
-          }
           bun run installer:windows
 
       - name: Revalidate release commit before publishing
@@ -272,15 +164,3 @@ jobs:
             out/nsis/latest.yml
             out/nsis/codex-runtime.json
             out/latest-package-client-win32-x64.json
-
-      - name: Remove signing certificate
-        if: always() && env.SHOULD_PUBLISH == 'true'
-        shell: pwsh
-        run: |
-          if ($env:WINDOWS_CERTIFICATE_THUMBPRINT) {
-            $certificateStorePath = "Cert:\CurrentUser\My\$env:WINDOWS_CERTIFICATE_THUMBPRINT"
-            Remove-Item -LiteralPath $certificateStorePath -Force -ErrorAction SilentlyContinue
-          }
-          if ($env:WINDOWS_CERTIFICATE_FILE) {
-            Remove-Item -LiteralPath $env:WINDOWS_CERTIFICATE_FILE -Force -ErrorAction SilentlyContinue
-          }
