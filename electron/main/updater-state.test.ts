@@ -71,4 +71,27 @@ describe("desktop updater state", () => {
       status: "up-to-date",
     })
   })
+
+  it("silences automatic check failures without hiding manual errors", () => {
+    let state = reduceDesktopUpdaterState(
+      createDesktopUpdaterState("0.1.1", true),
+      { type: "checking" }
+    )
+
+    state = reduceDesktopUpdaterState(state, { type: "automatic-error" })
+    expect(state).toMatchObject({
+      error: null,
+      progress: null,
+      status: "idle",
+    })
+
+    state = reduceDesktopUpdaterState(state, {
+      message: "network failed",
+      type: "error",
+    })
+    expect(state).toMatchObject({
+      error: "network failed",
+      status: "error",
+    })
+  })
 })

@@ -7,6 +7,7 @@ export type DesktopUpdaterEvent =
   | { type: "codex-included"; version: string }
   | { type: "download-started" }
   | { progress: number; type: "download-progress" }
+  | { type: "automatic-error" }
   | { type: "error"; message: string }
   | { type: "installing" }
   | { type: "update-available"; version: string }
@@ -66,6 +67,13 @@ export function reduceDesktopUpdaterState(
       error: null,
       progress: null,
       status: "checking",
+    }
+  if (event.type === "automatic-error")
+    return {
+      ...state,
+      error: null,
+      progress: null,
+      status: "idle",
     }
   if (event.type === "update-not-available")
     return {

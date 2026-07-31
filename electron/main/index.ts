@@ -244,10 +244,11 @@ async function createWindow() {
     },
   })
   mainWindow = window
-  updater = new DesktopUpdater(window, {
+  const desktopUpdater = new DesktopUpdater(window, {
     getVersion: () => codex.version(),
     stop: () => codex.stop(),
   })
+  updater = desktopUpdater
 
   window.webContents.setWindowOpenHandler(({ url: target }) => {
     if (isAllowedDesktopAuthNavigation(target)) {
@@ -281,14 +282,12 @@ async function createWindow() {
     }
   )
   window.on("closed", () => {
+    desktopUpdater.stopAutomaticChecks()
     if (mainWindow === window) mainWindow = null
+    if (updater === desktopUpdater) updater = null
   })
   await window.loadURL(url.toString())
-  if (app.isPackaged && !process.windowsStore)
-    setTimeout(
-      () => void updater?.check().catch(() => undefined),
-      30_000
-    ).unref()
+  desktopUpdater.startAutomaticChecks()
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -305,7 +304,10 @@ else {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow()
   })
-  app.on("before-quit", () => void codex.stop())
+  app.on("before-quit", () => {
+    updater?.stopAutomaticChecks()
+    void codex.stop()
+  })
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit()
   })

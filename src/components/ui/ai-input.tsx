@@ -2317,7 +2317,7 @@ export function AIInput({
   )
 
   return (
-    <div className={`w-full ${className ?? ""}`}>
+    <div className={`w-full ${className ?? ""}`} data-slot="ai-input">
       <input
         className="sr-only"
         disabled={disabled}

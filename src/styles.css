@@ -271,6 +271,82 @@
     animation: chat-message-enter 320ms var(--ease-interface) both;
   }
 
+  .chat-workspace-shell {
+    background:
+      radial-gradient(
+        circle at 72% -12%,
+        color-mix(in oklch, var(--primary) 7%, transparent),
+        transparent 32rem
+      ),
+      var(--background);
+  }
+
+  .chat-workspace-sidebar {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--sidebar) 92%, var(--background)),
+      var(--sidebar) 24rem
+    );
+  }
+
+  .chat-workspace-header {
+    min-height: 3.75rem;
+    background: color-mix(in oklch, var(--background) 86%, transparent);
+    backdrop-filter: blur(16px) saturate(145%);
+  }
+
+  .chat-workspace-kicker {
+    font-size: 0.625rem;
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    line-height: 1.2;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .chat-workspace-stage {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--background) 64%, transparent),
+      transparent 14rem
+    );
+  }
+
+  .chat-composer-dock {
+    border-top: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+    background: linear-gradient(
+      to top,
+      var(--background) 62%,
+      color-mix(in oklch, var(--background) 86%, transparent) 82%,
+      transparent
+    );
+  }
+
+  .chat-composer-dock [data-slot="ai-input"] {
+    box-shadow:
+      0 1px 0 color-mix(in oklch, var(--foreground) 4%, transparent),
+      0 20px 40px -30px color-mix(in oklch, var(--foreground) 32%, transparent);
+  }
+
+  .chat-empty-state {
+    min-height: min(28rem, 60vh);
+    padding-inline: 1.5rem;
+  }
+
+  .chat-status {
+    min-height: min(18rem, 45vh);
+  }
+
+  @media (max-width: 40rem) {
+    .chat-workspace-header {
+      min-height: 3.5rem;
+    }
+
+    .chat-composer-dock {
+      padding-inline: 0.75rem;
+    }
+  }
+
   .markdown-response {
     color: var(--foreground);
     font-size: 0.9375rem;
