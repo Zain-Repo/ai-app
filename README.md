@@ -48,7 +48,7 @@ bun run installer:windows
 assisted NSIS installer. Outputs are written to:
 
 - `out/packages/` for unpacked Electron packages
-- `out/nsis/ai-harness-setup-<version>.exe` for the installer
+- `out/nsis/ai-harness-setup.exe` for the installer
 - `out/nsis/latest.yml` and the installer blockmap for updates
 
 Packaging rejects missing or non-HTTPS renderer URLs. It also rejects stale
@@ -56,10 +56,9 @@ package metadata and a packaged version that differs from `package.json`.
 
 ## Updater releases
 
-The updater is configured for the separate release-asset repository
-`Zain-Repo/ai-harness-releases`. Create it as a public repository so installed
-clients can read releases without an embedded GitHub credential, then
-authenticate GitHub CLI before publishing the first release. After building the
+The updater publishes to this public repository, `Zain-Repo/ai-app`, so
+installed clients can read releases without an embedded GitHub credential.
+Authenticate GitHub CLI before publishing the first release. After building the
 installer, publish its installer, blockmap, `latest.yml`, and Codex runtime
 manifest assets with:
 
@@ -73,11 +72,45 @@ is never performed by the installer build. Publishing reads the Codex version
 from the packaged executable and fails if it is behind OpenAI's latest stable
 `@openai/codex` release.
 
+## GitHub Actions CI and releases
+
+CI runs on pull requests, pushes to `master`, and manual dispatch. It installs
+the locked Bun dependencies, checks GitHub Actions workflow YAML formatting,
+then runs type checking, Vitest, and the production build.
+
+To publish the signed Windows installer, push a `vMAJOR.MINOR.PATCH` SemVer tag
+whose version exactly matches `package.json`, or manually run **Release Windows
+desktop app** for an existing matching tag. The workflow checks out that exact
+tagged commit, repeats the source validation, checksum-verifies and uses the
+official upstream Windows `osslsigncode` 2.14 archive, builds and signs the
+installer, and publishes the updater assets to `Zain-Repo/ai-app`.
+
+Configure these GitHub repository settings before the first release:
+
+Required secrets:
+
+- `WINDOWS_CERTIFICATE_BASE64`: the base64-encoded PKCS#12/PFX signing certificate.
+- `WINDOWS_CERTIFICATE_PASSWORD`: the certificate password.
+
+Required variables:
+
+- `AI_HARNESS_DESKTOP_URL`: the absolute HTTPS URL loaded by the desktop client.
+- `WINDOWS_SIGN_PUBLISHER_NAME`: the certificate's full subject DN.
+
+Optional variables:
+
+- `WINDOWS_TIMESTAMP_SERVER`: RFC 3161 timestamp server; the signing-script default applies when unset.
+- `WINDOWS_SIGN_WEBSITE`: signing metadata website; defaults to this repository when unset.
+
+The release workflow uses its scoped GitHub Actions token to create and upload
+the GitHub release; no personal access token is required. Keep the repository
+public so installed clients can download updater assets without credentials.
+
 ## Windows code signing
 
 Windows release builds use the open-source `@electron/windows-sign` and
-`osslsigncode` tools. Install `osslsigncode` 2.14 or newer, then provide these
-values through local or CI secrets:
+`osslsigncode` tools. For local release builds, install `osslsigncode` 2.14 or
+newer, then provide these values through local environment configuration:
 
 - `AI_HARNESS_OSSLSIGNCODE_PATH` (optional when `osslsigncode` is on `PATH`)
 - `WINDOWS_CERTIFICATE_FILE` (PKCS#12/PFX code-signing certificate)

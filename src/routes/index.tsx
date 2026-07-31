@@ -728,7 +728,7 @@ function App() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
                 className="cinema-cta group/button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm"
-                href="https://github.com/Zain-Repo/ai-harness-releases/releases/latest/download/ai-harness-setup.exe"
+                href="https://github.com/Zain-Repo/ai-app/releases/latest/download/ai-harness-setup.exe"
               >
                 Download for Windows
                 <HugeiconsIcon
@@ -740,7 +740,7 @@ function App() {
               </a>
               <a
                 className="cinema-cta-ghost h-11 px-5"
-                href="https://github.com/Zain-Repo/ai-harness-releases/releases/latest"
+                href="https://github.com/Zain-Repo/ai-app/releases/latest"
                 target="_blank"
                 rel="noreferrer"
               >

@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url)
 const { sign: signDirectoryWithElectron } = require("@electron/windows-sign")
 
 const DEFAULT_TIMESTAMP_SERVER = "http://timestamp.digicert.com"
-const DEFAULT_WEBSITE = "https://github.com/Zain-Repo/ai-harness-releases"
+const DEFAULT_WEBSITE = "https://github.com/Zain-Repo/ai-app"
 const SIGNATURE_INSPECTION_SCRIPT = `
 $signature = Get-AuthenticodeSignature -LiteralPath $env:AI_HARNESS_SIGNATURE_FILE -ErrorAction Stop
 [pscustomobject]@{
