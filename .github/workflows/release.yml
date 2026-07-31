@@ -202,6 +202,16 @@ jobs:
           }
           bun run installer:windows
 
+      - name: Revalidate release commit before publishing
+        if: env.SHOULD_PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          git fetch --force --no-tags origin master
+          $masterCommit = (git rev-parse refs/remotes/origin/master).Trim()
+          if ($masterCommit -ne $env:RELEASE_COMMIT_SHA) {
+            throw "The tested commit is no longer the tip of origin/master; refusing to publish stale release assets."
+          }
+
       - name: Publish GitHub release assets
         if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
