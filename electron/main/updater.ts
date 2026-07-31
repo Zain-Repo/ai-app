@@ -26,6 +26,7 @@ export class DesktopUpdater {
   private automaticCheckTimer: NodeJS.Timeout | null = null
   private backgroundCheckTimer: NodeJS.Timeout | null = null
   private isAutomaticCheckRunning = false
+  private automaticCheckErrorPublished = false
   private schedule: DesktopUpdaterScheduleState = {
     lastCheckedAt: null,
     launchCount: 0,
@@ -74,9 +75,13 @@ export class DesktopUpdater {
     autoUpdater.on("update-downloaded", (info: UpdateInfo) =>
       this.apply({ type: "update-downloaded", version: info.version })
     )
-    autoUpdater.on("error", (error: Error) =>
+    autoUpdater.on("error", (error: Error) => {
+      if (this.isAutomaticCheckRunning) {
+        this.publishAutomaticCheckError(error)
+        return
+      }
       this.apply({ message: error.message, type: "error" })
-    )
+    })
   }
 
   getState() {
@@ -156,7 +161,8 @@ export class DesktopUpdater {
           })
         }
     } catch (error) {
-      this.apply({ message: this.errorMessage(error), type: "error" })
+      if (this.isAutomaticCheckRunning) this.publishAutomaticCheckError(error)
+      else this.apply({ message: this.errorMessage(error), type: "error" })
     }
     return this.getState()
   }
@@ -201,11 +207,20 @@ export class DesktopUpdater {
   private async runAutomaticCheck() {
     if (this.isAutomaticCheckRunning) return
     this.isAutomaticCheckRunning = true
+    this.automaticCheckErrorPublished = false
     try {
       await this.check()
     } finally {
       this.isAutomaticCheckRunning = false
+      this.automaticCheckErrorPublished = false
     }
+  }
+
+  private publishAutomaticCheckError(error: unknown) {
+    if (this.automaticCheckErrorPublished) return
+    this.automaticCheckErrorPublished = true
+    log.warn(`Automatic updater check failed: ${this.errorMessage(error)}`)
+    this.apply({ type: "automatic-error" })
   }
 
   private loadSchedule() {

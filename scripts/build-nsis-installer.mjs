@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import yaml from "js-yaml"
 
-import { assertPublisherSignature } from "./windows-signing.mjs"
+import { unsignedWindowsEnvironment } from "./unsigned-windows-environment.mjs"
 
 const root = path.resolve(import.meta.dirname, "..")
 const localOnly = process.argv.includes("--local-only")
@@ -17,11 +17,8 @@ const metadataPath = path.join(
 )
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
 const builderConfig = JSON.parse(fs.readFileSync(builderConfigPath, "utf8"))
-const publisherName = process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim()
-if (!localOnly && !publisherName)
-  throw new Error(
-    "Missing WINDOWS_SIGN_PUBLISHER_NAME for updater signature verification"
-  )
+const unsignedWinConfig = { ...builderConfig.win }
+delete unsignedWinConfig.signtoolOptions
 
 if (!fs.existsSync(metadataPath))
   throw new Error(
@@ -34,25 +31,33 @@ if (
 )
   throw new Error("Current package metadata does not point to a packaged app")
 if (localOnly) {
-  if (metadata.localOnly !== true || metadata.signing)
+  if (
+    metadata.localOnly !== true ||
+    metadata.unsigned !== true ||
+    "signing" in metadata
+  )
     throw new Error(
       "Local installer requires unsigned local-only package metadata"
     )
 } else {
   if (
-    metadata.signing?.tool !== "osslsigncode" ||
-    metadata.signing?.digest !== "sha256" ||
-    metadata.signing?.trust !== "publisher" ||
-    metadata.signing?.publisherName !== publisherName
+    metadata.distribution !== "github-updater" ||
+    metadata.unsigned !== true ||
+    metadata.localOnly === true ||
+    "signing" in metadata
   )
-    throw new Error(
-      "Packaged app was not signed by the configured Windows publisher"
-    )
-  assertPublisherSignature(
-    path.join(metadata.outputPath, `${builderConfig.executableName}.exe`),
-    publisherName
-  )
+    throw new Error("Updater installer requires a fresh unsigned package")
 }
+
+const packagedExecutable = path.join(
+  metadata.outputPath,
+  `${builderConfig.executableName}.exe`
+)
+if (
+  !fs.existsSync(packagedExecutable) ||
+  !fs.statSync(packagedExecutable).isFile()
+)
+  throw new Error("Packaged app executable is missing")
 
 const appAsarPath = path.join(metadata.outputPath, "resources", "app.asar")
 const packagedPackageJson = JSON.parse(
@@ -99,25 +104,15 @@ fs.writeFileSync(
               ...builderConfig.directories,
               output: "out/local-nsis",
             },
-            forceCodeSigning: false,
             publish: [],
           }
-        : { forceCodeSigning: true }),
+        : {}),
+      forceCodeSigning: false,
       extraMetadata: {
         ...(builderConfig.extraMetadata ?? {}),
         version: packageJson.version,
       },
-      win: localOnly
-        ? builderConfig.win
-        : {
-            ...builderConfig.win,
-            signtoolOptions: {
-              ...(builderConfig.win?.signtoolOptions ?? {}),
-              publisherName,
-              sign: "./scripts/windows-signing.mjs",
-              signingHashAlgorithms: ["sha256"],
-            },
-          },
+      win: unsignedWinConfig,
     },
     null,
     2
@@ -125,6 +120,7 @@ fs.writeFileSync(
   "utf8"
 )
 const builderCli = path.join(root, "node_modules", "electron-builder", "cli.js")
+const buildStartedAt = Date.now()
 const result = spawnSync(
   "node",
   [
@@ -141,27 +137,49 @@ const result = spawnSync(
   ],
   {
     cwd: root,
-    env: localOnly
-      ? { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false" }
-      : process.env,
+    env: unsignedWindowsEnvironment(process.env),
     stdio: "inherit",
     windowsHide: true,
   }
 )
 if (result.error) throw result.error
 if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1)
+const installerDirectory = path.join(
+  root,
+  "out",
+  localOnly ? "local-nsis" : "nsis"
+)
+const installerPath = path.join(
+  installerDirectory,
+  localOnly ? "ai-harness-local-setup.exe" : "ai-harness-setup.exe"
+)
+const expectedArtifacts = localOnly
+  ? [installerPath]
+  : [
+      installerPath,
+      `${installerPath}.blockmap`,
+      path.join(installerDirectory, "latest.yml"),
+    ]
+for (const artifactPath of expectedArtifacts) {
+  if (!fs.existsSync(artifactPath))
+    throw new Error(`electron-builder did not create ${artifactPath}`)
+  const artifact = fs.statSync(artifactPath)
+  if (!artifact.isFile() || artifact.size === 0)
+    throw new Error(
+      `electron-builder created an invalid artifact: ${artifactPath}`
+    )
+  if (artifact.mtimeMs < buildStartedAt - 2_000)
+    throw new Error(
+      `electron-builder did not refresh artifact: ${artifactPath}`
+    )
+}
+
 if (localOnly) {
-  const installerPath = path.join(
-    root,
-    "out",
-    "local-nsis",
-    "ai-harness-local-setup.exe"
-  )
-  if (!fs.existsSync(installerPath))
-    throw new Error("electron-builder did not create the local-only installer")
   fs.rmSync(`${installerPath}.blockmap`, { force: true })
-  fs.rmSync(path.join(path.dirname(installerPath), "latest.yml"), {
+  fs.rmSync(path.join(installerDirectory, "latest.yml"), {
     force: true,
   })
   console.log(`Built unsigned local-only installer at ${installerPath}`)
+} else {
+  console.log(`Built unsigned updater installer at ${installerPath}`)
 }

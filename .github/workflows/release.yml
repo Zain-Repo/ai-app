@@ -1,13 +1,10 @@
 name: Release Windows desktop app
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: Existing version tag to release (for example, v0.1.9)
+      commit_sha:
+        description: Exact master commit that passed CI
         required: true
         type: string
 
@@ -15,67 +12,105 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-windows-${{ inputs.tag || github.ref_name }}
+  group: release-windows-${{ inputs.commit_sha }}
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Package and publish signed Windows installer
+    name: Package and publish unsigned Windows installer
     runs-on: windows-latest
     timeout-minutes: 45
 
     steps:
-      - name: Check out the release tag
-        uses: actions/checkout@v6
+      - name: Check out the tested commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.commit_sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate release tag and package version
+      - name: Validate release commit and package version
         id: release
         shell: pwsh
         env:
-          DISPATCH_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT_SHA: ${{ inputs.commit_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
-            $env:DISPATCH_TAG
-          } else {
-            $env:GITHUB_REF_NAME
+          if ($env:GITHUB_REPOSITORY -ne "Zain-Repo/ai-app") {
+            throw "Desktop releases may only be published from Zain-Repo/ai-app."
           }
-          $match = [regex]::Match(
-            $tag,
-            '^v(?<version>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9A-Za-z-][0-9A-Za-z-]*(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$'
-          )
-          if (-not $match.Success) {
-            throw "Release tags must use the vMAJOR.MINOR.PATCH SemVer format."
+
+          if ($env:RELEASE_COMMIT_SHA -notmatch '^[0-9a-f]{40}$') {
+            throw "The release commit must be a full Git commit SHA."
+          }
+
+          git fetch --force origin master --tags
+          $headCommit = (git rev-parse HEAD).Trim()
+          $masterCommit = (git rev-parse refs/remotes/origin/master).Trim()
+          if ($headCommit -ne $env:RELEASE_COMMIT_SHA) {
+            throw "The checked-out commit does not match the commit that passed CI."
+          }
+          if ($masterCommit -ne $env:RELEASE_COMMIT_SHA) {
+            throw "The tested commit is no longer the tip of origin/master."
           }
 
           $packageVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
-          if ($packageVersion -ne $match.Groups['version'].Value) {
-            throw "Tag $tag does not match package.json version $packageVersion."
+          $match = [regex]::Match(
+            $packageVersion,
+            '^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9A-Za-z-][0-9A-Za-z-]*(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
+          )
+          if (-not $match.Success) {
+            throw "package.json must contain a valid SemVer version."
           }
+          $tag = "v$packageVersion"
 
-          git fetch --force --tags origin
-          $tagCommit = (git rev-list -n 1 "refs/tags/$tag").Trim()
-          $headCommit = (git rev-parse HEAD).Trim()
-          if (-not $tagCommit -or $tagCommit -ne $headCommit) {
-            throw "The checked-out commit must exactly match tag $tag."
+          $existingTagCommit = git rev-list -n 1 "refs/tags/$tag" 2>$null
+          $tagExists = $LASTEXITCODE -eq 0
+
+          $releaseJson = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft,tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $releaseJson | ConvertFrom-Json
+            if ($release.tagName -ne $tag -or -not $tagExists) {
+              throw "GitHub release metadata for $tag is inconsistent with the Git tag."
+            }
+            if (-not $release.isDraft) {
+              "Release $tag is already published from commit $($existingTagCommit.Trim()). Bump package.json before publishing another desktop release."
+              "SHOULD_PUBLISH=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            } else {
+              if ($existingTagCommit.Trim() -ne $env:RELEASE_COMMIT_SHA) {
+                throw "Draft release tag $tag points to a different commit."
+              }
+              "SHOULD_PUBLISH=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+          } else {
+            gh repo view $env:GITHUB_REPOSITORY --json nameWithOwner | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not verify the target GitHub repository."
+            }
+            if ($tagExists -and $existingTagCommit.Trim() -ne $env:RELEASE_COMMIT_SHA) {
+              throw "Unpublished tag $tag points to a different commit."
+            }
+            "SHOULD_PUBLISH=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_COMMIT_SHA=$env:RELEASE_COMMIT_SHA" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PACKAGE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        if: env.SHOULD_PUBLISH == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.13
+          no-cache: true
 
       - name: Install dependencies
+        if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         run: bun install --frozen-lockfile
 
       - name: Validate release configuration
+        if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
           AI_HARNESS_DESKTOP_URL: ${{ vars.AI_HARNESS_DESKTOP_URL }}
@@ -90,90 +125,35 @@ jobs:
             throw "AI_HARNESS_DESKTOP_URL must be an absolute HTTPS URL."
           }
 
-      - name: Validate source
-        shell: pwsh
-        run: |
-          bun run typecheck
-          bun run test
-          bun run build
-
-      - name: Install osslsigncode
-        shell: pwsh
-        run: |
-          $archiveUrl = 'https://github.com/mtrojnar/osslsigncode/releases/download/2.14/osslsigncode-2.14-windows-x64-mingw.zip'
-          $expectedHash = '9a1722aaf62a27852c4eb9c35749a0248065052d0ae0a93d4ed6bb49def027f2'
-          $archivePath = Join-Path $env:RUNNER_TEMP "osslsigncode-2.14-$env:GITHUB_RUN_ID.zip"
-          $extractPath = Join-Path $env:RUNNER_TEMP "osslsigncode-2.14-$env:GITHUB_RUN_ID"
-
-          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
-          $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualHash -ne $expectedHash) {
-            throw "The downloaded osslsigncode archive did not match its expected SHA-256."
-          }
-
-          Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
-          $matches = @(Get-ChildItem -LiteralPath $extractPath -Filter osslsigncode.exe -File -Recurse)
-          if ($matches.Count -ne 1) {
-            throw "Expected exactly one osslsigncode.exe in the verified archive."
-          }
-          $osslsigncodePath = $matches[0].FullName
-          $version = (& $osslsigncodePath --version 2>&1 | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch '\b2\.14\b') {
-            throw "Verified osslsigncode 2.14 could not be executed."
-          }
-          "AI_HARNESS_OSSLSIGNCODE_PATH=$osslsigncodePath" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Restore signing certificate
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
-            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_BASE64."
-          }
-
-          try {
-            $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
-          } catch {
-            throw "WINDOWS_CERTIFICATE_BASE64 is not valid base64."
-          }
-          if ($certificateBytes.Length -eq 0) {
-            throw "WINDOWS_CERTIFICATE_BASE64 decoded to an empty certificate."
-          }
-
-          $certificatePath = Join-Path $env:RUNNER_TEMP "ai-harness-signing-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.pfx"
-          [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
-          "WINDOWS_CERTIFICATE_FILE=$certificatePath" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Build signed Windows NSIS installer
+      - name: Build unsigned Windows NSIS installer
+        if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
           AI_HARNESS_DESKTOP_URL: ${{ vars.AI_HARNESS_DESKTOP_URL }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          WINDOWS_SIGN_PUBLISHER_NAME: ${{ vars.WINDOWS_SIGN_PUBLISHER_NAME }}
-          WINDOWS_TIMESTAMP_SERVER: ${{ vars.WINDOWS_TIMESTAMP_SERVER }}
-          WINDOWS_SIGN_WEBSITE: ${{ vars.WINDOWS_SIGN_WEBSITE }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_PASSWORD."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_PUBLISHER_NAME)) {
-            throw "Missing required GitHub variable WINDOWS_SIGN_PUBLISHER_NAME."
-          }
           bun run installer:windows
 
+      - name: Revalidate release commit before publishing
+        if: env.SHOULD_PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          git fetch --force --no-tags origin master
+          $masterCommit = (git rev-parse refs/remotes/origin/master).Trim()
+          if ($masterCommit -ne $env:RELEASE_COMMIT_SHA) {
+            throw "The tested commit is no longer the tip of origin/master; refusing to publish stale release assets."
+          }
+
       - name: Publish GitHub release assets
+        if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run updater:publish -- "--repo=$env:GITHUB_REPOSITORY" "--tag=$env:RELEASE_TAG" "--notes=AI Harness $env:PACKAGE_VERSION desktop release."
+          bun run updater:publish -- "--tag=$env:RELEASE_TAG" "--target=$env:RELEASE_COMMIT_SHA" "--notes=AI Harness $env:PACKAGE_VERSION desktop release."
 
       - name: Preserve Windows release artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: always() && env.SHOULD_PUBLISH == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ai-harness-windows-${{ github.run_id }}
           if-no-files-found: warn
@@ -184,11 +164,3 @@ jobs:
             out/nsis/latest.yml
             out/nsis/codex-runtime.json
             out/latest-package-client-win32-x64.json
-
-      - name: Remove signing certificate
-        if: always()
-        shell: pwsh
-        run: |
-          if ($env:WINDOWS_CERTIFICATE_FILE) {
-            Remove-Item -LiteralPath $env:WINDOWS_CERTIFICATE_FILE -Force -ErrorAction SilentlyContinue
-          }

@@ -415,7 +415,7 @@ function ChatPage() {
   return (
     <div className="app-view min-h-svh bg-background text-foreground">
       <AuthLoading>
-        <ChatStatus message="Preparing your workspace..." />
+        <ChatStatus loading message="Preparing your workspace..." />
       </AuthLoading>
       <Unauthenticated>
         <ChatStatus message="We could not verify your session. Please sign in again." />
@@ -441,6 +441,7 @@ function Workspace() {
   if (state !== "ready")
     return (
       <ChatStatus
+        loading={state === "syncing"}
         message={
           state === "failed"
             ? "We could not prepare your workspace. Please sign in again."
@@ -2073,7 +2074,9 @@ function ChatWorkspace() {
               </div>
             </div>
           ) : voiceMode ? (
-            <Suspense fallback={<ChatStatus message="Starting voice…" />}>
+            <Suspense
+              fallback={<ChatStatus loading message="Starting voice…" />}
+            >
               <RealtimeVoice onClose={() => setVoiceMode(false)} />
             </Suspense>
           ) : selected === null && conversationId ? (
@@ -2301,7 +2304,7 @@ function ProjectWorkspace({
             </div>
             <TabsContent value="chats">
               {conversations === undefined ? (
-                <ChatStatus message="Loading project chats..." />
+                <ChatStatus loading message="Loading project chats..." />
               ) : conversations.length === 0 ? (
                 <Empty className="min-h-56 border-0">
                   <EmptyHeader>
@@ -2343,7 +2346,7 @@ function ProjectWorkspace({
             </TabsContent>
             <TabsContent value="sources">
               {sources === undefined ? (
-                <ChatStatus message="Loading project sources..." />
+                <ChatStatus loading message="Loading project sources..." />
               ) : sources.length === 0 ? (
                 <Empty className="min-h-56 border-0">
                   <EmptyHeader>
@@ -2425,7 +2428,7 @@ function MessageArea({
   onAction: (value: string) => void
 }) {
   if (messages === undefined)
-    return <ChatStatus message="Loading messages..." />
+    return <ChatStatus loading message="Loading messages..." />
   if (messages.length === 0)
     return (
       <Empty className="chat-empty-state border-0">
@@ -2717,7 +2720,13 @@ function MessageArea({
   )
 }
 
-function ChatStatus({ message }: { message: string }) {
+function ChatStatus({
+  loading = false,
+  message,
+}: {
+  loading?: boolean
+  message: string
+}) {
   return (
     <div
       aria-live="polite"
@@ -2725,7 +2734,7 @@ function ChatStatus({ message }: { message: string }) {
       role="status"
     >
       <span className="inline-flex items-center gap-2.5 rounded-full border border-border/70 bg-card/75 px-4 py-2 shadow-sm">
-        <Spinner className="size-3.5" />
+        {loading ? <Spinner aria-hidden="true" className="size-3.5" /> : null}
         {message}
       </span>
     </div>

@@ -46,5 +46,5 @@ export function initialDesktopUpdaterCheckDelay(
     startupCooldownMs - (now - lastCheckedAtMs),
     0
   )
-  return Math.min(intervalMs, Math.max(startupDelayMs, remainingCooldownMs))
+  return Math.max(startupDelayMs, remainingCooldownMs)
 }

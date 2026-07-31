@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 
-import { assertPublisherSignature } from "./windows-signing.mjs"
+import {
+  publishUpdaterRelease,
+  UPDATER_REPOSITORY,
+} from "./github-updater-release.mjs"
 
 function arg(name) {
   const prefix = `--${name}=`
@@ -16,8 +19,10 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8")
 )
 const version = packageJson.version
-const repository = arg("repo") || "Zain-Repo/ai-app"
 const tag = arg("tag") || `v${version}`
+const target = arg("target")
+if (!target || !/^[0-9a-f]{40}$/i.test(target))
+  throw new Error("--target must be a full 40-character tested commit SHA")
 const notes = arg("notes") || `AI Harness ${version} desktop release.`
 const installer = path.resolve(
   arg("file") || path.join(root, "out", "nsis", "ai-harness-setup.exe")
@@ -29,21 +34,23 @@ const packageMetadata = JSON.parse(
   )
 )
 if (
+  packageMetadata.distribution !== "github-updater" ||
+  packageMetadata.unsigned !== true ||
+  packageMetadata.localOnly === true ||
+  "signing" in packageMetadata ||
   typeof packageMetadata.outputPath !== "string" ||
   !fs.existsSync(packageMetadata.outputPath)
 )
   throw new Error("Packaged app metadata is missing")
-const publisherName = packageMetadata.signing?.publisherName
+const packagedExecutable = path.join(
+  packageMetadata.outputPath,
+  "ai-harness.exe"
+)
 if (
-  packageMetadata.signing?.trust !== "publisher" ||
-  typeof publisherName !== "string"
+  !fs.existsSync(packagedExecutable) ||
+  !fs.statSync(packagedExecutable).isFile()
 )
-  throw new Error("Packaged app signature metadata is missing")
-assertPublisherSignature(
-  path.join(packageMetadata.outputPath, "ai-harness.exe"),
-  publisherName
-)
-assertPublisherSignature(installer, publisherName)
+  throw new Error("The packaged app executable is missing")
 const packagedCodex = path.join(
   packageMetadata.outputPath,
   "resources",
@@ -92,7 +99,11 @@ const assets = [
   runtimeManifest,
 ]
 for (const asset of assets)
-  if (!fs.existsSync(asset))
+  if (
+    !fs.existsSync(asset) ||
+    !fs.statSync(asset).isFile() ||
+    fs.statSync(asset).size === 0
+  )
     throw new Error(`Updater asset not found: ${asset}`)
 
 function gh(args) {
@@ -104,27 +115,19 @@ function gh(args) {
 }
 
 const repositoryInfo = JSON.parse(
-  gh(["repo", "view", repository, "--json", "visibility"])
+  gh(["repo", "view", UPDATER_REPOSITORY, "--json", "visibility"])
 )
 if (repositoryInfo.visibility !== "PUBLIC")
   throw new Error(
-    `Updater repository ${repository} must be public so installed clients can fetch releases without a bundled GitHub credential`
+    `Updater repository ${UPDATER_REPOSITORY} must be public so installed clients can fetch releases without a bundled GitHub credential`
   )
 
-try {
-  gh(["release", "view", tag, "--repo", repository])
-} catch {
-  gh([
-    "release",
-    "create",
-    tag,
-    "--repo",
-    repository,
-    "--title",
-    `AI Harness ${version}`,
-    "--notes",
-    notes,
-  ])
-}
-gh(["release", "upload", tag, ...assets, "--repo", repository, "--clobber"])
-console.log(`Published ${tag} updater assets to ${repository}`)
+publishUpdaterRelease({
+  runGh: gh,
+  tag,
+  target,
+  title: `AI Harness ${version}`,
+  notes,
+  assets,
+})
+console.log(`Published ${tag} updater assets to ${UPDATER_REPOSITORY}`)
