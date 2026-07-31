@@ -46,18 +46,6 @@ function releaseNotFound(error) {
   return /release not found/i.test(`${stderr}\n${message}`)
 }
 
-function githubResourceNotFound(error) {
-  if (!error || typeof error !== "object") return false
-  const stderr =
-    typeof error.stderr === "string"
-      ? error.stderr
-      : Buffer.isBuffer(error.stderr)
-        ? error.stderr.toString("utf8")
-        : ""
-  const message = error instanceof Error ? error.message : ""
-  return /(?:HTTP 404|not found)/i.test(`${stderr}\n${message}`)
-}
-
 function viewRelease(runGh, tag) {
   try {
     return parseRelease(runGh(releaseViewArguments(tag)))
@@ -124,22 +112,11 @@ export function publishUpdaterRelease({
       `GitHub release ${tag} is already published; refusing to replace its updater assets`
     )
 
-  let tagTarget
-  try {
-    tagTarget = runGh([
-      "api",
-      `repos/${UPDATER_REPOSITORY}/commits/${encodeURIComponent(tag)}`,
-      "--jq",
-      ".sha",
-    ]).trim()
-  } catch (error) {
-    if (
-      !githubResourceNotFound(error) ||
-      !COMMIT_SHA_PATTERN.test(release.targetCommitish)
+  const tagTarget = release.targetCommitish
+  if (!COMMIT_SHA_PATTERN.test(tagTarget))
+    throw new Error(
+      `GitHub draft release ${tag} does not target an immutable commit SHA`
     )
-      throw error
-    tagTarget = release.targetCommitish
-  }
   if (tagTarget.toLowerCase() !== target.toLowerCase())
     throw new Error(
       `GitHub release ${tag} targets ${tagTarget || "an unknown commit"}, expected ${target}`
