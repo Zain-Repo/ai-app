@@ -126,6 +126,7 @@ const statusPresentation: Record<ProjectEmbeddingStatus, StatusPresentation> = {
 const retryableStatuses = new Set<ProjectEmbeddingStatus>([
   "failed",
   "insufficient_credits",
+  "needs_reauthentication",
   "not_indexed",
   "partial",
 ])
@@ -149,9 +150,10 @@ export function getProjectEmbeddingSummary(
   sources: readonly ProjectSourceItem[]
 ) {
   if (sources.length === 0) return "Add a source to enable semantic search."
-  const ready = sources.filter(
-    (source) => getProjectSourceEmbeddingStatus(source) === "ready"
-  ).length
+  const searchable = sources.filter((source) => {
+    const status = getProjectSourceEmbeddingStatus(source)
+    return status === "ready" || status === "partial"
+  }).length
   const working = sources.filter((source) =>
     ["queued", "extracting", "indexing"].includes(
       getProjectSourceEmbeddingStatus(source)
@@ -159,9 +161,10 @@ export function getProjectEmbeddingSummary(
   ).length
   if (working)
     return `${working} ${working === 1 ? "source is" : "sources are"} being indexed.`
-  if (ready === sources.length)
-    return `${ready} ${ready === 1 ? "source is" : "sources are"} searchable.`
-  if (ready) return `${ready} of ${sources.length} sources are searchable.`
+  if (searchable === sources.length)
+    return `${searchable} ${searchable === 1 ? "source is" : "sources are"} searchable.`
+  if (searchable)
+    return `${searchable} of ${sources.length} sources are searchable.`
   return "No sources are searchable yet."
 }
 

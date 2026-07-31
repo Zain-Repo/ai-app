@@ -88,6 +88,19 @@ describe("project source embeddings", () => {
         },
       ])
     ).toBe("1 of 2 sources are searchable.")
+    expect(
+      getProjectEmbeddingSummary([{ ...source, indexStatus: "partial" }])
+    ).toBe("1 source is searchable.")
+    expect(
+      getProjectEmbeddingSummary([
+        { ...source, indexStatus: "partial" },
+        {
+          ...source,
+          _id: "other" as Id<"projectSources">,
+          indexStatus: "failed",
+        },
+      ])
+    ).toBe("1 of 2 sources are searchable.")
     expect(getProjectEmbeddingSummary([source])).toBe(
       "No sources are searchable yet."
     )
@@ -161,6 +174,9 @@ describe("project source embeddings", () => {
   it("recognizes only actionable retry states", () => {
     expect(isRetryableProjectEmbeddingStatus("not_indexed")).toBe(true)
     expect(isRetryableProjectEmbeddingStatus("insufficient_credits")).toBe(true)
+    expect(isRetryableProjectEmbeddingStatus("needs_reauthentication")).toBe(
+      true
+    )
     expect(isRetryableProjectEmbeddingStatus("unsupported")).toBe(false)
     expect(isRetryableProjectEmbeddingStatus("indexing")).toBe(false)
     expect(
@@ -170,6 +186,46 @@ describe("project source embeddings", () => {
         indexStatus: "failed",
       })
     ).toBe("needs_reauthentication")
+  })
+
+  it("enables retry after the pinned provider is reconnected", () => {
+    const retry = vi.fn()
+    const disconnectedOpenAi: ProjectEmbeddingConnection = {
+      ...openAiConnection,
+      status: "needs_reauthentication",
+    }
+    const reauthenticationSource: ProjectSourceItem = {
+      ...source,
+      indexErrorCode: "needs_reauthentication",
+    }
+    const props = {
+      onConnectProvider: vi.fn(),
+      onPinProvider: vi.fn(),
+      onRemoveSource: vi.fn(),
+      onRetryIndexing: retry,
+      profile: {
+        providerConnectionId: openAiConnection.connectionId,
+        model: "text-embedding-3-small",
+        provider: "openai" as const,
+        revision: 1,
+      },
+      sources: [reauthenticationSource],
+    }
+    const view = render(
+      <ProjectSourcesPanel {...props} connections={[disconnectedOpenAi]} />
+    )
+    const retryButton = view.getByRole("button", {
+      name: "Retry indexing brief.md",
+    })
+
+    expect(retryButton).toHaveProperty("disabled", true)
+    view.rerender(
+      <ProjectSourcesPanel {...props} connections={[openAiConnection]} />
+    )
+    fireEvent.click(
+      view.getByRole("button", { name: "Retry indexing brief.md" })
+    )
+    expect(retry).toHaveBeenCalledWith(source._id)
   })
 
   it("requires confirmation before removing a source", () => {
