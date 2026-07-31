@@ -19,11 +19,14 @@ repository's public GitHub release.
   commit is still the tip of `origin/master`, and skips versions that are
   already public.
 - The release job validates the configured HTTPS desktop URL, restores the
-  signing certificate only in the runner temporary directory, checksum-verifies
-  the official upstream Windows `osslsigncode` 2.14 archive before using it,
-  signs the NSIS installer, publishes with the scoped Actions token through a
+  signing PFX in the runner temporary directory, and imports its certificate
+  into the current user's Windows certificate store so native Authenticode
+  verification works on GitHub's Windows runner. It verifies the imported
+  subject exactly matches `WINDOWS_SIGN_PUBLISHER_NAME`, checksum-verifies the
+  official upstream Windows `osslsigncode` 2.14 archive before using it, signs
+  the NSIS installer, publishes with the scoped Actions token through a
   draft/upload/verify/publish sequence, preserves artifacts for 14 days, and
-  removes the temporary certificate on exit.
+  removes both the imported certificate and temporary PFX on exit.
 - `README.md` records the release trigger, required repository configuration,
   and local installer artifact name.
 
