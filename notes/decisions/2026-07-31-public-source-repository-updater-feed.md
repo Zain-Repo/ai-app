@@ -13,7 +13,8 @@ repository.
 Use public GitHub releases in `Zain-Repo/ai-app` as the single direct-download
 and Electron updater feed. Future release automation publishes its installer,
 blockmap, `latest.yml`, and Codex runtime manifest to the source repository's
-release tag.
+release tag. This repository target is fixed rather than a caller-selectable
+publishing option.
 
 ## Consequences
 
@@ -23,6 +24,9 @@ release tag.
   GitHub credentials because the repository remains public.
 - GitHub Actions releases publish to the current repository through the scoped
   workflow token rather than a separate release-asset repository.
+- Publication remains a draft while updater assets are uploaded and verified.
+  The release is made public and marked latest only after every expected asset
+  is present, so a failed upload cannot expose a partial updater feed.
 
 ## One-time migration limitation
 
@@ -36,5 +40,6 @@ feed.
 
 - `electron-builder.json`, release publishing, runtime metadata retrieval, and
   landing downloads all use `Zain-Repo/ai-app`.
-- The release workflow explicitly passes `GITHUB_REPOSITORY` to updater
-  publishing, keeping release assets aligned with the source repository.
+- The release workflow rejects execution outside `Zain-Repo/ai-app`, and the
+  publisher hard-codes that same repository instead of accepting an override.
+- The publisher verifies the draft assets before making the release public.
