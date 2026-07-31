@@ -210,6 +210,11 @@ jobs:
             if (-not $importedCertificate.HasPrivateKey) {
               throw "The imported signing certificate does not contain a private key."
             }
+
+            "WINDOWS_CERTIFICATE_FILE=$certificatePath" |
+              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "WINDOWS_CERTIFICATE_THUMBPRINT=$($importedCertificate.Thumbprint)" |
+              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } catch {
             foreach ($certificate in $importedCertificates) {
               Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
@@ -217,11 +222,6 @@ jobs:
             Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
             throw
           }
-
-          "WINDOWS_CERTIFICATE_FILE=$certificatePath" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "WINDOWS_CERTIFICATE_THUMBPRINT=$($importedCertificate.Thumbprint)" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build signed Windows NSIS installer
         if: env.SHOULD_PUBLISH == 'true'
