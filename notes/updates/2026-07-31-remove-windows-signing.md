@@ -31,6 +31,10 @@ NSIS installer without signing secrets or certificate setup.
 - A real Windows release build produced `ai-harness.exe`, the NSIS installer,
   blockmap, and `latest.yml`. Windows reported both executables as `NotSigned`,
   and the packaged updater configuration targets `Zain-Repo/ai-app`.
+- The first CI release build passed but exposed a draft-publication edge case:
+  GitHub does not create the tag ref until a draft is published. The publisher
+  now validates the draft's immutable 40-character `targetCommitish` directly
+  instead of trying to resolve the not-yet-created tag.
 
 ## Known limitation
 

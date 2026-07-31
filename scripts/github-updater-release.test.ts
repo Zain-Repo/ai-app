@@ -70,16 +70,15 @@ describe("GitHub updater release publishing", () => {
 
     expect(calls.map((args) => args.slice(0, 2))).toEqual([
       ["release", "view"],
-      ["api", `repos/${UPDATER_REPOSITORY}/commits/v1.2.3`],
       ["release", "upload"],
       ["release", "view"],
       ["release", "edit"],
       ["release", "view"],
       ["api", `repos/${UPDATER_REPOSITORY}/releases/latest`],
     ])
-    expect(calls[2]).toContain("--clobber")
-    expect(calls[4]).toContain("--draft=false")
-    expect(calls[4]).toContain("--latest")
+    expect(calls[1]).toContain("--clobber")
+    expect(calls[3]).toContain("--draft=false")
+    expect(calls[3]).toContain("--latest")
     expect(calls.flat()).not.toContain("ai-harness-releases")
     expect(calls.flat()).toContain(UPDATER_REPOSITORY)
   })
@@ -201,8 +200,10 @@ describe("GitHub updater release publishing", () => {
     const calls: string[][] = []
     const runGh = (args: string[]) => {
       calls.push(args)
-      if (args[0] === "api") return "abcdef0123456789abcdef0123456789abcdef01"
-      return releaseJson({ isDraft: true })
+      return releaseJson({
+        isDraft: true,
+        targetCommitish: "abcdef0123456789abcdef0123456789abcdef01",
+      })
     }
 
     expect(() =>
@@ -215,6 +216,26 @@ describe("GitHub updater release publishing", () => {
         assets: ["out/latest.yml"],
       })
     ).toThrow(`expected ${target}`)
+    expect(calls.some((args) => args[1] === "upload")).toBe(false)
+  })
+
+  it("refuses a mutable branch target before uploading", () => {
+    const calls: string[][] = []
+    const runGh = (args: string[]) => {
+      calls.push(args)
+      return releaseJson({ isDraft: true, targetCommitish: "master" })
+    }
+
+    expect(() =>
+      publishUpdaterRelease({
+        runGh,
+        tag: "v1.2.3",
+        target,
+        title: "AI Harness 1.2.3",
+        notes: "Release notes",
+        assets: ["out/latest.yml"],
+      })
+    ).toThrow("does not target an immutable commit SHA")
     expect(calls.some((args) => args[1] === "upload")).toBe(false)
   })
 })
