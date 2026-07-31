@@ -3,8 +3,16 @@ import type { BrowserWindow } from "electron"
 import log from "electron-log/main"
 import { autoUpdater } from "electron-updater"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
+import fs from "node:fs"
+import path from "node:path"
 
 import { fetchReleaseCodexVersion } from "./codex-runtime"
+import {
+  DEFAULT_BACKGROUND_CHECK_INTERVAL_MS,
+  initialDesktopUpdaterCheckDelay,
+  normalizeDesktopUpdaterScheduleState,
+} from "./updater-schedule"
+import type { DesktopUpdaterScheduleState } from "./updater-schedule"
 import {
   canCheckForDesktopUpdates,
   canDownloadDesktopUpdate,
@@ -15,6 +23,17 @@ import {
 import type { DesktopUpdaterEvent } from "./updater-state"
 
 export class DesktopUpdater {
+  private automaticCheckTimer: NodeJS.Timeout | null = null
+  private backgroundCheckTimer: NodeJS.Timeout | null = null
+  private isAutomaticCheckRunning = false
+  private schedule: DesktopUpdaterScheduleState = {
+    lastCheckedAt: null,
+    launchCount: 0,
+  }
+  private readonly schedulePath = path.join(
+    app.getPath("userData"),
+    "updater-schedule.json"
+  )
   private state = createDesktopUpdaterState(
     app.getVersion(),
     app.isPackaged,
@@ -34,6 +53,12 @@ export class DesktopUpdater {
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.autoRunAppAfterInstall = true
+    this.schedule = this.loadSchedule()
+    this.schedule = {
+      ...this.schedule,
+      launchCount: this.schedule.launchCount + 1,
+    }
+    this.persistSchedule()
     autoUpdater.on("checking-for-update", () =>
       this.apply({ type: "checking" })
     )
@@ -58,11 +83,48 @@ export class DesktopUpdater {
     return { ...this.state }
   }
 
+  startAutomaticChecks() {
+    if (
+      !app.isPackaged ||
+      process.windowsStore ||
+      this.automaticCheckTimer ||
+      this.backgroundCheckTimer
+    )
+      return
+
+    const initialDelayMs = initialDesktopUpdaterCheckDelay(
+      this.schedule,
+      Date.now()
+    )
+    this.automaticCheckTimer = setTimeout(() => {
+      this.automaticCheckTimer = null
+      void this.runAutomaticCheck()
+      this.backgroundCheckTimer = setInterval(
+        () => void this.runAutomaticCheck(),
+        DEFAULT_BACKGROUND_CHECK_INTERVAL_MS
+      )
+      this.backgroundCheckTimer.unref()
+    }, initialDelayMs)
+    this.automaticCheckTimer.unref()
+  }
+
+  stopAutomaticChecks() {
+    if (this.automaticCheckTimer) {
+      clearTimeout(this.automaticCheckTimer)
+      this.automaticCheckTimer = null
+    }
+    if (this.backgroundCheckTimer) {
+      clearInterval(this.backgroundCheckTimer)
+      this.backgroundCheckTimer = null
+    }
+  }
+
   async check() {
     if (!app.isPackaged || !canCheckForDesktopUpdates(this.state))
       return this.getState()
     try {
       this.apply({ type: "checking" })
+      this.recordCheck()
       try {
         this.apply({
           type: "codex-current",
@@ -134,6 +196,52 @@ export class DesktopUpdater {
       else this.window.setProgressBar(-1)
       this.window.webContents.send("desktop:updater-state", this.state)
     }
+  }
+
+  private async runAutomaticCheck() {
+    if (this.isAutomaticCheckRunning) return
+    this.isAutomaticCheckRunning = true
+    try {
+      await this.check()
+    } finally {
+      this.isAutomaticCheckRunning = false
+    }
+  }
+
+  private loadSchedule() {
+    try {
+      if (!fs.existsSync(this.schedulePath))
+        return normalizeDesktopUpdaterScheduleState(null)
+      return normalizeDesktopUpdaterScheduleState(
+        JSON.parse(fs.readFileSync(this.schedulePath, "utf8"))
+      )
+    } catch (error) {
+      log.warn(`Unable to read updater schedule: ${this.errorMessage(error)}`)
+      return normalizeDesktopUpdaterScheduleState(null)
+    }
+  }
+
+  private persistSchedule() {
+    try {
+      fs.mkdirSync(path.dirname(this.schedulePath), { recursive: true })
+      fs.writeFileSync(
+        this.schedulePath,
+        `${JSON.stringify(this.schedule, null, 2)}\n`,
+        "utf8"
+      )
+    } catch (error) {
+      log.warn(
+        `Unable to persist updater schedule: ${this.errorMessage(error)}`
+      )
+    }
+  }
+
+  private recordCheck() {
+    this.schedule = {
+      ...this.schedule,
+      lastCheckedAt: new Date().toISOString(),
+    }
+    this.persistSchedule()
   }
 
   private errorMessage(

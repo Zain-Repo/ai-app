@@ -84,6 +84,7 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Message, MessageContent, MessageGroup } from "@/components/ui/message"
@@ -1330,8 +1331,8 @@ function ChatWorkspace() {
   )
 
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
-      <Sidebar collapsible="offcanvas">
+    <SidebarProvider className="chat-workspace-shell h-svh overflow-hidden">
+      <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
         <SidebarHeader className="gap-3 border-b border-sidebar-border/50 p-3.5">
           <a
             aria-label="AI Harness home"
@@ -1613,14 +1614,17 @@ function ChatWorkspace() {
           />
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b px-3">
+      <SidebarInset className="chat-workspace-stage">
+        <header className="chat-workspace-header flex items-center gap-3 border-b px-3 sm:px-4">
           <SidebarTrigger />
-          <p className="truncate text-sm font-medium">
-            {search.mode === "project"
-              ? (selectedProject?.name ?? "Project")
-              : (selected?.title ?? "New chat")}
-          </p>
+          <div className="min-w-0">
+            <p className="chat-workspace-kicker">AI workspace</p>
+            <p className="truncate text-sm font-semibold tracking-tight">
+              {search.mode === "project"
+                ? (selectedProject?.name ?? "Project")
+                : (selected?.title ?? "New chat")}
+            </p>
+          </div>
         </header>
         <section
           className="flex min-h-0 flex-1 flex-col"
@@ -2094,7 +2098,7 @@ function ChatWorkspace() {
                   ).catch(() => undefined)
                 }}
               />
-              <div className="sticky bottom-0 z-10 w-full bg-gradient-to-t from-background from-70% to-transparent px-4 pt-8 pb-4">
+              <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-8 pb-4 sm:px-6">
                 <div className="mx-auto w-full max-w-3xl">
                   {selected?.status === "archived" ? (
                     <p className="mb-2 text-center text-xs text-muted-foreground">
@@ -2424,12 +2428,25 @@ function MessageArea({
     return <ChatStatus message="Loading messages..." />
   if (messages.length === 0)
     return (
-      <Empty className="border-0">
+      <Empty className="chat-empty-state border-0">
         <EmptyHeader>
+          <EmptyMedia
+            className="bg-primary/10 text-primary ring-1 ring-primary/15"
+            variant="icon"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={AiBrain01Icon}
+              strokeWidth={1.8}
+            />
+          </EmptyMedia>
           <EmptyTitle>
             {name ? `Welcome back, ${name}.` : "Welcome back."}
           </EmptyTitle>
-          <EmptyDescription>What would you like to work on?</EmptyDescription>
+          <EmptyDescription>
+            Choose a model, then describe the outcome you want. You can attach
+            files from the composer when context matters.
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -2437,8 +2454,8 @@ function MessageArea({
     <MessageScrollerProvider>
       <MessageScroller>
         <MessageScrollerViewport>
-          <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
-            <MessageGroup>
+          <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+            <MessageGroup className="gap-6 sm:gap-8">
               {messages.map((message) => {
                 const isUser = message.role === "user"
                 const isStreaming = message.status === "streaming"
@@ -2702,8 +2719,15 @@ function MessageArea({
 
 function ChatStatus({ message }: { message: string }) {
   return (
-    <div className="grid flex-1 place-items-center p-6 text-sm text-muted-foreground">
-      {message}
+    <div
+      aria-live="polite"
+      className="chat-status grid flex-1 place-items-center p-6 text-sm text-muted-foreground"
+      role="status"
+    >
+      <span className="inline-flex items-center gap-2.5 rounded-full border border-border/70 bg-card/75 px-4 py-2 shadow-sm">
+        <Spinner className="size-3.5" />
+        {message}
+      </span>
     </div>
   )
 }
