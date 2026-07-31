@@ -165,9 +165,17 @@ jobs:
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGN_PUBLISHER_NAME: ${{ vars.WINDOWS_SIGN_PUBLISHER_NAME }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
             throw "Missing required GitHub secret WINDOWS_CERTIFICATE_BASE64."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "Missing required GitHub secret WINDOWS_CERTIFICATE_PASSWORD."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_PUBLISHER_NAME)) {
+            throw "Missing required GitHub variable WINDOWS_SIGN_PUBLISHER_NAME."
           }
 
           try {
@@ -181,7 +189,38 @@ jobs:
 
           $certificatePath = Join-Path $env:RUNNER_TEMP "ai-harness-signing-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.pfx"
           [System.IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
+          $importedCertificates = @()
+          try {
+            $securePassword = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $importedCertificates = @(
+              Import-PfxCertificate `
+                -FilePath $certificatePath `
+                -CertStoreLocation Cert:\CurrentUser\My `
+                -Password $securePassword `
+                -Exportable:$false
+            )
+            if ($importedCertificates.Count -ne 1) {
+              throw "The signing PFX must import exactly one certificate."
+            }
+
+            $importedCertificate = $importedCertificates[0]
+            if ($importedCertificate.Subject -cne $env:WINDOWS_SIGN_PUBLISHER_NAME) {
+              throw "The imported signing certificate subject does not match WINDOWS_SIGN_PUBLISHER_NAME."
+            }
+            if (-not $importedCertificate.HasPrivateKey) {
+              throw "The imported signing certificate does not contain a private key."
+            }
+          } catch {
+            foreach ($certificate in $importedCertificates) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
+            }
+            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
+            throw
+          }
+
           "WINDOWS_CERTIFICATE_FILE=$certificatePath" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WINDOWS_CERTIFICATE_THUMBPRINT=$($importedCertificate.Thumbprint)" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build signed Windows NSIS installer
@@ -238,6 +277,10 @@ jobs:
         if: always() && env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         run: |
+          if ($env:WINDOWS_CERTIFICATE_THUMBPRINT) {
+            $certificateStorePath = "Cert:\CurrentUser\My\$env:WINDOWS_CERTIFICATE_THUMBPRINT"
+            Remove-Item -LiteralPath $certificateStorePath -Force -ErrorAction SilentlyContinue
+          }
           if ($env:WINDOWS_CERTIFICATE_FILE) {
             Remove-Item -LiteralPath $env:WINDOWS_CERTIFICATE_FILE -Force -ErrorAction SilentlyContinue
           }
