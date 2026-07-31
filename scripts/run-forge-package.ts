@@ -7,8 +7,10 @@ import path from "node:path"
 import {
   forgePackageMode,
   isSupportedForgeNodeVersion,
+  unsignedPackageMetadata,
 } from "./forge-node-runtime"
 import { readReleaseVersion } from "./release-version"
+import { unsignedWindowsEnvironment } from "./unsigned-windows-environment.mjs"
 
 function arg(name: string) {
   const prefix = `--${name}=`
@@ -22,7 +24,6 @@ const role = arg("role") || "client"
 const platform = arg("platform") || "win32"
 const arch = arg("arch") || "x64"
 const packageMode = forgePackageMode(process.argv.slice(2))
-const unsignedPackage = packageMode !== "release"
 const runId = new Date().toISOString().replace(/[:.]/gu, "-")
 const outputRoot = path.join(
   root,
@@ -43,16 +44,15 @@ const forgeCli = path.join(
   "dist",
   "electron-forge.js"
 )
-const windowsSigningScript = path.join(root, "scripts", "windows-signing.mjs")
 const version = readReleaseVersion(path.join(root, "package.json"))
-const env = {
+const env = unsignedWindowsEnvironment({
   ...process.env,
   AI_HARNESS_PACKAGE_OUT_DIR: outputRoot,
   AI_HARNESS_PACKAGE_METADATA_PATH: metadataPath,
   AI_HARNESS_PACKAGE_PLATFORM: platform,
   AI_HARNESS_PACKAGE_ARCH: arch,
   AI_HARNESS_RELEASE_VERSION: version,
-}
+})
 
 fs.mkdirSync(path.dirname(outputRoot), { recursive: true })
 
@@ -95,16 +95,6 @@ const nodeExecutable = forgeNode()
 console.log(
   `Running Electron Forge with ${nodeExecutable} (${nodeVersion(nodeExecutable) ?? "unknown"})`
 )
-if (!unsignedPackage) {
-  const signingCheck = spawnSync(
-    nodeExecutable,
-    [windowsSigningScript, "--check"],
-    { cwd: root, env, stdio: "inherit", windowsHide: true }
-  )
-  if (signingCheck.error) throw signingCheck.error
-  if ((signingCheck.status ?? 1) !== 0) process.exit(signingCheck.status ?? 1)
-}
-
 const result = spawnSync(
   nodeExecutable,
   [forgeCli, "package", "--platform", platform, "--arch", arch],
@@ -113,9 +103,10 @@ const result = spawnSync(
 if (result.error) throw result.error
 if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1)
 
-const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as {
-  outputPath?: unknown
-}
+const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as Record<
+  string,
+  unknown
+>
 const outputPath =
   typeof metadata.outputPath === "string"
     ? path.resolve(metadata.outputPath)
@@ -136,32 +127,10 @@ if (packagedManifest.main !== ".vite/build/index.cjs")
 extractFile(appAsarPath, path.normalize(packagedManifest.main))
 extractFile(appAsarPath, path.join(".vite", "build", "preload.cjs"))
 
-if (!unsignedPackage) {
-  const signingResult = spawnSync(
-    nodeExecutable,
-    [windowsSigningScript, "--directory", outputPath],
-    { cwd: root, env, stdio: "inherit", windowsHide: true }
-  )
-  if (signingResult.error) throw signingResult.error
-  if ((signingResult.status ?? 1) !== 0) process.exit(signingResult.status ?? 1)
-}
-
 fs.writeFileSync(
   metadataPath,
   `${JSON.stringify(
-    packageMode === "local-only"
-      ? { ...metadata, localOnly: true }
-      : packageMode === "store"
-        ? { ...metadata, distribution: "microsoft-store" }
-        : {
-            ...metadata,
-            signing: {
-              digest: "sha256",
-              publisherName: process.env.WINDOWS_SIGN_PUBLISHER_NAME?.trim(),
-              tool: "osslsigncode",
-              trust: "publisher",
-            },
-          },
+    unsignedPackageMetadata(packageMode, metadata),
     null,
     2
   )}\n`,
@@ -169,5 +138,5 @@ fs.writeFileSync(
 )
 
 console.log(
-  `${packageMode === "release" ? "Packaged client app" : packageMode === "store" ? "Packaged unsigned Microsoft Store client app" : "Packaged unsigned local-only client app"} at ${outputPath}`
+  `${packageMode === "release" ? "Packaged unsigned updater client app" : packageMode === "store" ? "Packaged unsigned Microsoft Store client app" : "Packaged unsigned local-only client app"} at ${outputPath}`
 )

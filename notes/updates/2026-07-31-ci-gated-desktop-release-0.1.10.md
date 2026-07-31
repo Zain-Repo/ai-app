@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Prepared AI Harness `0.1.10` for automatic signed Windows publication after a
+Prepared AI Harness `0.1.10` for automatic unsigned Windows publication after a
 successful `master` CI run. CI calls the release workflow only after validation
 passes, and the release workflow uses the exact tested commit. The bundled
 Codex CLI dependency is updated to stable version `0.146.0` so the publisher's
@@ -21,20 +21,15 @@ current-runtime check can pass.
 - `package.json` and `bun.lock` advance the app to `0.1.10` and
   `@openai/codex` to `0.146.0`.
 - Third-party GitHub Actions are pinned to reviewed commit SHAs, checkout does
-  not persist credentials, and release-only credentials remain unavailable to
-  the CI validation job.
+  not persist credentials, and the release workflow does not require signing
+  secrets.
 
 ## Required repository configuration
 
-- Secrets: `WINDOWS_CERTIFICATE_BASE64` and
-  `WINDOWS_CERTIFICATE_PASSWORD`.
-- Variables: `AI_HARNESS_DESKTOP_URL` and
-  `WINDOWS_SIGN_PUBLISHER_NAME`.
-- Optional variables: `WINDOWS_TIMESTAMP_SERVER` and
-  `WINDOWS_SIGN_WEBSITE`.
+- Variable: `AI_HARNESS_DESKTOP_URL`.
 
-The automatic release cannot build a signed installer until the required
-repository secrets and variables are configured.
+The automatic release publishes an unsigned installer and does not require a
+certificate or signing secrets.
 
 ## Validation
 

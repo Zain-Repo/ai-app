@@ -16,3 +16,19 @@ export function forgePackageMode(args: readonly string[]) {
     throw new Error("Package mode cannot be both local-only and Store")
   return localOnly ? "local-only" : store ? "store" : "release"
 }
+
+export function unsignedPackageMetadata(
+  mode: ReturnType<typeof forgePackageMode>,
+  metadata: Readonly<Record<string, unknown>>
+) {
+  const unsignedMetadata: Record<string, unknown> = { ...metadata }
+  delete unsignedMetadata.signing
+  delete unsignedMetadata.distribution
+  delete unsignedMetadata.localOnly
+  unsignedMetadata.unsigned = true
+  if (mode === "local-only") return { ...unsignedMetadata, localOnly: true }
+  return {
+    ...unsignedMetadata,
+    distribution: mode === "store" ? "microsoft-store" : "github-updater",
+  }
+}
