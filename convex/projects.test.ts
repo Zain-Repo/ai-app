@@ -118,6 +118,40 @@ describe("projects and conversations", () => {
     ).rejects.toThrow("Conversation unavailable")
   })
 
+  it("loads an owned project outside the capped sidebar list", async () => {
+    const t = convexTest(schema, modules)
+    const ada = t.withIdentity(identity("clerk|ada"))
+    const ben = t.withIdentity(identity("clerk|ben"))
+    const adaId = await ada.mutation(api.users.syncCurrent)
+    await ben.mutation(api.users.syncCurrent)
+    const projectId = await t.run(
+      async (ctx) =>
+        await ctx.db.insert("projects", {
+          name: "Old project",
+          ownerId: adaId,
+          updatedAt: 0,
+        })
+    )
+    await t.run(async (ctx) => {
+      for (let index = 1; index <= 50; index += 1)
+        await ctx.db.insert("projects", {
+          name: `Project ${index}`,
+          ownerId: adaId,
+          updatedAt: index,
+        })
+    })
+
+    expect(
+      (await ada.query(api.projects.list)).some(
+        (project) => project._id === projectId
+      )
+    ).toBe(false)
+    await expect(
+      ada.query(api.projects.get, { projectId })
+    ).resolves.toMatchObject({ name: "Old project" })
+    await expect(ben.query(api.projects.get, { projectId })).resolves.toBeNull()
+  })
+
   it("adds uploaded files only to an owned project", async () => {
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))

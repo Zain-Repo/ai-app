@@ -53,10 +53,19 @@ describe("project sidebar disclosure", () => {
 })
 
 describe("project chat header context", () => {
-  it("uses stored project membership after a conversation loads", () => {
-    expect(resolveActiveProjectId(undefined, "website", false)).toBe("website")
-    expect(resolveActiveProjectId("mobile", "website", true)).toBe("mobile")
-    expect(resolveActiveProjectId(undefined, "website", true)).toBeUndefined()
+  it("separates chat membership from project workspace routing", () => {
+    expect(resolveActiveProjectId(undefined, undefined, false, "website")).toBe(
+      "website"
+    )
+    expect(
+      resolveActiveProjectId("chat", undefined, false, "website")
+    ).toBeUndefined()
+    expect(resolveActiveProjectId("chat", "mobile", false, "website")).toBe(
+      "mobile"
+    )
+    expect(resolveActiveProjectId("chat", "mobile", true, "website")).toBe(
+      "website"
+    )
   })
 })
 

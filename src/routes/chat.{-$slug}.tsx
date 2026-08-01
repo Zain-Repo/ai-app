@@ -244,11 +244,14 @@ export function toggleExpandedProject(
 }
 
 export function resolveActiveProjectId(
+  conversationId: string | undefined,
   conversationProjectId: string | undefined,
-  searchProjectId: string | undefined,
-  conversationLoaded: boolean
+  projectMode: boolean,
+  searchProjectId: string | undefined
 ) {
-  return conversationLoaded ? conversationProjectId : searchProjectId
+  return projectMode || !conversationId
+    ? searchProjectId
+    : conversationProjectId
 }
 
 export function ProjectConversationDisclosure({
@@ -506,6 +509,16 @@ function ChatWorkspace() {
   const selected = useQuery(
     api.conversations.get,
     conversationId ? { conversationId } : "skip"
+  )
+  const activeProjectId = resolveActiveProjectId(
+    conversationId,
+    selected?.projectId,
+    search.mode === "project",
+    search.projectId
+  )
+  const selectedProject = useQuery(
+    api.projects.get,
+    activeProjectId ? { projectId: activeProjectId } : "skip"
   )
   const messages = useQuery(
     api.conversations.listMessages,
@@ -901,15 +914,6 @@ function ChatWorkspace() {
     (conversation) =>
       conversation.title.toLowerCase().includes(normalizedSearch)
   )
-  const activeProjectId = resolveActiveProjectId(
-    selected?.projectId,
-    search.projectId,
-    selected !== undefined
-  )
-  const selectedProject = projects?.find(
-    (project) => project._id === activeProjectId
-  )
-
   const open = (next: {
     mode?: "chat-new" | "project" | "project-new"
     projectId?: string
