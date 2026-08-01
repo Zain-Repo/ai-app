@@ -232,13 +232,24 @@ function readImagePrice(value: unknown) {
     : undefined
 }
 
-export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.data) ||
-    !Array.isArray(value.data.endpoints)
+type OpenRouterEndpointCatalog = {
+  data: {
+    endpoints: unknown[]
+  }
+}
+
+export function isOpenRouterEndpointCatalog(
+  value: unknown
+): value is OpenRouterEndpointCatalog {
+  return (
+    isRecord(value) &&
+    isRecord(value.data) &&
+    Array.isArray(value.data.endpoints)
   )
-    return []
+}
+
+export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
+  if (!isOpenRouterEndpointCatalog(value)) return []
 
   return value.data.endpoints
     .filter(isRecord)
@@ -295,13 +306,13 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
     )
 }
 
-function getModelEndpointsUrl(model: string) {
+export function getOpenRouterModelEndpointsUrl(model: string) {
   const parts = model.split("/")
   if (
     parts.length !== 2 ||
-    parts.some(
-      (part) => !part || part.length > 100 || !/^[A-Za-z0-9._:-]+$/.test(part)
-    )
+    parts.some((part) => !part || part.length > 100) ||
+    !/^~?[A-Za-z0-9._:-]+$/.test(parts[0]) ||
+    !/^[A-Za-z0-9._:-]+$/.test(parts[1])
   ) {
     throw new Error("Model is unavailable")
   }
@@ -711,7 +722,7 @@ export const listModelEndpoints = action({
       credential.iv,
       env.PROVIDER_TOKEN_ENCRYPTION_KEY
     )
-    const response = await fetch(getModelEndpointsUrl(args.model), {
+    const response = await fetch(getOpenRouterModelEndpointsUrl(args.model), {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     })
@@ -724,9 +735,11 @@ export const listModelEndpoints = action({
     }
     if (!response.ok) throw new Error("Could not load model providers")
 
-    const endpoints = parseOpenRouterEndpoints(await readJson(response))
-    if (!endpoints.length) throw new Error("No model providers are available")
-    return endpoints
+    const endpointCatalog = await readJson(response)
+    if (!isOpenRouterEndpointCatalog(endpointCatalog)) {
+      throw new Error("Provider returned an invalid endpoint catalog")
+    }
+    return parseOpenRouterEndpoints(endpointCatalog)
   },
 })
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  getOpenRouterModelEndpointsUrl,
   OPENAI_MODELS,
+  isOpenRouterEndpointCatalog,
   isValidSdpOffer,
   parseOpenAIModels,
   parseOpenRouterCreditStatus,
@@ -143,6 +145,46 @@ describe("OpenRouter model catalog", () => {
 })
 
 describe("OpenRouter model endpoints", () => {
+  it("builds endpoint URLs for canonical aliases and image models", () => {
+    expect(getOpenRouterModelEndpointsUrl("~x-ai/grok-latest")).toBe(
+      "https://openrouter.ai/api/v1/models/~x-ai/grok-latest/endpoints"
+    )
+    expect(getOpenRouterModelEndpointsUrl("openai/gpt-image-2")).toBe(
+      "https://openrouter.ai/api/v1/models/openai/gpt-image-2/endpoints"
+    )
+    expect(getOpenRouterModelEndpointsUrl("acme:beta/image-model")).toBe(
+      "https://openrouter.ai/api/v1/models/acme%3Abeta/image-model/endpoints"
+    )
+  })
+
+  it("rejects malformed model IDs without allowing path injection", () => {
+    for (const model of [
+      "openai",
+      "openai/gpt-image-1/extra",
+      "openai/../endpoints",
+      "~openai/gpt image 1",
+      "openai~/gpt-image-1",
+      "~/gpt-image-1",
+    ]) {
+      expect(() => getOpenRouterModelEndpointsUrl(model)).toThrow(
+        "Model is unavailable"
+      )
+    }
+  })
+
+  it("treats a successful endpoint response with no endpoints as empty", () => {
+    const emptyCatalog = { data: { endpoints: [] } }
+
+    expect(isOpenRouterEndpointCatalog(emptyCatalog)).toBe(true)
+    expect(parseOpenRouterEndpoints(emptyCatalog)).toEqual([])
+  })
+
+  it("rejects malformed endpoint catalogs before treating them as empty", () => {
+    expect(isOpenRouterEndpointCatalog(null)).toBe(false)
+    expect(isOpenRouterEndpointCatalog({ data: {} })).toBe(false)
+    expect(isOpenRouterEndpointCatalog({ data: { endpoints: {} } })).toBe(false)
+  })
+
   it("keeps available endpoints and sorts live per-token prices per million", () => {
     expect(
       parseOpenRouterEndpoints({
