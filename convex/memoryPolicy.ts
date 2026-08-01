@@ -4,6 +4,42 @@ export const MEMORY_EMBEDDING_DIMENSIONS = 1536
 export const MEMORY_EMBEDDING_MODEL = "openai/text-embedding-3-small"
 export const MEMORY_EXTRACTION_MODEL = "openai/gpt-4o-mini"
 
+export type MemoryProcessingProvider = "openrouter" | "openai"
+
+export type MemoryProcessingPolicy = {
+  provider: MemoryProcessingProvider
+  extractionModel: string
+  embeddingModel: string
+  dimensions: number
+  policyRevision: number
+}
+
+// Provider processing is intentionally pinned. Credentials select who pays for
+// processing; clients cannot override models or dimensions per request.
+const processingPolicies: Record<
+  MemoryProcessingProvider,
+  MemoryProcessingPolicy
+> = {
+  openrouter: {
+    provider: "openrouter",
+    extractionModel: "openai/gpt-4o-mini",
+    embeddingModel: "openai/text-embedding-3-small",
+    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    policyRevision: 1,
+  },
+  openai: {
+    provider: "openai",
+    extractionModel: "gpt-4o-mini",
+    embeddingModel: "text-embedding-3-small",
+    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    policyRevision: 1,
+  },
+}
+
+export function getMemoryProcessingPolicy(provider: MemoryProcessingProvider) {
+  return processingPolicies[provider]
+}
+
 const MAX_MEMORY_CONTENT_LENGTH = 500
 const MAX_MEMORY_KEY_LENGTH = 80
 const MAX_EXTRACTED_MEMORIES = 5
@@ -26,7 +62,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-const unsafeMemoryPattern = new RegExp(
+const forbiddenMemoryPattern = new RegExp(
   [
     "password",
     "passcode",
@@ -47,14 +83,6 @@ const unsafeMemoryPattern = new RegExp(
     "ssn",
     "passport",
     "driver'?s license",
-    "medical",
-    "diagnos(?:is|ed)",
-    "medication",
-    "therapy",
-    "pregnan",
-    "religion",
-    "political affiliation",
-    "sexual orientation",
     "home address",
     "street address",
     "postal code",
@@ -70,14 +98,12 @@ const secretValuePatterns = [
   /\bsk-[A-Za-z0-9_-]{8,}\b/,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-  /\b(?:\+?\d[ .()-]*){10,15}\b/,
 ]
 
 export function isSafeDurableMemory(key: string, content: string) {
   const text = `${key} ${content}`
   return (
-    !unsafeMemoryPattern.test(text) &&
+    !forbiddenMemoryPattern.test(text) &&
     !transientMemoryPattern.test(content) &&
     !secretValuePatterns.some((pattern) => pattern.test(content))
   )
@@ -91,6 +117,37 @@ export function normalizeEditedMemory(key: string, content: string) {
   if (!isSafeDurableMemory(key, normalized))
     throw new Error("Memory content is not allowed")
   return normalized
+}
+
+const sensitiveMemoryPattern = new RegExp(
+  [
+    "health",
+    "medical",
+    "diagnos(?:is|ed)",
+    "medication",
+    "therapy",
+    "pregnan",
+    "religion",
+    "political affiliation",
+    "sexual orientation",
+    "email",
+    "phone",
+  ].join("|"),
+  "i"
+)
+
+export function isSensitiveMemory(key: string, content: string) {
+  return (
+    sensitiveMemoryPattern.test(`${key} ${content}`) ||
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(content) ||
+    /\b(?:\+?\d[ .()-]*){10,15}\b/.test(content)
+  )
+}
+
+export function isExplicitRememberRequest(content: string) {
+  return /\b(?:remember|save|store|keep)\b.{0,80}\b(?:that|this|my)\b/i.test(
+    content
+  )
 }
 
 export function parseMemoryExtraction(
@@ -258,7 +315,9 @@ export const memoryExtractionSchema = z.object({
 
 export const memoryExtractionInstructions = `Extract only durable facts or preferences explicitly stated by the user in the latest message.
 Return zero items unless the information is likely useful in future conversations.
-Do not infer or store secrets, credentials, authentication data, financial data, government identifiers, contact information, precise addresses, health information, protected traits, transient plans, temporary states, or facts stated only by the assistant.
+Never extract secrets, credentials, authentication data, financial account data, government identifiers, or precise addresses.
+Do not infer sensitive health, protected-trait, email, or phone information. Extract a sensitive fact only if the user explicitly asks to remember/save/store it; it will remain pending separate confirmation before recall.
+Do not extract transient plans, temporary states, or facts stated only by the assistant.
 Use project scope only for facts specific to the supplied project; otherwise use user scope.
 Use the same stable key for updates to the same fact.
 Return a deletion only when the user explicitly asks to forget an existing key supplied in the request. A correction should be an updated memory using the existing key, not a deletion.`

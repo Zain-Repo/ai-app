@@ -31,6 +31,10 @@ const REALTIME_VOICES = new Set([
 ])
 // ponytail: bounded above today's catalog size; paginate if OpenRouter exceeds 1,000 models.
 const MAX_MODELS = 1_000
+const realtimeSessionValidator = v.object({
+  answer: v.string(),
+  memoryReferenceText: v.string(),
+})
 
 export function isValidSdpOffer(offer: string) {
   return (
@@ -589,8 +593,12 @@ export const connectOpenAI = action({
 })
 
 export const createRealtimeSession = action({
-  args: { offer: v.string(), voice: v.string() },
-  returns: v.string(),
+  args: {
+    conversationId: v.optional(v.string()),
+    offer: v.string(),
+    voice: v.string(),
+  },
+  returns: realtimeSessionValidator,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity()
     if (!identity) throw new Error("Not authenticated")
@@ -662,7 +670,33 @@ export const createRealtimeSession = action({
       )
     }
 
-    return await response.text()
+    let memoryReferenceText = ""
+    if (args.conversationId) {
+      try {
+        const request = await ctx.runQuery(
+          internal.conversations.getRealtimeMemoryContextRequest,
+          { conversationId: args.conversationId }
+        )
+        if (request) {
+          const memoryContext = await ctx.runAction(
+            internal.memoryActions.buildAgentContextWithRetrieval,
+            {
+              conversationId: request.conversationId,
+              currentMessageId: request.currentMessageId,
+              ownerId: request.ownerId,
+            }
+          )
+          memoryReferenceText = memoryContext.referenceText
+        }
+      } catch {
+        // Realtime voice remains available when optional memory is unavailable.
+      }
+    }
+
+    return {
+      answer: await response.text(),
+      memoryReferenceText,
+    }
   },
 })
 

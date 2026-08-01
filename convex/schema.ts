@@ -59,11 +59,14 @@ export default defineSchema({
     ),
     defaultModel: v.optional(v.string()),
     memoryEnabled: v.optional(v.boolean()),
+    memoryHistoryEnabled: v.optional(v.boolean()),
+    memoryHistoryRevision: v.optional(v.number()),
     memoryRevision: v.optional(v.number()),
     lastSeenAt: v.number(),
   })
     .index("by_token_identifier", ["tokenIdentifier"])
-    .index("by_clerk_user_id", ["clerkUserId"]),
+    .index("by_clerk_user_id", ["clerkUserId"])
+    .index("by_last_seen_at", ["lastSeenAt"]),
 
   // Credential material is intentionally excluded. This table stores only
   // safe connection metadata; provider tokens require encrypted secret storage.
@@ -225,6 +228,15 @@ export default defineSchema({
     outputMode: v.optional(outputMode),
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
+    // "off" conversations continue to exist in history but never read or write
+    // personalization data. Older conversations default to "standard".
+    memoryMode: v.optional(
+      v.union(
+        v.literal("standard"),
+        v.literal("read_only"),
+        v.literal("off")
+      )
+    ),
     updatedAt: v.number(),
   })
     .index("by_owner_updated_at", ["ownerId", "updatedAt"])
@@ -281,4 +293,258 @@ export default defineSchema({
       dimensions: 1536,
       filterFields: ["searchScope"],
     }),
+
+  // Versioned v2 memory records. The legacy `memories` table remains during
+  // migration so existing clients and in-flight OpenRouter extraction keep
+  // working. New agent paths use the tables below.
+  memoryProcessingProfiles: defineTable({
+    ownerId: v.id("users"),
+    providerConnectionId: v.id("providerConnections"),
+    provider: v.union(v.literal("openrouter"), v.literal("openai")),
+    extractionModel: v.string(),
+    embeddingModel: v.string(),
+    dimensions: v.number(),
+    policyRevision: v.number(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("paused"),
+      v.literal("needs_reauthentication"),
+      v.literal("disconnected")
+    ),
+    updatedAt: v.number(),
+  }).index("by_owner_id", ["ownerId"]),
+
+  memoryItems: defineTable({
+    ownerId: v.id("users"),
+    projectId: v.optional(v.id("projects")),
+    scope: v.union(v.literal("user"), v.literal("project")),
+    scopeKey: v.string(),
+    category: v.union(
+      v.literal("core_profile"),
+      v.literal("preference"),
+      v.literal("fact"),
+      v.literal("workstyle")
+    ),
+    canonicalKey: v.string(),
+    content: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("candidate"),
+      v.literal("needs_review"),
+      v.literal("archived"),
+      v.literal("removed")
+    ),
+    sourceSignal: v.union(
+      v.literal("manual"),
+      v.literal("direct_statement"),
+      v.literal("history_candidate"),
+      v.literal("inferred")
+    ),
+    confirmation: v.union(v.literal("confirmed"), v.literal("pending")),
+    pinned: v.boolean(),
+    sensitivity: v.union(v.literal("normal"), v.literal("sensitive")),
+    revision: v.number(),
+    sourceConversationId: v.optional(v.id("conversations")),
+    sourceMessageId: v.optional(v.id("messages")),
+    sourceTimestamp: v.number(),
+    expiresAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    undoExpiresAt: v.optional(v.number()),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_id_and_status_and_updated_at", [
+      "ownerId",
+      "status",
+      "updatedAt",
+    ])
+    .index("by_owner_id_and_scope_key_and_canonical_key", [
+      "ownerId",
+      "scopeKey",
+      "canonicalKey",
+    ])
+    .index("by_owner_id_and_scope_key_and_status_and_updated_at", [
+      "ownerId",
+      "scopeKey",
+      "status",
+      "updatedAt",
+    ])
+    .index("by_project_id_and_status_and_updated_at", [
+      "projectId",
+      "status",
+      "updatedAt",
+    ]),
+
+  memoryEvidence: defineTable({
+    ownerId: v.id("users"),
+    memoryItemId: v.id("memoryItems"),
+    sourceConversationId: v.optional(v.id("conversations")),
+    sourceMessageId: v.optional(v.id("messages")),
+    sourceSignal: v.union(
+      v.literal("manual"),
+      v.literal("direct_statement"),
+      v.literal("history_candidate"),
+      v.literal("inferred")
+    ),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_memory_item_id_and_created_at", ["memoryItemId", "createdAt"])
+    .index("by_source_message_id", ["sourceMessageId"]),
+
+  memoryVersions: defineTable({
+    ownerId: v.id("users"),
+    memoryItemId: v.id("memoryItems"),
+    revision: v.number(),
+    content: v.string(),
+    category: v.union(
+      v.literal("core_profile"),
+      v.literal("preference"),
+      v.literal("fact"),
+      v.literal("workstyle")
+    ),
+    sourceSignal: v.union(
+      v.literal("manual"),
+      v.literal("direct_statement"),
+      v.literal("history_candidate"),
+      v.literal("inferred")
+    ),
+    changedAt: v.number(),
+  }).index("by_memory_item_id_and_revision", ["memoryItemId", "revision"]),
+
+  conversationMemorySummaries: defineTable({
+    ownerId: v.id("users"),
+    conversationId: v.id("conversations"),
+    projectId: v.optional(v.id("projects")),
+    content: v.string(),
+    sourceMessageId: v.optional(v.id("messages")),
+    revision: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_conversation_id", ["conversationId"])
+    .index("by_owner_id_and_updated_at", ["ownerId", "updatedAt"])
+    .searchIndex("search_content", {
+      searchField: "content",
+      filterFields: ["ownerId"],
+    }),
+
+  memorySearchDocuments: defineTable({
+    ownerId: v.id("users"),
+    memoryItemId: v.id("memoryItems"),
+    scopeKey: v.string(),
+    searchScope: v.string(),
+    profileId: v.id("memoryProcessingProfiles"),
+    profileRevision: v.number(),
+    itemRevision: v.number(),
+    contentHash: v.string(),
+    content: v.string(),
+    embedding: v.array(v.float64()),
+    updatedAt: v.number(),
+  })
+    .index("by_memory_item_id_and_profile_revision", [
+      "memoryItemId",
+      "profileRevision",
+    ])
+    .searchIndex("search_content", {
+      searchField: "content",
+      filterFields: ["ownerId", "scopeKey", "profileRevision"],
+    })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["searchScope"],
+    }),
+
+  memoryJobs: defineTable({
+    ownerId: v.id("users"),
+    kind: v.union(
+      v.literal("capture"),
+      v.literal("embed"),
+      v.literal("history_backfill")
+    ),
+    sourceConversationId: v.optional(v.id("conversations")),
+    sourceMessageId: v.optional(v.id("messages")),
+    memoryItemId: v.optional(v.id("memoryItems")),
+    profileId: v.optional(v.id("memoryProcessingProfiles")),
+    profileRevision: v.number(),
+    policyRevision: v.number(),
+    historyRevision: v.optional(v.number()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("failed"),
+      v.literal("complete"),
+      v.literal("cancelled")
+    ),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    errorCode: v.optional(
+      v.union(
+        v.literal("provider_required"),
+        v.literal("needs_reauthentication"),
+        v.literal("profile_changed"),
+        v.literal("stale_source"),
+        v.literal("processing_failed")
+      )
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_source_message_id_and_policy_revision", [
+      "sourceMessageId",
+      "policyRevision",
+    ])
+    .index("by_source_conversation_id_and_kind", [
+      "sourceConversationId",
+      "kind",
+    ])
+    .index("by_owner_id_and_status_and_next_attempt_at", [
+      "ownerId",
+      "status",
+      "nextAttemptAt",
+    ]),
+
+  memoryTombstones: defineTable({
+    ownerId: v.id("users"),
+    keyHash: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_owner_id", ["ownerId"])
+    .index("by_owner_id_and_key_hash", ["ownerId", "keyHash"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  // A single cursor makes periodic owner retention bounded while eventually
+  // visiting every account instead of repeatedly selecting the first page.
+  memoryRetentionSweeps: defineTable({
+    name: v.string(),
+    cursor: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  responseMemoryReferences: defineTable({
+    ownerId: v.id("users"),
+    conversationId: v.id("conversations"),
+    responseMessageId: v.id("messages"),
+    memoryItemId: v.optional(v.id("memoryItems")),
+    summaryId: v.optional(v.id("conversationMemorySummaries")),
+    feedback: v.optional(
+      v.union(v.literal("helpful"), v.literal("incorrect"), v.literal("dont_use"))
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_response_message_id", ["responseMessageId"])
+    .index("by_conversation_id", ["conversationId"])
+    .index("by_owner_id", ["ownerId"])
+    .index("by_summary_id", ["summaryId"])
+    .index("by_memory_item_id", ["memoryItemId"]),
+
+  memoryMigrationRuns: defineTable({
+    ownerId: v.id("users"),
+    startedAt: v.number(),
+    cursor: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    migratedCount: v.number(),
+  }).index("by_owner_id", ["ownerId"]),
 })

@@ -6,14 +6,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import type { OpenAILanguageModelResponsesOptions } from "@ai-sdk/openai"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import type { OpenRouterChatSettings } from "@openrouter/ai-sdk-provider"
-import {
-  APICallError,
-  generateText,
-  Output,
-  stepCountIs,
-  streamText,
-  tool,
-} from "ai"
+import { APICallError, generateText, stepCountIs, streamText, tool } from "ai"
 import type { ModelMessage } from "ai"
 import { v } from "convex/values"
 import { getDocumentProxy } from "unpdf"
@@ -23,15 +16,6 @@ import type { Id } from "./_generated/dataModel"
 import { action, env, internalAction } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
-import {
-  buildMemoryContext,
-  MEMORY_EXTRACTION_MODEL,
-  memoryExtractionInstructions,
-  memoryExtractionSchema,
-  parseMemoryExtraction,
-  selectRelevantMemoryFacts,
-} from "./memoryPolicy"
-import type { MemoryCandidate } from "./memoryPolicy"
 import {
   createProviderEmbeddings,
   getPrivateOpenRouterEmbeddingSettings,
@@ -68,11 +52,9 @@ export { normalizeGeneratedChatTitle as normalizeGeneratedTitle } from "../share
 
 const MAX_RESPONSE_LENGTH = 32_000
 const STREAM_FLUSH_INTERVAL_MS = 80
-const MEMORY_REQUEST_TIMEOUT_MS = 30_000
+const TITLE_REQUEST_TIMEOUT_MS = 30_000
 const OPENAI_TITLE_MODEL = "gpt-4o-mini"
 const OPENROUTER_TITLE_MODEL = `openai/${OPENAI_TITLE_MODEL}`
-const MAX_RELEVANT_MEMORIES = 8
-const MIN_MEMORY_SCORE = 0.35
 const MAX_RELEVANT_PROJECT_CHUNKS = 8
 const MIN_PROJECT_CHUNK_SCORE = 0.3
 const PROJECT_EMBEDDING_BATCH_SIZE = 32
@@ -111,11 +93,6 @@ const CHEAPEST_PROVIDER_ROUTING = {
   data_collection: "deny",
   require_parameters: true,
 } as const
-const PRIVATE_PROVIDER_ROUTING = {
-  data_collection: "deny",
-  require_parameters: true,
-  zdr: true,
-} as const
 
 type ReasoningEffort =
   "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
@@ -137,6 +114,28 @@ type DesktopCodexProjectSourceRequest = {
   projectId: Id<"projects">
   query: string
 }
+
+type DesktopCodexMemoryContext = {
+  budgetUsed: number
+  degradedReason?: string
+  historySummaryIds: Id<"conversationMemorySummaries">[]
+  memoryMode: "standard" | "read_only" | "off"
+  referenceText: string
+  selectedMemoryItemIds: Id<"memoryItems">[]
+}
+
+const desktopCodexMemoryContextValidator = v.object({
+  budgetUsed: v.number(),
+  degradedReason: v.optional(v.string()),
+  historySummaryIds: v.array(v.id("conversationMemorySummaries")),
+  memoryMode: v.union(
+    v.literal("standard"),
+    v.literal("read_only"),
+    v.literal("off")
+  ),
+  referenceText: v.string(),
+  selectedMemoryItemIds: v.array(v.id("memoryItems")),
+})
 
 type ProjectRetrievalContext = {
   ciphertext: string
@@ -295,13 +294,6 @@ export function getOpenRouterModelSettings(
 
 export { getPrivateOpenRouterEmbeddingSettings }
 
-function getPrivateOpenRouterModelSettings(): OpenRouterChatSettings {
-  return {
-    extraBody: { provider: PRIVATE_PROVIDER_ROUTING, store: false },
-    structuredOutputs: { strict: true },
-  }
-}
-
 function getOpenAIOptions(
   reasoningEffort?: string
 ): OpenAILanguageModelResponsesOptions {
@@ -366,25 +358,34 @@ export function addGenerationContexts(
   memoryContext: string,
   projectSourceContext: string
 ) {
-  const messagesWithMemory = messages.map((message, index) =>
-    index === 0 && message.role === "system" && memoryContext
-      ? { ...message, content: `${message.content}${memoryContext}` }
-      : message
-  )
-  if (!projectSourceContext) return messagesWithMemory
-
-  const latestUserIndex = messagesWithMemory.findLastIndex(
+  if (!memoryContext && !projectSourceContext) return messages
+  const latestUserIndex = messages.findLastIndex(
     (message) => message.role === "user"
   )
   const insertionIndex =
-    latestUserIndex === -1 ? messagesWithMemory.length : latestUserIndex
+    latestUserIndex === -1 ? messages.length : latestUserIndex
+  const referenceMessages: ProviderMessage[] = [
+    ...(projectSourceContext
+      ? [
+          {
+            content: `Reference context for the next user request:\n${projectSourceContext}`,
+            role: "user" as const,
+          },
+        ]
+      : []),
+    ...(memoryContext
+      ? [
+          {
+            content: `Reference context for the next user request:\n${memoryContext}`,
+            role: "user" as const,
+          },
+        ]
+      : []),
+  ]
   return [
-    ...messagesWithMemory.slice(0, insertionIndex),
-    {
-      content: `Reference context for the next user request:${projectSourceContext}`,
-      role: "user" as const,
-    },
-    ...messagesWithMemory.slice(insertionIndex),
+    ...messages.slice(0, insertionIndex),
+    ...referenceMessages,
+    ...messages.slice(insertionIndex),
   ]
 }
 
@@ -464,147 +465,6 @@ async function createEmbeddings(token: string, input: string[]) {
   }
 }
 
-async function isMemoryEnabled(
-  ctx: ActionCtx,
-  ownerId: Id<"users">,
-  memoryRevision: number
-) {
-  try {
-    return await ctx.runQuery(internal.memories.isEnabled, {
-      memoryRevision,
-      ownerId,
-    })
-  } catch {
-    return false
-  }
-}
-
-async function retrieveRelevantMemories(
-  ctx: ActionCtx,
-  token: string,
-  context: {
-    hasSearchableMemoryFacts: boolean
-    lastUserMessage: string
-    memoryEnabled: boolean
-    memoryOwnerId: Id<"users">
-    memorySearchScopes: string[]
-    projectId?: Id<"projects">
-  }
-) {
-  if (
-    !context.memoryEnabled ||
-    !context.hasSearchableMemoryFacts ||
-    !context.memorySearchScopes.length
-  )
-    return []
-  try {
-    const embeddings = await createEmbeddings(token, [context.lastUserMessage])
-    const embedding = embeddings?.[0]
-    if (!embedding) return []
-    const scopes = context.memorySearchScopes
-    const hits = await ctx.vectorSearch("memories", "by_embedding", {
-      vector: embedding,
-      limit: MAX_RELEVANT_MEMORIES,
-      filter: (query) =>
-        scopes.length === 1
-          ? query.eq("searchScope", scopes[0])
-          : query.or(...scopes.map((scope) => query.eq("searchScope", scope))),
-    })
-    const relevantHits = hits.filter((hit) => hit._score >= MIN_MEMORY_SCORE)
-    if (!relevantHits.length) return []
-    const memories = await ctx.runQuery(
-      internal.memories.hydrateSearchResults,
-      {
-        memoryIds: relevantHits.map((hit) => hit._id),
-        ownerId: context.memoryOwnerId,
-        ...(context.projectId ? { projectId: context.projectId } : {}),
-      }
-    )
-    return selectRelevantMemoryFacts(memories)
-  } catch {
-    return []
-  }
-}
-
-async function extractAndStoreMemories(
-  ctx: ActionCtx,
-  token: string,
-  args: {
-    conversationId: Id<"conversations">
-    existingKeys: Array<{ key: string; scope: "user" | "project" }>
-    latestUserMessage: string
-    latestUserMessageCreatedAt: number
-    latestUserMessageId: Id<"messages">
-    memoryEnabled: boolean
-    memoryRevision: number
-    ownerId: Id<"users">
-    projectId?: Id<"projects">
-  }
-) {
-  if (
-    !args.memoryEnabled ||
-    !(await isMemoryEnabled(ctx, args.ownerId, args.memoryRevision))
-  )
-    return
-  try {
-    const openrouter = createOpenRouter({
-      apiKey: token,
-      compatibility: "strict",
-    })
-    const { output } = await generateText({
-      model: openrouter(
-        MEMORY_EXTRACTION_MODEL,
-        getPrivateOpenRouterModelSettings()
-      ),
-      instructions: memoryExtractionInstructions,
-      prompt: JSON.stringify({
-        existingKeys: args.existingKeys,
-        hasProject: Boolean(args.projectId),
-        latestUserMessage: args.latestUserMessage,
-      }),
-      output: Output.object({
-        name: "durable_memory_candidates",
-        schema: memoryExtractionSchema,
-      }),
-      maxOutputTokens: 800,
-      timeout: MEMORY_REQUEST_TIMEOUT_MS,
-    })
-    const extraction = parseMemoryExtraction(
-      output,
-      Boolean(args.projectId),
-      args.existingKeys
-    )
-    if (!extraction.memories.length && !extraction.deletions.length) return
-    const facts = extraction.memories.filter(
-      (candidate) => candidate.kind === "fact"
-    )
-    const embeddings = await createEmbeddings(
-      token,
-      facts.map((candidate) => candidate.content)
-    )
-    let factIndex = 0
-    const memories: Array<MemoryCandidate & { embedding?: number[] }> =
-      extraction.memories.map((candidate) => {
-        if (candidate.kind === "preference") return candidate
-        const embedding = embeddings?.[factIndex]
-        factIndex += 1
-        return { ...candidate, ...(embedding ? { embedding } : {}) }
-      })
-    await ctx.runMutation(internal.memories.upsertExtracted, {
-      deletions: extraction.deletions,
-      memories,
-      memoryRevision: args.memoryRevision,
-      ownerId: args.ownerId,
-      ...(args.projectId ? { projectId: args.projectId } : {}),
-      sourceConversationId: args.conversationId,
-      sourceMessageCreatedAt: args.latestUserMessageCreatedAt,
-      sourceMessageId: args.latestUserMessageId,
-    })
-  } catch {
-    // Memory is an optional enhancement; never make a completed chat fail.
-  }
-}
-
 async function requestConversationTitle(
   token: string,
   args: {
@@ -630,7 +490,7 @@ async function requestConversationTitle(
           instructions: CHAT_TITLE_INSTRUCTIONS,
           prompt: args.prompt,
           maxOutputTokens: 40,
-          timeout: MEMORY_REQUEST_TIMEOUT_MS,
+          timeout: TITLE_REQUEST_TIMEOUT_MS,
         })
       : await generateText({
           model: createOpenAI({ apiKey: token }).responses(OPENAI_TITLE_MODEL),
@@ -638,7 +498,7 @@ async function requestConversationTitle(
           prompt: args.prompt,
           maxOutputTokens: 40,
           providerOptions: { openai: getOpenAIOptions() },
-          timeout: MEMORY_REQUEST_TIMEOUT_MS,
+          timeout: TITLE_REQUEST_TIMEOUT_MS,
         })
   return normalizeGeneratedChatTitle(result.text)
 }
@@ -934,6 +794,27 @@ export const getDesktopCodexProjectContext = action({
   },
 })
 
+export const getDesktopCodexMemoryContext = action({
+  args: { conversationId: v.string() },
+  returns: desktopCodexMemoryContextValidator,
+  handler: async (ctx, args): Promise<DesktopCodexMemoryContext> => {
+    const request: {
+      conversationId: Id<"conversations">
+      currentMessageId: Id<"messages">
+      ownerId: Id<"users">
+    } | null = await ctx.runQuery(
+      internal.conversations.getDesktopCodexMemoryContextRequest,
+      { conversationId: args.conversationId }
+    )
+    if (!request) throw new Error("Codex conversation unavailable")
+    return await ctx.runAction(internal.memoryActions.buildAgentContextWithRetrieval, {
+      conversationId: request.conversationId,
+      currentMessageId: request.currentMessageId,
+      ownerId: request.ownerId,
+    })
+  },
+})
+
 export const generateTitle = internalAction({
   args: { conversationId: v.id("conversations") },
   returns: v.null(),
@@ -987,6 +868,14 @@ export const generate = internalAction({
       )
       connectionId = context.connectionId
       provider = context.provider
+      const agentMemoryContext = await ctx.runAction(
+        internal.memoryActions.buildAgentContextWithRetrieval,
+        {
+          conversationId: args.conversationId,
+          currentMessageId: context.lastUserMessageId,
+          ownerId: context.ownerId,
+        }
+      )
       const token = await decryptProviderToken(
         context.ciphertext,
         context.iv,
@@ -997,7 +886,11 @@ export const generate = internalAction({
         if (context.provider !== "openrouter")
           throw new Error("Image generation requires OpenRouter")
         const image = await generateOpenRouterImage(token, {
-          messages: context.messages,
+          messages: addGenerationContexts(
+            context.messages,
+            agentMemoryContext.referenceText,
+            ""
+          ),
           model: context.model,
           prompt: context.lastUserMessage,
           routingProvider: context.routingProvider,
@@ -1026,33 +919,24 @@ export const generate = internalAction({
           await ctx.storage.delete(storageId)
           throw cause
         }
+        try {
+          await ctx.runMutation(
+            internal.memoryContext.recordResponseReferences,
+            {
+              conversationId: args.conversationId,
+              memoryItemIds: agentMemoryContext.selectedMemoryItemIds,
+              ownerId: context.ownerId,
+              responseMessageId: args.assistantMessageId,
+              summaryIds: agentMemoryContext.historySummaryIds,
+            }
+          )
+        } catch {
+          // Source attribution must never delete a completed generated image.
+        }
         return null
       }
-      const memoryEnabled =
-        context.provider === "openrouter" &&
-        context.memoryEnabled &&
-        (await isMemoryEnabled(
-          ctx,
-          context.memoryOwnerId,
-          context.memoryRevision
-        ))
-      const relevantMemories = await retrieveRelevantMemories(ctx, token, {
-        ...context,
-        memoryEnabled,
-      })
-      const memoryStillCurrent =
-        memoryEnabled &&
-        (await isMemoryEnabled(
-          ctx,
-          context.memoryOwnerId,
-          context.memoryRevision
-        ))
-      const memoryContext = buildMemoryContext(
-        memoryStillCurrent ? context.memoryPreferences : [],
-        memoryStillCurrent ? relevantMemories : []
-      )
       const projectSourceContext = await retrieveRelevantProjectSources(ctx, {
-        ownerId: context.memoryOwnerId,
+        ownerId: context.ownerId,
         ...(context.projectId ? { projectId: context.projectId } : {}),
         query: context.lastUserMessage,
       })
@@ -1068,7 +952,7 @@ export const generate = internalAction({
       )
       const messages = addGenerationContexts(
         hydratedMessages,
-        memoryContext,
+        agentMemoryContext.referenceText,
         projectSourceContext
       )
       const prompt = toModelPrompt(messages)
@@ -1272,18 +1156,17 @@ export const generate = internalAction({
         ...(terminalRuns.length ? { terminalRuns } : {}),
         ...(uiPayload ? { uiPayload } : {}),
       })
-      if (context.provider === "openrouter")
-        await extractAndStoreMemories(ctx, token, {
+      try {
+        await ctx.runMutation(internal.memoryContext.recordResponseReferences, {
           conversationId: args.conversationId,
-          existingKeys: context.memoryKeys,
-          latestUserMessage: context.lastUserMessage,
-          latestUserMessageCreatedAt: context.lastUserMessageCreatedAt,
-          latestUserMessageId: context.lastUserMessageId,
-          memoryEnabled: context.memoryEnabled,
-          memoryRevision: context.memoryRevision,
-          ownerId: context.memoryOwnerId,
-          ...(context.projectId ? { projectId: context.projectId } : {}),
+          memoryItemIds: agentMemoryContext.selectedMemoryItemIds,
+          ownerId: context.ownerId,
+          responseMessageId: args.assistantMessageId,
+          summaryIds: agentMemoryContext.historySummaryIds,
         })
+      } catch {
+        // Source attribution must never change a completed assistant response.
+      }
       return null
     } catch (cause) {
       const apiError = APICallError.isInstance(cause) ? cause : undefined

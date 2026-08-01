@@ -115,6 +115,7 @@ describe("chat title generation", () => {
       })
 
       expect(scheduled.map((job) => job.name).sort()).toEqual([
+        "memoryCapture:enqueueForMessage",
         "openRouterResponses:generate",
         "openRouterResponses:generateTitle",
       ])

@@ -7,7 +7,7 @@ import {
   Volume2,
   X,
 } from "lucide-react"
-import { useAction } from "convex/react"
+import { useAction, useMutation } from "convex/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { api } from "../../convex/_generated/api"
@@ -49,9 +49,18 @@ const statusCopy: Record<VoiceStatus, string> = {
   thinking: "Forming a response",
 }
 
-export function RealtimeVoice({ onClose }: { onClose: () => void }) {
+export function RealtimeVoice({
+  conversationId,
+  onClose,
+}: {
+  conversationId?: string
+  onClose: () => void
+}) {
   const createRealtimeSession = useAction(
     api.providerOAuth.createRealtimeSession
+  )
+  const commitRealtimeTranscript = useMutation(
+    api.conversations.commitRealtimeTranscript
   )
   const [status, setStatus] = useState<VoiceStatus>("idle")
   const [voice, setVoice] = useState("marin")
@@ -97,8 +106,14 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
         ...current,
         { id: id ?? crypto.randomUUID(), role, text: clean },
       ])
+      if (conversationId)
+        void commitRealtimeTranscript({
+          content: clean,
+          conversationId,
+          role,
+        }).catch(() => undefined)
     },
-    []
+    [commitRealtimeTranscript, conversationId]
   )
 
   const sendEvent = useCallback((payload: object) => {
@@ -278,12 +293,41 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
       await peer.setLocalDescription(offer)
       if (!offer.sdp)
         throw new Error("The browser did not create an audio offer")
-      const answer = await createRealtimeSession({ offer: offer.sdp, voice })
+      const session = await createRealtimeSession({
+        ...(conversationId ? { conversationId } : {}),
+        offer: offer.sdp,
+        voice,
+      })
 
       await peer.setRemoteDescription({
         type: "answer",
-        sdp: answer,
+        sdp: session.answer,
       })
+      if (session.memoryReferenceText) {
+        const injectMemoryReference = () => {
+          if (channel.readyState !== "open") return
+          channel.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: `Reference context for this conversation:\n${session.memoryReferenceText}`,
+                  },
+                ],
+              },
+            })
+          )
+        }
+        if (channel.readyState === "open") injectMemoryReference()
+        else
+          channel.addEventListener("open", injectMemoryReference, {
+            once: true,
+          })
+      }
       startMeter(stream)
     } catch (cause) {
       stop()
@@ -294,7 +338,14 @@ export function RealtimeVoice({ onClose }: { onClose: () => void }) {
       )
       setStatus("error")
     }
-  }, [createRealtimeSession, handleEvent, startMeter, stop, voice])
+  }, [
+    conversationId,
+    createRealtimeSession,
+    handleEvent,
+    startMeter,
+    stop,
+    voice,
+  ])
 
   const toggleMute = () => {
     const next = !muted

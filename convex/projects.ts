@@ -532,6 +532,11 @@ export const remove = mutation({
     )
     await ctx.scheduler.runAfter(
       0,
+      internal.memoryRetention.eraseProjectMemoryArtifacts,
+      { ownerId: user._id, projectId: project._id }
+    )
+    await ctx.scheduler.runAfter(
+      0,
       internal.terminalSandboxActions.removeWorkspace,
       { key: project._id, scope: "project" }
     )
