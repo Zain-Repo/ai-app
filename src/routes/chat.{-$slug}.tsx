@@ -243,6 +243,14 @@ export function toggleExpandedProject(
   return expandedProjectId === projectId ? undefined : projectId
 }
 
+export function resolveActiveProjectId(
+  conversationProjectId: string | undefined,
+  searchProjectId: string | undefined,
+  conversationLoaded: boolean
+) {
+  return conversationLoaded ? conversationProjectId : searchProjectId
+}
+
 export function ProjectConversationDisclosure({
   children,
   open,
@@ -893,8 +901,13 @@ function ChatWorkspace() {
     (conversation) =>
       conversation.title.toLowerCase().includes(normalizedSearch)
   )
+  const activeProjectId = resolveActiveProjectId(
+    selected?.projectId,
+    search.projectId,
+    selected !== undefined
+  )
   const selectedProject = projects?.find(
-    (project) => project._id === search.projectId
+    (project) => project._id === activeProjectId
   )
 
   const open = (next: {
@@ -1717,7 +1730,22 @@ function ChatWorkspace() {
         <header className="chat-workspace-header flex items-center gap-3 border-b px-3 sm:px-4">
           <SidebarTrigger />
           <div className="min-w-0">
-            <p className="chat-workspace-kicker">AI workspace</p>
+            {selectedProject && search.mode !== "project" ? (
+              <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <Folder
+                  aria-hidden="true"
+                  className="size-3 shrink-0"
+                  strokeWidth={1.5}
+                />
+                <span className="shrink-0">Project</span>
+                <span aria-hidden="true">:</span>
+                <span className="truncate font-medium text-foreground/80">
+                  {selectedProject.name}
+                </span>
+              </p>
+            ) : (
+              <p className="chat-workspace-kicker">AI workspace</p>
+            )}
             <p className="truncate text-sm font-semibold tracking-tight">
               {search.mode === "project"
                 ? (selectedProject?.name ?? "Project")
