@@ -9,6 +9,7 @@ import {
   getPreferredProvider,
   isActiveProvider,
   ProjectConversationDisclosure,
+  resolveActiveProjectId,
   toggleExpandedProject,
 } from "./chat.{-$slug}"
 
@@ -48,6 +49,23 @@ describe("project sidebar disclosure", () => {
     )
 
     expect(view.getByText("Design system chat")).toBe(title)
+  })
+})
+
+describe("project chat header context", () => {
+  it("separates chat membership from project workspace routing", () => {
+    expect(resolveActiveProjectId(undefined, undefined, false, "website")).toBe(
+      "website"
+    )
+    expect(
+      resolveActiveProjectId("chat", undefined, false, "website")
+    ).toBeUndefined()
+    expect(resolveActiveProjectId("chat", "mobile", false, "website")).toBe(
+      "mobile"
+    )
+    expect(resolveActiveProjectId("chat", "mobile", true, "website")).toBe(
+      "website"
+    )
   })
 })
 

@@ -22,6 +22,20 @@ const MAX_SOURCE_URL_LENGTH = 2_048
 const MAX_PROJECT_CONVERSATIONS = 100
 const MAX_MEMORIES_PER_USER = 100
 
+const projectValidator = v.object({
+  _id: v.id("projects"),
+  _creationTime: v.number(),
+  instructions: v.optional(v.string()),
+  embeddingProfileId: v.optional(v.id("projectEmbeddingProfiles")),
+  embeddingProfileRevision: v.optional(v.number()),
+  memoryScope: v.optional(
+    v.union(v.literal("project_only"), v.literal("all_chats"))
+  ),
+  name: v.string(),
+  ownerId: v.id("users"),
+  updatedAt: v.number(),
+})
+
 function normalizeSourceUrl(value: string) {
   const input = value.trim()
   if (!input || input.length > MAX_SOURCE_URL_LENGTH)
@@ -190,21 +204,7 @@ export const addSources = mutation({
 
 export const list = query({
   args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("projects"),
-      _creationTime: v.number(),
-      instructions: v.optional(v.string()),
-      embeddingProfileId: v.optional(v.id("projectEmbeddingProfiles")),
-      embeddingProfileRevision: v.optional(v.number()),
-      memoryScope: v.optional(
-        v.union(v.literal("project_only"), v.literal("all_chats"))
-      ),
-      name: v.string(),
-      ownerId: v.id("users"),
-      updatedAt: v.number(),
-    })
-  ),
+  returns: v.array(projectValidator),
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx)
     return await ctx.db
@@ -214,6 +214,18 @@ export const list = query({
       )
       .order("desc")
       .take(MAX_PROJECTS)
+  },
+})
+
+export const get = query({
+  args: { projectId: v.string() },
+  returns: v.union(projectValidator, v.null()),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const projectId = ctx.db.normalizeId("projects", args.projectId)
+    if (!projectId) return null
+    const project = await ctx.db.get(projectId)
+    return project?.ownerId === user._id ? project : null
   },
 })
 

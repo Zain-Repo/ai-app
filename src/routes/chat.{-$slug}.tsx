@@ -243,6 +243,17 @@ export function toggleExpandedProject(
   return expandedProjectId === projectId ? undefined : projectId
 }
 
+export function resolveActiveProjectId(
+  conversationId: string | undefined,
+  conversationProjectId: string | undefined,
+  projectMode: boolean,
+  searchProjectId: string | undefined
+) {
+  return projectMode || !conversationId
+    ? searchProjectId
+    : conversationProjectId
+}
+
 export function ProjectConversationDisclosure({
   children,
   open,
@@ -498,6 +509,16 @@ function ChatWorkspace() {
   const selected = useQuery(
     api.conversations.get,
     conversationId ? { conversationId } : "skip"
+  )
+  const activeProjectId = resolveActiveProjectId(
+    conversationId,
+    selected?.projectId,
+    search.mode === "project",
+    search.projectId
+  )
+  const selectedProject = useQuery(
+    api.projects.get,
+    activeProjectId ? { projectId: activeProjectId } : "skip"
   )
   const messages = useQuery(
     api.conversations.listMessages,
@@ -893,10 +914,6 @@ function ChatWorkspace() {
     (conversation) =>
       conversation.title.toLowerCase().includes(normalizedSearch)
   )
-  const selectedProject = projects?.find(
-    (project) => project._id === search.projectId
-  )
-
   const open = (next: {
     mode?: "chat-new" | "project" | "project-new"
     projectId?: string
@@ -1717,7 +1734,22 @@ function ChatWorkspace() {
         <header className="chat-workspace-header flex items-center gap-3 border-b px-3 sm:px-4">
           <SidebarTrigger />
           <div className="min-w-0">
-            <p className="chat-workspace-kicker">AI workspace</p>
+            {selectedProject && search.mode !== "project" ? (
+              <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <Folder
+                  aria-hidden="true"
+                  className="size-3 shrink-0"
+                  strokeWidth={1.5}
+                />
+                <span className="shrink-0">Project</span>
+                <span aria-hidden="true">:</span>
+                <span className="truncate font-medium text-foreground/80">
+                  {selectedProject.name}
+                </span>
+              </p>
+            ) : (
+              <p className="chat-workspace-kicker">AI workspace</p>
+            )}
             <p className="truncate text-sm font-semibold tracking-tight">
               {search.mode === "project"
                 ? (selectedProject?.name ?? "Project")
