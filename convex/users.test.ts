@@ -65,6 +65,7 @@ describe("users.syncCurrent", () => {
       language: "auto",
       intelligenceLevel: "adaptive",
       responseDetail: "balanced",
+      userMessageBubbleColor: "default",
     })
 
     await ada.mutation(api.users.updatePreferences, {
@@ -72,6 +73,7 @@ describe("users.syncCurrent", () => {
       language: "fr",
       intelligenceLevel: "deep",
       responseDetail: "detailed",
+      userMessageBubbleColor: "violet",
     })
 
     await expect(ada.query(api.users.getPreferences)).resolves.toEqual({
@@ -79,12 +81,33 @@ describe("users.syncCurrent", () => {
       language: "fr",
       intelligenceLevel: "deep",
       responseDetail: "detailed",
+      userMessageBubbleColor: "violet",
     })
     await expect(grace.query(api.users.getPreferences)).resolves.toEqual({
       defaultModel: null,
       language: "auto",
       intelligenceLevel: "adaptive",
       responseDetail: "balanced",
+      userMessageBubbleColor: "default",
     })
+  })
+
+  it("accepts only named user message bubble color options", async () => {
+    const t = convexTest(schema, modules)
+    const ada = t.withIdentity({
+      subject: "user_123",
+      tokenIdentifier: "https://clerk.example.test|user_123",
+    })
+    await ada.mutation(api.users.syncCurrent)
+
+    await expect(
+      ada.mutation(api.users.updatePreferences, {
+        defaultModel: null,
+        language: "auto",
+        intelligenceLevel: "adaptive",
+        responseDetail: "balanced",
+        userMessageBubbleColor: "invalid" as never,
+      })
+    ).rejects.toThrow()
   })
 })

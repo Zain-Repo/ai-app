@@ -15,6 +15,7 @@ import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
+import { createGitHubProfileCustomPage } from "@/components/github-account-profile"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -90,6 +91,9 @@ function SidebarUserMenu({
   const displayName = name || "Your account"
   const displayEmail = email || "Signed in"
   const darkModeEnabled = mounted && resolvedTheme === "dark"
+  const githubProviderUserId = user?.externalAccounts.find(
+    (account) => account.provider === "github"
+  )?.providerUserId
 
   async function handleSignOut() {
     try {
@@ -97,6 +101,17 @@ function SidebarUserMenu({
     } catch {
       toast.error("Could not sign out. Please try again.")
     }
+  }
+
+  function handleManageAccount() {
+    if (githubProviderUserId) {
+      openUserProfile({
+        customPages: [createGitHubProfileCustomPage(githubProviderUserId)],
+      })
+      return
+    }
+
+    openUserProfile()
   }
 
   return (
@@ -146,7 +161,7 @@ function SidebarUserMenu({
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => openUserProfile()}>
+        <DropdownMenuItem onClick={handleManageAccount}>
           <HugeiconsIcon
             aria-hidden="true"
             icon={AccountSetting02Icon}

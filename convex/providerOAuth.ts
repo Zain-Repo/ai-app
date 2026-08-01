@@ -329,16 +329,21 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
     )
 }
 
-export function getOpenRouterModelEndpointsUrl(model: string) {
+export function isValidOpenRouterModelId(model: string) {
   const parts = model.split("/")
-  if (
-    parts.length !== 2 ||
-    parts.some((part) => !part || part.length > 100) ||
-    !/^~?[A-Za-z0-9._:-]+$/.test(parts[0]) ||
-    !/^[A-Za-z0-9._:-]+$/.test(parts[1])
-  ) {
+  return (
+    parts.length === 2 &&
+    parts.every((part) => part.length > 0 && part.length <= 100) &&
+    /^~?[A-Za-z0-9._:-]+$/.test(parts[0]) &&
+    /^[A-Za-z0-9._:-]+$/.test(parts[1])
+  )
+}
+
+export function getOpenRouterModelEndpointsUrl(model: string) {
+  if (!isValidOpenRouterModelId(model)) {
     throw new Error("Model is unavailable")
   }
+  const parts = model.split("/")
   return `${OPENROUTER_MODEL_ENDPOINTS_URL}/${parts.map(encodeURIComponent).join("/")}/endpoints`
 }
 
@@ -449,7 +454,7 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
       if (
         typeof model.id !== "string" ||
         typeof model.name !== "string" ||
-        model.id.length > 200 ||
+        !isValidOpenRouterModelId(model.id) ||
         model.name.length > 200
       ) {
         return []
@@ -734,6 +739,8 @@ export const listModelEndpoints = action({
   args: { model: v.string() },
   returns: v.array(modelEndpointValidator),
   handler: async (ctx, args) => {
+    if (!isValidOpenRouterModelId(args.model)) return []
+
     const credential = await ctx.runQuery(
       internal.providerConnections.getOpenRouterCredential,
       {}

@@ -13,6 +13,8 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Be concise")
     expect(prompt).toContain("correct language tag")
     expect(prompt).toContain("return only that valid format")
+    expect(prompt).toContain("use $...$ for inline LaTeX")
+    expect(prompt).toContain("put each $$ delimiter on its own line")
   })
 
   it("requires relevant persistent project files to be used safely", () => {

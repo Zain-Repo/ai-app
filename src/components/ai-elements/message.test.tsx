@@ -62,10 +62,12 @@ describe("MessageResponse", () => {
     })
   })
 
-  it("renders accessible inline and display math", async () => {
+  it("renders accessible inline and display LaTeX with common math symbols", async () => {
     const { container } = render(
       <MessageResponse>
-        {"Inline: $$x^2$$\n\n$$\ne^{i\\pi} + 1 = 0\n$$"}
+        {
+          "Inline: $\\alpha + \\beta = \\frac{1}{2}$.\n\n$$\n\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\n$$"
+        }
       </MessageResponse>
     )
 
@@ -73,5 +75,22 @@ describe("MessageResponse", () => {
       expect(container.querySelectorAll(".katex")).toHaveLength(2)
     })
     expect(container.querySelectorAll("math")).toHaveLength(2)
+    expect(container.querySelectorAll("math annotation")[0].textContent).toBe(
+      "\\alpha + \\beta = \\frac{1}{2}"
+    )
+    expect(container.querySelectorAll("math annotation")[1].textContent).toBe(
+      "\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"
+    )
+  })
+
+  it("does not treat an unclosed currency amount as math", () => {
+    const { container } = render(
+      <MessageResponse>
+        {"The subscription costs $5 per month."}
+      </MessageResponse>
+    )
+
+    expect(container.querySelector(".katex")).toBeNull()
+    expect(container.textContent).toContain("$5 per month.")
   })
 })
