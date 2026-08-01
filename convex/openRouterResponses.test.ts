@@ -55,38 +55,87 @@ describe("AI SDK provider bridge", () => {
   })
 
   it("restores indexed project attachments as user-priority fallback context", () => {
+    const currentAttachment = {
+      contentType: "text/plain",
+      name: "current-request.txt",
+      storageId: "kg2current" as Id<"_storage">,
+      url: "https://files.example/current-request.txt",
+    }
+    const fallbackAttachment = {
+      contentType: "text/markdown",
+      name: "indexed-notes.md",
+      storageId: "kg2fallback" as Id<"_storage">,
+      url: "https://files.example/indexed-notes.md",
+    }
     const messages = addProjectSourceFallbackAttachments(
       [
         { content: "Trusted system policy", role: "system" },
         { content: "Project sources", role: "user" },
-        { content: "Answer from the project", role: "user" },
-      ],
-      [
         {
-          contentType: "text/markdown",
-          name: "indexed-notes.md",
-          storageId: "kg2abc" as Id<"_storage">,
-          url: "https://files.example/indexed-notes.md",
+          attachments: [currentAttachment],
+          content: "Answer from the project",
+          role: "user",
         },
-      ]
+      ],
+      [fallbackAttachment]
     )
 
     expect(messages).toEqual([
       { content: "Trusted system policy", role: "system" },
+      { content: "Project sources", role: "user" },
       {
-        attachments: [
-          {
-            contentType: "text/markdown",
-            name: "indexed-notes.md",
-            storageId: "kg2abc",
-            url: "https://files.example/indexed-notes.md",
-          },
-        ],
-        content: "Project sources",
+        attachments: [currentAttachment, fallbackAttachment],
+        content: "Answer from the project",
         role: "user",
       },
-      { content: "Answer from the project", role: "user" },
     ])
+  })
+
+  it("spends the inline text budget on current attachments before fallbacks", async () => {
+    const currentStorageId = "kg2current" as Id<"_storage">
+    const fallbackStorageId = "kg2fallback" as Id<"_storage">
+    const readOrder: Id<"_storage">[] = []
+    const messages = addProjectSourceFallbackAttachments(
+      [
+        { content: "Earlier context", role: "user" },
+        {
+          attachments: [
+            {
+              contentType: "text/plain",
+              name: "current-request.txt",
+              storageId: currentStorageId,
+              url: "https://files.example/current-request.txt",
+            },
+          ],
+          content: "Use my current attachment first",
+          role: "user",
+        },
+      ],
+      [
+        {
+          contentType: "text/plain",
+          name: "project-fallback.txt",
+          storageId: fallbackStorageId,
+          url: "https://files.example/project-fallback.txt",
+        },
+      ]
+    )
+    const hydrated = await inlineTextAttachments(
+      messages,
+      async (storageId) => {
+        readOrder.push(storageId)
+        return storageId === currentStorageId
+          ? new Blob(["C".repeat(400_000)])
+          : new Blob(["F".repeat(200_000)])
+      }
+    )
+    const latestContent = hydrated.at(-1)?.content ?? ""
+
+    expect(readOrder).toEqual([currentStorageId, fallbackStorageId])
+    expect(latestContent).toContain("C".repeat(400_000))
+    expect(latestContent).toContain("F".repeat(100_000))
+    expect(latestContent).not.toContain("F".repeat(100_001))
+    expect(latestContent).toContain("[File truncated]")
   })
 
   it("streams the full source fingerprint while retaining only indexable text", async () => {

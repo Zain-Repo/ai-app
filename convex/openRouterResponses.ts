@@ -356,10 +356,10 @@ export function addProjectSourceFallbackAttachments(
   fallbackAttachments: NonNullable<ProviderMessage["attachments"]>
 ) {
   if (!fallbackAttachments.length) return messages
-  const projectSourceIndex = messages.findIndex(
+  const latestUserIndex = messages.findLastIndex(
     (message) => message.role === "user"
   )
-  if (projectSourceIndex === -1)
+  if (latestUserIndex === -1)
     return [
       {
         attachments: fallbackAttachments,
@@ -369,7 +369,7 @@ export function addProjectSourceFallbackAttachments(
       ...messages,
     ]
   return messages.map((message, index) =>
-    index === projectSourceIndex
+    index === latestUserIndex
       ? {
           ...message,
           attachments: [...(message.attachments ?? []), ...fallbackAttachments],

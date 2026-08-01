@@ -527,5 +527,15 @@ describe("project embedding profiles and indexes", () => {
         (attachment) => attachment.name
       )
     ).toContain("fallback.txt")
+    await t.run(async (ctx) => await ctx.db.delete(source._id))
+    await expect(
+      t.run(async (ctx) => await ctx.db.get(state._id))
+    ).resolves.toMatchObject({ status: "ready" })
+    await expect(
+      t.query(internal.projectEmbeddings.getProjectRetrievalContext, {
+        ownerId: adaId,
+        projectId,
+      })
+    ).resolves.toBeNull()
   })
 })

@@ -32,7 +32,9 @@ response.
   until its current index is ready or partially ready; indexed attachments are
   retained as a fallback when retrieval is unavailable, fails, or returns no
   usable chunks. Projects without a current searchable source skip query
-  embedding entirely, avoiding unnecessary provider charges.
+  embedding entirely, avoiding unnecessary provider charges. Retrieval also
+  revalidates that each candidate source still exists while asynchronous
+  deletion cleanup is pending.
 - Reconfiguring the same provider connection remains idempotent only while the
   stored provider, model, dimensions, ownership, and revision still match the
   current embedding policy. Policy drift creates a canonical new revision and
@@ -41,12 +43,15 @@ response.
   provider switching and re-index confirmation, indexing progress, durable
   errors, retry, indexed chunk counts, and source removal. Retry remains
   disabled for every non-connected pinned provider until reconnection.
+- Current-request attachments receive the shared inline-text budget before
+  retained Project fallback files, so fallback recovery cannot starve a file
+  the user explicitly attached to the active prompt.
 
 ## Validation
 
 - `bun run typecheck`
 - Scoped ESLint for the changed Convex implementation and tests
-- Full test suite: 33 files and 128 tests passed
+- Full test suite: 33 files and 129 tests passed
 - Production client and SSR build
 - `git diff --check`
 
@@ -55,7 +60,8 @@ dimension integrity, exact vector validation, stale-profile and cross-owner
 retrieval rejection, queued-file fallback, ready-file retrieval behavior,
 retrieval failure fallback, user-priority source context, policy-driven profile
 revisioning, empty-index retrieval avoidance, bounded source streaming, and
-bounded Project and superseded-profile cleanup.
+bounded Project and superseded-profile cleanup. Tests also cover deleted-source
+retrieval races and current-attachment budget priority.
 
 ## Known limitations
 

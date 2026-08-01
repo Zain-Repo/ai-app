@@ -455,15 +455,28 @@ export const getProjectRetrievalContext = internalQuery({
       )
       .order("desc")
       .take(MAX_PROJECT_SOURCES)
-    const hasSearchableSource = indexStates.some(
-      (state) =>
-        state.ownerId === args.ownerId &&
-        state.projectId === project._id &&
-        state.embeddingProfileRevision === profile.revision &&
-        (state.status === "ready" || state.status === "partial") &&
-        state.chunkCount > 0 &&
-        state.sourceFingerprint !== undefined
-    )
+    let hasSearchableSource = false
+    for (const state of indexStates) {
+      if (
+        state.ownerId !== args.ownerId ||
+        state.projectId !== project._id ||
+        state.embeddingProfileRevision !== profile.revision ||
+        (state.status !== "ready" && state.status !== "partial") ||
+        state.chunkCount <= 0 ||
+        state.sourceFingerprint === undefined
+      )
+        continue
+      const source = await ctx.db.get(state.sourceId)
+      if (
+        source?.ownerId === args.ownerId &&
+        source.projectId === project._id &&
+        source.kind === "file" &&
+        isIndexableProjectSource(source.contentType, source.name)
+      ) {
+        hasSearchableSource = true
+        break
+      }
+    }
     if (!hasSearchableSource) return null
     const connection = await ctx.db.get(profile.providerConnectionId)
     if (
