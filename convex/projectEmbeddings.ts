@@ -39,6 +39,7 @@ export const indexErrorCodeValidator = v.union(
 
 const MAX_PROJECT_SOURCES = 8
 const CLEANUP_BATCH_SIZE = 50
+const MAX_DESKTOP_FALLBACK_CHUNKS_PER_SOURCE = 3
 
 export async function getOwnedEmbeddingConnection(
   ctx: MutationCtx,
@@ -582,6 +583,82 @@ export const hydrateProjectSearchResults = internalQuery({
       })
     }
     return results
+  },
+})
+
+export const getDesktopCodexProjectSourceFallback = internalQuery({
+  args: { ownerId: v.id("users"), projectId: v.id("projects") },
+  returns: v.array(
+    v.object({
+      content: v.string(),
+      name: v.string(),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId)
+    if (
+      !project ||
+      project.ownerId !== args.ownerId ||
+      !project.embeddingProfileId ||
+      !project.embeddingProfileRevision
+    )
+      return []
+    const profile = await ctx.db.get(project.embeddingProfileId)
+    if (
+      !profile ||
+      profile.ownerId !== args.ownerId ||
+      profile.projectId !== project._id ||
+      profile.status !== "active" ||
+      profile.revision !== project.embeddingProfileRevision
+    )
+      return []
+    const sources = await ctx.db
+      .query("projectSources")
+      .withIndex("by_project_id_and_created_at", (query) =>
+        query.eq("projectId", project._id)
+      )
+      .order("asc")
+      .take(MAX_PROJECT_SOURCES)
+    const chunks: Array<{ content: string; name: string }> = []
+    for (const source of sources) {
+      if (
+        source.kind !== "file" ||
+        source.ownerId !== args.ownerId ||
+        source.projectId !== project._id
+      )
+        continue
+      const states = await ctx.db
+        .query("projectSourceIndexStates")
+        .withIndex("by_source_id_and_updated_at", (query) =>
+          query.eq("sourceId", source._id)
+        )
+        .order("desc")
+        .take(20)
+      const state = states.find(
+        (candidate) =>
+          candidate.embeddingProfileId === profile._id &&
+          candidate.embeddingProfileRevision === profile.revision &&
+          (candidate.status === "ready" || candidate.status === "partial")
+      )
+      if (!state?.sourceFingerprint) continue
+      const sourceChunks = await ctx.db
+        .query("projectSourceChunks")
+        .withIndex("by_source_id_and_embedding_profile_revision", (query) =>
+          query
+            .eq("sourceId", source._id)
+            .eq("embeddingProfileRevision", profile.revision)
+        )
+        .take(MAX_DESKTOP_FALLBACK_CHUNKS_PER_SOURCE)
+      for (const chunk of sourceChunks)
+        if (
+          chunk.ownerId === args.ownerId &&
+          chunk.projectId === project._id &&
+          chunk.embeddingProfileId === profile._id &&
+          chunk.sourceFingerprint === state.sourceFingerprint
+        )
+          chunks.push({ content: chunk.content, name: source.name })
+    }
+    return chunks
   },
 })
 

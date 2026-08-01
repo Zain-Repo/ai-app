@@ -367,6 +367,9 @@ describe("AI SDK provider bridge", () => {
     expect(
       normalizeGeneratedTitle('**Chat title: "Clean Landing Page"**')
     ).toBe("Clean Landing Page")
+    expect(normalizeGeneratedTitle("Use **PostgreSQL** indexes")).toBe(
+      "Use PostgreSQL indexes"
+    )
   })
 
   it("decodes a bounded OpenRouter image response", () => {

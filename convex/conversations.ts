@@ -8,7 +8,7 @@ import {
   mutation,
   query,
 } from "./_generated/server"
-import type { MutationCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 import { messageAttachmentValidator } from "./attachmentPolicy"
 import { consumeDraftAttachments } from "./attachments"
@@ -17,15 +17,19 @@ import { isIndexableProjectSource } from "./projectEmbeddingPolicy"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
 import { terminalRunValidator } from "./terminalPolicy"
 import { MAX_GENERATIVE_UI_PAYLOAD_LENGTH } from "../shared/generative-ui"
+import {
+  createFallbackChatTitle,
+  isValidGeneratedChatTitle,
+} from "../shared/chat-title"
 
 const MAX_CONVERSATIONS = 30
 const MAX_MESSAGES = 200
 const MAX_PROJECT_SOURCES = 8
 const MAX_MESSAGE_LENGTH = 32_000
 const MAX_MODEL_LENGTH = 200
-const MAX_TITLE_LENGTH = 40
 const MAX_ALWAYS_INCLUDED_MEMORIES = 20
 const REASONING_EFFORTS = new Set([
+  "ultra",
   "max",
   "xhigh",
   "high",
@@ -42,6 +46,10 @@ const conversationValidator = v.object({
   ownerId: v.id("users"),
   projectId: v.optional(v.id("projects")),
   title: v.string(),
+  titleGenerationStatus: v.optional(
+    v.union(v.literal("pending"), v.literal("generated"))
+  ),
+  titleSourceMessageId: v.optional(v.id("messages")),
   status: v.union(v.literal("active"), v.literal("archived")),
   providerConnectionId: v.optional(v.id("providerConnections")),
   model: v.optional(v.string()),
@@ -144,6 +152,42 @@ async function deleteConversationMessages(
   }
 }
 
+async function getTitleSourceMessage(
+  ctx: Pick<QueryCtx, "db">,
+  conversation: {
+    _id: Id<"conversations">
+    titleSourceMessageId?: Id<"messages">
+  }
+) {
+  if (!conversation.titleSourceMessageId) return null
+  const message = await ctx.db.get(conversation.titleSourceMessageId)
+  return message?.conversationId === conversation._id &&
+    message.role === "user" &&
+    message.status === "complete"
+    ? message
+    : null
+}
+
+async function applyGeneratedTitle(
+  ctx: MutationCtx,
+  conversationId: Id<"conversations">,
+  title: string
+) {
+  if (!isValidGeneratedChatTitle(title)) return
+  const conversation = await ctx.db.get(conversationId)
+  if (!conversation || conversation.titleGenerationStatus !== "pending") return
+  const initialUserMessage = await getTitleSourceMessage(ctx, conversation)
+  if (
+    !initialUserMessage ||
+    conversation.title !== createFallbackChatTitle(initialUserMessage.content)
+  )
+    return
+  await ctx.db.patch(conversationId, {
+    title,
+    titleGenerationStatus: "generated",
+  })
+}
+
 export const start = mutation({
   args: {
     content: v.string(),
@@ -197,7 +241,8 @@ export const start = mutation({
     const conversationId = await ctx.db.insert("conversations", {
       ownerId: user._id,
       ...(projectId ? { projectId } : {}),
-      title: content.replace(/\s+/g, " ").slice(0, MAX_TITLE_LENGTH),
+      title: createFallbackChatTitle(content),
+      titleGenerationStatus: "pending",
       status: "active",
       providerConnectionId: connection._id,
       model,
@@ -206,7 +251,7 @@ export const start = mutation({
       ...(reasoningEffort ? { reasoningEffort } : {}),
       updatedAt: now,
     })
-    await ctx.db.insert("messages", {
+    const initialUserMessageId = await ctx.db.insert("messages", {
       conversationId,
       role: "user",
       content,
@@ -217,6 +262,9 @@ export const start = mutation({
       outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
+    })
+    await ctx.db.patch(conversationId, {
+      titleSourceMessageId: initialUserMessageId,
     })
     const assistantMessageId = await ctx.db.insert("messages", {
       conversationId,
@@ -229,11 +277,17 @@ export const start = mutation({
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
-    if (connection.provider !== "codex")
+    if (connection.provider !== "codex") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.openRouterResponses.generateTitle,
+        { conversationId }
+      )
       await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
         assistantMessageId,
         conversationId,
       })
+    }
 
     return conversationId
   },
@@ -446,7 +500,101 @@ const responseContextValidator = v.object({
   routingProvider: v.optional(v.string()),
   projectId: v.optional(v.id("projects")),
   reasoningEffort: v.optional(v.string()),
-  shouldGenerateTitle: v.boolean(),
+})
+
+const chatTitleGenerationContextValidator = v.object({
+  ciphertext: v.string(),
+  connectionId: v.id("providerConnections"),
+  initialQuestion: v.string(),
+  iv: v.string(),
+  provider: v.union(v.literal("openrouter"), v.literal("openai")),
+})
+
+export const getChatTitleGenerationContext = internalQuery({
+  args: { conversationId: v.id("conversations") },
+  returns: v.union(chatTitleGenerationContextValidator, v.null()),
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation?.providerConnectionId) return null
+    const connection = await ctx.db.get(conversation.providerConnectionId)
+    if (
+      !connection ||
+      connection.ownerId !== conversation.ownerId ||
+      !["openrouter", "openai"].includes(connection.provider) ||
+      connection.status !== "connected"
+    )
+      return null
+    if (conversation.titleGenerationStatus !== "pending") return null
+    const initialUserMessage = await getTitleSourceMessage(ctx, conversation)
+    if (
+      !initialUserMessage ||
+      conversation.title !== createFallbackChatTitle(initialUserMessage.content)
+    )
+      return null
+    const credential = await ctx.db
+      .query("providerCredentials")
+      .withIndex("by_connection_id", (indexQuery) =>
+        indexQuery.eq("connectionId", connection._id)
+      )
+      .unique()
+    if (!credential) return null
+    return {
+      ciphertext: credential.ciphertext,
+      connectionId: connection._id,
+      initialQuestion: initialUserMessage.content,
+      iv: credential.iv,
+      provider: connection.provider as "openrouter" | "openai",
+    }
+  },
+})
+
+const desktopCodexProjectSourceRequestValidator = v.object({
+  ownerId: v.id("users"),
+  projectId: v.id("projects"),
+  query: v.string(),
+})
+
+export const getDesktopCodexProjectSourceRequest = internalQuery({
+  args: { conversationId: v.string() },
+  returns: v.union(desktopCodexProjectSourceRequestValidator, v.null()),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return null
+    const conversationId = ctx.db.normalizeId(
+      "conversations",
+      args.conversationId
+    )
+    if (!conversationId) return null
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation?.projectId) return null
+    const [owner, project] = await Promise.all([
+      ctx.db.get(conversation.ownerId),
+      ctx.db.get(conversation.projectId),
+    ])
+    if (
+      !owner ||
+      owner.tokenIdentifier !== identity.tokenIdentifier ||
+      !project ||
+      project.ownerId !== owner._id
+    )
+      return null
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (indexQuery) =>
+        indexQuery.eq("conversationId", conversation._id)
+      )
+      .order("desc")
+      .take(MAX_MESSAGES)
+    const lastUserMessage = messages.find(
+      (message) => message.role === "user" && message.status === "complete"
+    )
+    if (!lastUserMessage) return null
+    return {
+      ownerId: owner._id,
+      projectId: project._id,
+      query: lastUserMessage.content,
+    }
+  },
 })
 
 export const getOpenRouterResponseContext = internalQuery({
@@ -723,9 +871,6 @@ export const getOpenRouterResponseContext = internalQuery({
       ...(assistantMessage.reasoningEffort
         ? { reasoningEffort: assistantMessage.reasoningEffort }
         : {}),
-      shouldGenerateTitle:
-        messagesBeforeResponse.filter((message) => message.role === "user")
-          .length === 1,
     }
   },
 })
@@ -737,9 +882,33 @@ export const setGeneratedTitle = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (!args.title || args.title.length > MAX_TITLE_LENGTH) return null
-    if (await ctx.db.get(args.conversationId))
-      await ctx.db.patch(args.conversationId, { title: args.title })
+    await applyGeneratedTitle(ctx, args.conversationId, args.title)
+    return null
+  },
+})
+
+export const setDesktopCodexGeneratedTitle = mutation({
+  args: {
+    conversationId: v.string(),
+    title: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (!conversation.providerConnectionId) return null
+    const connection = await ctx.db.get(conversation.providerConnectionId)
+    if (
+      !connection ||
+      connection.ownerId !== user._id ||
+      connection.provider !== "codex"
+    )
+      return null
+    await applyGeneratedTitle(ctx, conversation._id, args.title)
     return null
   },
 })

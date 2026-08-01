@@ -20,7 +20,7 @@ import { getDocumentProxy } from "unpdf"
 
 import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
-import { env, internalAction } from "./_generated/server"
+import { action, env, internalAction } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
 import {
@@ -58,13 +58,17 @@ import {
   renderUiToolInputSchema,
   serializeGenerativeUi,
 } from "../shared/generative-ui"
+import {
+  CHAT_TITLE_INSTRUCTIONS,
+  normalizeGeneratedChatTitle,
+} from "../shared/chat-title"
 import { terminalExecuteResponseSchema } from "../shared/terminal-workspace"
+
+export { normalizeGeneratedChatTitle as normalizeGeneratedTitle } from "../shared/chat-title"
 
 const MAX_RESPONSE_LENGTH = 32_000
 const STREAM_FLUSH_INTERVAL_MS = 80
 const MEMORY_REQUEST_TIMEOUT_MS = 30_000
-const MAX_GENERATED_TITLE_LENGTH = 40
-const MAX_GENERATED_TITLE_WORDS = 5
 const OPENAI_TITLE_MODEL = "gpt-4o-mini"
 const OPENROUTER_TITLE_MODEL = `openai/${OPENAI_TITLE_MODEL}`
 const MAX_RELEVANT_MEMORIES = 8
@@ -126,6 +130,35 @@ type ProviderMessage = {
   }>
   content: string
   role: "system" | "user" | "assistant"
+}
+
+type DesktopCodexProjectSourceRequest = {
+  ownerId: Id<"users">
+  projectId: Id<"projects">
+  query: string
+}
+
+type ProjectRetrievalContext = {
+  ciphertext: string
+  iv: string
+  connectionId: Id<"providerConnections">
+  provider: "openrouter" | "openai"
+  profileId: Id<"projectEmbeddingProfiles">
+  profileRevision: number
+  searchScope: string
+}
+
+type ProjectSourceChunk = {
+  content: string
+  name: string
+}
+
+type ChatTitleGenerationContext = {
+  ciphertext: string
+  connectionId: Id<"providerConnections">
+  initialQuestion: string
+  iv: string
+  provider: "openrouter" | "openai"
 }
 
 function getProviderRouting(model: string, routingProvider?: string) {
@@ -422,27 +455,6 @@ export function toModelPrompt(messages: ProviderMessage[]) {
   }
 }
 
-const titleInstructions = `Summarize the user's prompt as a simple chat title.
-Use 2 to ${MAX_GENERATED_TITLE_WORDS} words and at most ${MAX_GENERATED_TITLE_LENGTH} characters.
-Return only the title with no quotes, label, markdown, or ending punctuation.`
-
-export function normalizeGeneratedTitle(value: string) {
-  const title = (value.trim().split(/\r?\n/, 1)[0] ?? "")
-    .replace(/^#+\s*/, "")
-    .replace(/^["'`*_~]+|["'`*_~]+$/g, "")
-    .replace(/^(?:chat\s+)?title:\s*/i, "")
-    .replace(/^["'`*_~]+|["'`*_~]+$/g, "")
-    .replace(/[.!?;:]+$/, "")
-    .trim()
-    .split(/\s+/)
-    .slice(0, MAX_GENERATED_TITLE_WORDS)
-    .join(" ")
-  if (title.length <= MAX_GENERATED_TITLE_LENGTH) return title
-  const shortened = title.slice(0, MAX_GENERATED_TITLE_LENGTH)
-  const lastSpace = shortened.lastIndexOf(" ")
-  return lastSpace > 0 ? shortened.slice(0, lastSpace) : shortened
-}
-
 async function createEmbeddings(token: string, input: string[]) {
   if (!input.length) return []
   try {
@@ -593,55 +605,42 @@ async function extractAndStoreMemories(
   }
 }
 
-async function generateConversationTitle(
-  ctx: ActionCtx,
+async function requestConversationTitle(
   token: string,
   args: {
-    conversationId: Id<"conversations">
     prompt: string
     provider: "openrouter" | "openai"
   }
 ) {
-  try {
-    const result =
-      args.provider === "openrouter"
-        ? await generateText({
-            model: createOpenRouter({
-              apiKey: token,
-              compatibility: "strict",
-            })(
+  const result =
+    args.provider === "openrouter"
+      ? await generateText({
+          model: createOpenRouter({
+            apiKey: token,
+            compatibility: "strict",
+          })(
+            OPENROUTER_TITLE_MODEL,
+            getOpenRouterModelSettings(
               OPENROUTER_TITLE_MODEL,
-              getOpenRouterModelSettings(
-                OPENROUTER_TITLE_MODEL,
-                [],
-                undefined,
-                "auto"
-              )
-            ),
-            instructions: titleInstructions,
-            prompt: args.prompt,
-            maxOutputTokens: 40,
-            timeout: MEMORY_REQUEST_TIMEOUT_MS,
-          })
-        : await generateText({
-            model: createOpenAI({ apiKey: token }).responses(
-              OPENAI_TITLE_MODEL
-            ),
-            instructions: titleInstructions,
-            prompt: args.prompt,
-            maxOutputTokens: 40,
-            providerOptions: { openai: getOpenAIOptions() },
-            timeout: MEMORY_REQUEST_TIMEOUT_MS,
-          })
-    const title = normalizeGeneratedTitle(result.text)
-    if (title)
-      await ctx.runMutation(internal.conversations.setGeneratedTitle, {
-        conversationId: args.conversationId,
-        title,
-      })
-  } catch {
-    // Title generation is optional; keep the prompt-based fallback.
-  }
+              [],
+              undefined,
+              "auto"
+            )
+          ),
+          instructions: CHAT_TITLE_INSTRUCTIONS,
+          prompt: args.prompt,
+          maxOutputTokens: 40,
+          timeout: MEMORY_REQUEST_TIMEOUT_MS,
+        })
+      : await generateText({
+          model: createOpenAI({ apiKey: token }).responses(OPENAI_TITLE_MODEL),
+          instructions: CHAT_TITLE_INSTRUCTIONS,
+          prompt: args.prompt,
+          maxOutputTokens: 40,
+          providerOptions: { openai: getOpenAIOptions() },
+          timeout: MEMORY_REQUEST_TIMEOUT_MS,
+        })
+  return normalizeGeneratedChatTitle(result.text)
 }
 
 function projectIndexErrorCode(cause: unknown) {
@@ -856,11 +855,11 @@ async function retrieveRelevantProjectSources(
     projectId?: Id<"projects">
     query: string
   }
-) {
+): Promise<string> {
   if (!args.projectId || !args.query.trim()) return ""
   let connectionId: Id<"providerConnections"> | undefined
   try {
-    const context = await ctx.runQuery(
+    const context: ProjectRetrievalContext | null = await ctx.runQuery(
       internal.projectEmbeddings.getProjectRetrievalContext,
       { ownerId: args.ownerId, projectId: args.projectId }
     )
@@ -886,7 +885,7 @@ async function retrieveRelevantProjectSources(
       (hit) => hit._score >= MIN_PROJECT_CHUNK_SCORE
     )
     if (!relevantHits.length) return ""
-    const chunks = await ctx.runQuery(
+    const chunks: ProjectSourceChunk[] = await ctx.runQuery(
       internal.projectEmbeddings.hydrateProjectSearchResults,
       {
         ownerId: args.ownerId,
@@ -910,6 +909,62 @@ async function retrieveRelevantProjectSources(
     return ""
   }
 }
+
+export const getDesktopCodexProjectContext = action({
+  args: { conversationId: v.string() },
+  returns: v.string(),
+  handler: async (ctx, args): Promise<string> => {
+    const request: DesktopCodexProjectSourceRequest | null = await ctx.runQuery(
+      internal.conversations.getDesktopCodexProjectSourceRequest,
+      {
+        conversationId: args.conversationId,
+      }
+    )
+    if (!request) return ""
+    const retrievedContext = await retrieveRelevantProjectSources(ctx, request)
+    if (retrievedContext) return retrievedContext
+    const fallbackChunks: ProjectSourceChunk[] = await ctx.runQuery(
+      internal.projectEmbeddings.getDesktopCodexProjectSourceFallback,
+      {
+        ownerId: request.ownerId,
+        projectId: request.projectId,
+      }
+    )
+    return buildProjectRetrievalContext(fallbackChunks)
+  },
+})
+
+export const generateTitle = internalAction({
+  args: { conversationId: v.id("conversations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    try {
+      const context: ChatTitleGenerationContext | null = await ctx.runQuery(
+        internal.conversations.getChatTitleGenerationContext,
+        args
+      )
+      if (!context) return null
+      const token = await decryptProviderToken(
+        context.ciphertext,
+        context.iv,
+        env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+        context.provider
+      )
+      const title = await requestConversationTitle(token, {
+        prompt: context.initialQuestion,
+        provider: context.provider,
+      })
+      if (title)
+        await ctx.runMutation(internal.conversations.setGeneratedTitle, {
+          conversationId: args.conversationId,
+          title,
+        })
+    } catch {
+      // A prompt-based fallback is already visible; title generation is optional.
+    }
+    return null
+  },
+})
 
 export const generate = internalAction({
   args: {
@@ -1217,12 +1272,6 @@ export const generate = internalAction({
         ...(terminalRuns.length ? { terminalRuns } : {}),
         ...(uiPayload ? { uiPayload } : {}),
       })
-      if (context.shouldGenerateTitle)
-        await generateConversationTitle(ctx, token, {
-          conversationId: args.conversationId,
-          prompt: context.lastUserMessage,
-          provider: context.provider,
-        })
       if (context.provider === "openrouter")
         await extractAndStoreMemories(ctx, token, {
           conversationId: args.conversationId,

@@ -1,4 +1,5 @@
 import {
+  Check,
   FileText,
   Link,
   RefreshCw,
@@ -21,6 +22,17 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "@/components/ui/attachment"
 import {
   Empty,
   EmptyDescription,
@@ -112,8 +124,8 @@ type StatusPresentation = {
 const statusPresentation: Record<ProjectEmbeddingStatus, StatusPresentation> = {
   not_indexed: { label: "Not indexed", tone: "outline" },
   queued: { label: "Queued", tone: "secondary" },
-  extracting: { label: "Reading", tone: "secondary" },
-  indexing: { label: "Indexing", tone: "secondary" },
+  extracting: { label: "Extracting text", tone: "secondary" },
+  indexing: { label: "Embedding text", tone: "secondary" },
   ready: { label: "Ready", tone: "default" },
   partial: { label: "Partially indexed", tone: "outline" },
   failed: { label: "Failed", tone: "destructive" },
@@ -218,6 +230,92 @@ function formatProjectDate(value: number) {
         ? undefined
         : "numeric",
   }).format(value)
+}
+
+function getAttachmentState(status: ProjectEmbeddingStatus) {
+  if (status === "queued" || status === "extracting" || status === "indexing")
+    return "processing" as const
+  if (
+    status === "failed" ||
+    status === "needs_reauthentication" ||
+    status === "insufficient_credits" ||
+    status === "pdf_unreadable"
+  )
+    return "error" as const
+  if (status === "ready" || status === "partial") return "done" as const
+  return "idle" as const
+}
+
+function SourceIndexingProgress({
+  status,
+}: {
+  status: ProjectEmbeddingStatus
+}) {
+  const isWorking = ["queued", "extracting", "indexing"].includes(status)
+  const extractionComplete = ["indexing", "ready", "partial"].includes(status)
+  const embeddingComplete = ["ready", "partial"].includes(status)
+  const extractionActive = status === "queued" || status === "extracting"
+  const embeddingActive = status === "indexing"
+
+  if (!isWorking && !extractionComplete) return null
+
+  return (
+    <div
+      aria-label={
+        isWorking ? "Preparing source for semantic search" : "Source pipeline"
+      }
+      className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground"
+      role={isWorking ? "status" : undefined}
+    >
+      <span
+        className={
+          extractionComplete
+            ? "flex items-center gap-1 text-foreground/75"
+            : extractionActive
+              ? "flex items-center gap-1 text-primary"
+              : "flex items-center gap-1"
+        }
+      >
+        {extractionComplete ? (
+          <Check aria-hidden="true" className="size-3" />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={
+              extractionActive
+                ? "size-1.5 animate-pulse rounded-full bg-primary"
+                : "size-1.5 rounded-full bg-muted-foreground/40"
+            }
+          />
+        )}
+        Extract text
+      </span>
+      <span aria-hidden="true" className="h-px w-4 bg-border" />
+      <span
+        className={
+          embeddingComplete
+            ? "flex items-center gap-1 text-foreground/75"
+            : embeddingActive
+              ? "flex items-center gap-1 text-primary"
+              : "flex items-center gap-1"
+        }
+      >
+        {embeddingComplete ? (
+          <Check aria-hidden="true" className="size-3" />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={
+              embeddingActive
+                ? "size-1.5 animate-pulse rounded-full bg-primary"
+                : "size-1.5 rounded-full bg-muted-foreground/40"
+            }
+          />
+        )}
+        Embed chunks
+      </span>
+    </div>
+  )
 }
 
 export function ProjectSourcesPanel({
@@ -372,7 +470,10 @@ export function ProjectSourcesPanel({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="divide-y" aria-label="Project sources">
+        <AttachmentGroup
+          aria-label="Project sources"
+          className="flex-col gap-2 overflow-visible py-0"
+        >
           {sources.map((source) => {
             const effectiveStatus = getProjectSourceEmbeddingStatus(source)
             const status = statusPresentation[effectiveStatus]
@@ -380,83 +481,88 @@ export function ProjectSourcesPanel({
             const isWorking = ["queued", "extracting", "indexing"].includes(
               effectiveStatus
             )
+            const attachmentState = getAttachmentState(effectiveStatus)
             const sourceDetails =
               source.kind === "file" && source.size !== undefined
                 ? formatFileSize(source.size)
                 : "Link"
             return (
-              <div
-                className="flex items-center gap-3 px-3 py-4"
+              <Attachment
+                aria-busy={isWorking}
+                className="w-full rounded-xl px-1"
                 key={source._id}
+                state={attachmentState}
               >
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-muted/50 text-muted-foreground">
+                <AttachmentMedia>
                   {source.kind === "file" ? (
-                    <FileText aria-hidden="true" className="size-4" />
+                    <>
+                      <FileText aria-hidden="true" className="size-4" />
+                      {isWorking ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded-full bg-primary/15"
+                        >
+                          <span className="absolute inset-y-0 left-0 w-1/2 animate-[source-scan_1.8s_ease-in-out_infinite] rounded-full bg-primary" />
+                        </span>
+                      ) : null}
+                    </>
                   ) : (
                     <Link aria-hidden="true" className="size-4" />
                   )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  {source.url ? (
-                    <a
-                      className="block truncate text-sm font-semibold hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
-                      href={source.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {source.name}
-                    </a>
-                  ) : (
-                    <span className="block truncate text-sm font-semibold">
-                      {source.name}
-                    </span>
-                  )}
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {sourceDetails}
-                    {" \u00b7 "}
-                    {formatProjectDate(source.createdAt)}
-                  </span>
+                </AttachmentMedia>
+                <AttachmentContent className="py-2">
+                  <AttachmentTitle>{source.name}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {isWorking
+                      ? status.label
+                      : `${sourceDetails} · ${formatProjectDate(source.createdAt)}`}
+                  </AttachmentDescription>
+                  <SourceIndexingProgress status={effectiveStatus} />
                   {statusDescription ? (
                     <span className="mt-1 block text-xs text-destructive">
                       {statusDescription}
                     </span>
                   ) : null}
-                </span>
-                <div className="flex shrink-0 items-center gap-2">
+                </AttachmentContent>
+                <AttachmentActions className="pr-2">
                   <Badge variant={status.tone}>
                     {isWorking ? <Spinner aria-hidden="true" /> : null}
                     {status.label}
                   </Badge>
                   {isRetryableProjectEmbeddingStatus(effectiveStatus) &&
                   profile ? (
-                    <Button
+                    <AttachmentAction
                       aria-label={`Retry indexing ${source.name}`}
                       disabled={actionPending || profileNeedsAuthentication}
                       onClick={() => void onRetryIndexing(source._id)}
-                      size="icon-xs"
                       title="Retry indexing"
                       type="button"
-                      variant="ghost"
                     >
                       <RefreshCw aria-hidden="true" />
-                    </Button>
+                    </AttachmentAction>
                   ) : null}
-                  <Button
+                  <AttachmentAction
                     aria-label={`Remove ${source.name}`}
                     disabled={actionPending}
                     onClick={() => setPendingRemoval(source)}
-                    size="icon-xs"
                     title="Remove source"
                     type="button"
-                    variant="ghost"
                   >
                     <Trash2 aria-hidden="true" />
-                  </Button>
-                </div>
-              </div>
+                  </AttachmentAction>
+                </AttachmentActions>
+                {source.url ? (
+                  <AttachmentTrigger
+                    aria-label={`Open ${source.name}`}
+                    render={
+                      <a href={source.url} rel="noreferrer" target="_blank" />
+                    }
+                  />
+                ) : null}
+              </Attachment>
             )
           })}
-        </div>
+        </AttachmentGroup>
       )}
 
       <AlertDialog

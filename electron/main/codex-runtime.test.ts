@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { selectCompletedTurnItems } from "./codex-app-server"
+import {
+  isDesktopCodexReasoningEffort,
+  parseDesktopCodexModels,
+  selectCompletedTurnItems,
+} from "./codex-app-server"
 import {
   fetchReleaseCodexVersion,
   parseCodexRuntimeManifest,
@@ -32,11 +36,13 @@ describe("Codex runtime metadata", () => {
   })
 
   it("reads runtime metadata from this repository's release", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ appVersion: "0.1.7", codexVersion: "0.146.0" })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ appVersion: "0.1.7", codexVersion: "0.146.0" })
+        )
       )
-    )
     vi.stubGlobal("fetch", fetchMock)
 
     await expect(fetchReleaseCodexVersion("0.1.7")).resolves.toBe("0.146.0")
@@ -48,6 +54,58 @@ describe("Codex runtime metadata", () => {
 })
 
 describe("Codex app-server protocol", () => {
+  it("preserves model reasoning efforts from model/list", () => {
+    expect(
+      parseDesktopCodexModels({
+        data: [
+          {
+            model: "gpt-5.4",
+            displayName: "GPT-5.4",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "low" },
+              { reasoningEffort: "medium" },
+              { reasoningEffort: "high" },
+              { reasoningEffort: "ultra" },
+            ],
+            defaultReasoningEffort: "medium",
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        value: "gpt-5.4",
+        label: "GPT-5.4",
+        reasoningEfforts: ["low", "medium", "high", "ultra"],
+        defaultReasoningEffort: "medium",
+      },
+    ])
+  })
+
+  it("allows the current Ultra effort through desktop IPC validation", () => {
+    expect(isDesktopCodexReasoningEffort("ultra")).toBe(true)
+    expect(isDesktopCodexReasoningEffort("future-effort")).toBe(false)
+  })
+
+  it("accepts the legacy effort field while Codex runtimes update", () => {
+    expect(
+      parseDesktopCodexModels({
+        data: [
+          {
+            model: "gpt-5.3-codex",
+            displayName: "GPT-5.3-Codex",
+            supportedReasoningEfforts: [{ effort: "high" }],
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        value: "gpt-5.3-codex",
+        label: "GPT-5.3-Codex",
+        reasoningEfforts: ["high"],
+      },
+    ])
+  })
+
   it("uses completed item notifications when the final turn omits items", () => {
     expect(
       selectCompletedTurnItems(

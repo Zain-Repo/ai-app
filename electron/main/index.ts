@@ -4,7 +4,10 @@ import fs from "node:fs"
 import path from "node:path"
 
 import type { DesktopCodexGenerateInput } from "../types"
-import { CodexAppServer } from "./codex-app-server"
+import {
+  CodexAppServer,
+  isDesktopCodexReasoningEffort,
+} from "./codex-app-server"
 import { CursorCli } from "./cursor-cli"
 import {
   desktopEntryUrl,
@@ -15,16 +18,6 @@ import {
 import { DesktopUpdater } from "./updater"
 
 type DesktopConfig = { rendererUrl?: unknown }
-
-const CODEX_REASONING_EFFORTS = new Set([
-  "high",
-  "low",
-  "max",
-  "medium",
-  "minimal",
-  "none",
-  "xhigh",
-])
 
 const codex = new CodexAppServer()
 const cursor = new CursorCli()
@@ -81,8 +74,7 @@ function isCodexGenerateInput(
   return (
     typeof input.model === "string" &&
     (input.effort === undefined ||
-      (typeof input.effort === "string" &&
-        CODEX_REASONING_EFFORTS.has(input.effort))) &&
+      isDesktopCodexReasoningEffort(input.effort)) &&
     (input.developerInstructions === undefined ||
       typeof input.developerInstructions === "string") &&
     Array.isArray(input.messages) &&

@@ -55,6 +55,7 @@ import type {
   ProjectSourceItem,
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
+import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
 import type {
@@ -387,7 +388,7 @@ function formatFileSize(size: number) {
 }
 
 type ReasoningEffort =
-  "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+  "ultra" | "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return value in reasoningEffortLabels
@@ -398,6 +399,7 @@ const MAX_PROJECT_SOURCE_FILES = 5
 const MAX_PROJECT_SOURCE_BYTES = 20 * 1024 * 1024
 
 const reasoningEffortLabels: Record<ReasoningEffort, string> = {
+  ultra: "Ultra",
   max: "Max",
   xhigh: "Extra high",
   high: "High",
@@ -567,6 +569,9 @@ function ChatWorkspace() {
   const finishDesktopCodexResponse = useMutation(
     api.conversations.finishDesktopCodexResponse
   )
+  const setDesktopCodexGeneratedTitle = useMutation(
+    api.conversations.setDesktopCodexGeneratedTitle
+  )
   const archiveConversation = useMutation(api.conversations.archive)
   const removeConversation = useMutation(api.conversations.remove)
   const createProject = useMutation(api.projects.create)
@@ -587,6 +592,9 @@ function ChatWorkspace() {
   const connections = useQuery(api.providerConnections.listMine)
   const listModels = useAction(api.providerOAuth.listModels)
   const listModelEndpoints = useAction(api.providerOAuth.listModelEndpoints)
+  const getDesktopCodexProjectContext = useAction(
+    api.openRouterResponses.getDesktopCodexProjectContext
+  )
   const [projectName, setProjectName] = useState("")
   const [projectInstructions, setProjectInstructions] = useState("")
   const [projectMemoryScope, setProjectMemoryScope] = useState<
@@ -1367,7 +1375,23 @@ function ChatWorkspace() {
         const desktop = window.aiHarnessDesktop
         if (!desktop)
           throw new Error("Codex is only available in the desktop app")
+        if (!conversationId)
+          void generateDesktopChatTitle({
+            conversationId: targetConversationId,
+            desktop,
+            initialQuestion: content,
+            model: meta.settings.model,
+            setGeneratedTitle: setDesktopCodexGeneratedTitle,
+          })
         try {
+          const projectSourceContext = await getDesktopCodexProjectContext({
+            conversationId: targetConversationId,
+          }).catch(() => {
+            console.warn(
+              "Project source context unavailable; continuing Codex generation without it."
+            )
+            return ""
+          })
           const result = await desktop.codex.generate({
             model: meta.settings.model,
             ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
@@ -1382,6 +1406,14 @@ function ChatWorkspace() {
               .join("\n"),
             messages: [
               ...desktopCodexMessages,
+              ...(projectSourceContext
+                ? [
+                    {
+                      content: `Reference context for the next user request:${projectSourceContext}`,
+                      role: "user" as const,
+                    },
+                  ]
+                : []),
               { content, role: "user" as const },
             ],
           })

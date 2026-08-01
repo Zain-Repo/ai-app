@@ -215,6 +215,10 @@ export default defineSchema({
     ownerId: v.id("users"),
     projectId: v.optional(v.id("projects")),
     title: v.string(),
+    titleGenerationStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("generated"))
+    ),
+    titleSourceMessageId: v.optional(v.id("messages")),
     status: conversationStatus,
     providerConnectionId: v.optional(v.id("providerConnections")),
     model: v.optional(v.string()),

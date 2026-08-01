@@ -135,6 +135,47 @@ describe("project source embeddings", () => {
     expect(retry).toHaveBeenCalledWith(source._id)
   })
 
+  it("shows the extraction and embedding pipeline while a source is processing", () => {
+    const view = render(
+      <ProjectSourcesPanel
+        connections={connections}
+        onConnectProvider={vi.fn()}
+        onPinProvider={vi.fn()}
+        onRemoveSource={vi.fn()}
+        onRetryIndexing={vi.fn()}
+        profile={null}
+        sources={[{ ...source, indexStatus: "extracting" }]}
+      />
+    )
+
+    const attachment = view.container.querySelector('[data-slot="attachment"]')
+    expect(attachment?.getAttribute("data-state")).toBe("processing")
+    expect(view.getAllByText("Extracting text")).toHaveLength(2)
+    expect(view.getByText("Extract text")).toBeTruthy()
+    expect(view.getByText("Embed chunks")).toBeTruthy()
+    expect(
+      view.getByRole("status", {
+        name: "Preparing source for semantic search",
+      })
+    ).toBeTruthy()
+
+    view.rerender(
+      <ProjectSourcesPanel
+        connections={connections}
+        onConnectProvider={vi.fn()}
+        onPinProvider={vi.fn()}
+        onRemoveSource={vi.fn()}
+        onRetryIndexing={vi.fn()}
+        profile={null}
+        sources={[{ ...source, indexStatus: "indexing" }]}
+      />
+    )
+
+    expect(view.getAllByText("Embedding text")).toHaveLength(2)
+    expect(view.getByText("Extract text")).toBeTruthy()
+    expect(view.getByText("Embed chunks")).toBeTruthy()
+  })
+
   it("explains PDFs that need OCR instead of calling them unsupported", () => {
     const view = render(
       <ProjectSourcesPanel

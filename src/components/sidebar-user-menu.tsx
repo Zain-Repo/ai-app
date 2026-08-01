@@ -103,14 +103,14 @@ function SidebarUserMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`Open account menu for ${displayName}`}
-        className="group flex w-full min-w-0 items-center gap-2.5 rounded-2xl px-2 py-1.5 text-left transition-colors duration-150 outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/30 data-popup-open:bg-sidebar-accent"
+        className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors duration-150 outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/30 data-popup-open:bg-sidebar-accent"
       >
-        <Avatar className="size-8">
+        <Avatar className="size-7.5">
           {user?.imageUrl ? <AvatarImage alt="" src={user.imageUrl} /> : null}
           <AvatarFallback>{getUserInitials(name, email)}</AvatarFallback>
         </Avatar>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium">
+          <span className="block truncate text-[11px] font-medium">
             {displayName}
           </span>
           <span className="block truncate text-[11px] text-sidebar-foreground/55">

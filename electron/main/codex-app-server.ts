@@ -26,9 +26,23 @@ type CompletedItemNotification = {
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const REQUEST_TIMEOUT_MS = 30_000
 const TURN_TIMEOUT_MS = 10 * 60_000
+const CODEX_REASONING_EFFORTS = new Set([
+  "high",
+  "low",
+  "max",
+  "medium",
+  "minimal",
+  "none",
+  "ultra",
+  "xhigh",
+])
 
 function isRecord(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+export function isDesktopCodexReasoningEffort(value: unknown) {
+  return typeof value === "string" && CODEX_REASONING_EFFORTS.has(value)
 }
 
 export function selectCompletedTurnItems(
@@ -43,6 +57,43 @@ export function selectCompletedTurnItems(
   return Array.isArray(completedTurn.items)
     ? completedTurn.items.filter(isRecord)
     : []
+}
+
+export function parseDesktopCodexModels(result: unknown): DesktopCodexModel[] {
+  if (!isRecord(result) || !Array.isArray(result.data)) return []
+  return result.data.flatMap((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.model !== "string" ||
+      typeof entry.displayName !== "string"
+    )
+      return []
+    const reasoningEfforts = Array.isArray(entry.supportedReasoningEfforts)
+      ? entry.supportedReasoningEfforts.flatMap((option) => {
+          if (!isRecord(option)) return []
+          const effort =
+            typeof option.reasoningEffort === "string"
+              ? option.reasoningEffort
+              : typeof option.effort === "string"
+                ? option.effort
+                : null
+          return effort ? [effort] : []
+        })
+      : []
+    return [
+      {
+        value: entry.model,
+        label: entry.displayName,
+        ...(typeof entry.description === "string"
+          ? { description: entry.description }
+          : {}),
+        ...(reasoningEfforts.length ? { reasoningEfforts } : {}),
+        ...(typeof entry.defaultReasoningEffort === "string"
+          ? { defaultReasoningEffort: entry.defaultReasoningEffort }
+          : {}),
+      },
+    ]
+  })
 }
 
 function targetTriple() {
@@ -164,35 +215,7 @@ export class CodexAppServer {
       includeHidden: false,
       limit: 100,
     })
-    if (!isRecord(result) || !Array.isArray(result.data)) return []
-    return result.data.flatMap((entry) => {
-      if (
-        !isRecord(entry) ||
-        typeof entry.model !== "string" ||
-        typeof entry.displayName !== "string"
-      )
-        return []
-      const efforts = Array.isArray(entry.supportedReasoningEfforts)
-        ? entry.supportedReasoningEfforts.flatMap((option) =>
-            isRecord(option) && typeof option.effort === "string"
-              ? [option.effort]
-              : []
-          )
-        : []
-      return [
-        {
-          value: entry.model,
-          label: entry.displayName,
-          ...(typeof entry.description === "string"
-            ? { description: entry.description }
-            : {}),
-          ...(efforts.length ? { reasoningEfforts: efforts } : {}),
-          ...(typeof entry.defaultReasoningEffort === "string"
-            ? { defaultReasoningEffort: entry.defaultReasoningEffort }
-            : {}),
-        },
-      ]
-    })
+    return parseDesktopCodexModels(result)
   }
 
   async version() {
