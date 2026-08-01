@@ -45,6 +45,7 @@ import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
+import { ProjectContextProgress } from "@/components/project-context-progress"
 import {
   getEmbeddingConnections,
   ProjectSourcesPanel,
@@ -115,6 +116,7 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 import { Spinner } from "@/components/ui/spinner"
+import { ThinkingIndicator } from "@/components/ui/thinking-indicator"
 import {
   Sidebar,
   SidebarContent,
@@ -390,6 +392,12 @@ function formatFileSize(size: number) {
 type ReasoningEffort =
   "ultra" | "max" | "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
 
+type ProjectSetupTab = "instructions" | "sources"
+
+function isProjectSetupTab(value: string): value is ProjectSetupTab {
+  return value === "instructions" || value === "sources"
+}
+
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return value in reasoningEffortLabels
 }
@@ -597,6 +605,8 @@ function ChatWorkspace() {
   )
   const [projectName, setProjectName] = useState("")
   const [projectInstructions, setProjectInstructions] = useState("")
+  const [projectSetupTab, setProjectSetupTab] =
+    useState<ProjectSetupTab>("instructions")
   const [projectMemoryScope, setProjectMemoryScope] = useState<
     "all_chats" | "project_only"
   >("project_only")
@@ -1145,6 +1155,7 @@ function ChatWorkspace() {
       draftAttachmentIds = []
       setProjectName("")
       setProjectInstructions("")
+      setProjectSetupTab("instructions")
       setProjectMemoryScope("project_only")
       setProjectSourceFiles([])
       setProjectSourceLinks([])
@@ -1907,7 +1918,12 @@ function ChatWorkspace() {
                     />
                   </div>
 
-                  <Tabs defaultValue="instructions">
+                  <Tabs
+                    onValueChange={(value) => {
+                      if (isProjectSetupTab(value)) setProjectSetupTab(value)
+                    }}
+                    value={projectSetupTab}
+                  >
                     <TabsList className="mb-5" variant="line">
                       <TabsTrigger value="instructions">
                         <HugeiconsIcon
@@ -2101,6 +2117,7 @@ function ChatWorkspace() {
                           <div className="flex gap-2">
                             <Input
                               aria-label="Source URL"
+                              id="project-source-url"
                               onChange={(event) =>
                                 setProjectSourceUrl(event.target.value)
                               }
@@ -2288,38 +2305,28 @@ function ChatWorkspace() {
 
                 <aside className="border-t bg-muted/10 px-5 py-6 lg:border-t-0 lg:border-l lg:px-6 lg:py-8">
                   <div className="lg:sticky lg:top-8">
-                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                      Project context
-                    </p>
-                    <dl className="mt-4 divide-y border-y text-sm">
-                      <div className="grid gap-1 py-3">
-                        <dt className="text-xs text-muted-foreground">Name</dt>
-                        <dd className="truncate font-medium">
-                          {projectName.trim() || "Untitled project"}
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 py-3">
-                        <dt className="text-muted-foreground">Instructions</dt>
-                        <dd>{projectInstructions.trim() ? "Set" : "None"}</dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 py-3">
-                        <dt className="text-muted-foreground">Sources</dt>
-                        <dd>
-                          {projectSourceFiles.length +
-                            projectSourceLinks.length}
-                        </dd>
-                      </div>
-                      <div className="grid gap-1 py-3">
-                        <dt className="text-xs text-muted-foreground">
-                          Memory
-                        </dt>
-                        <dd>
-                          {projectMemoryScope === "project_only"
-                            ? "Project only"
-                            : "Full memory"}
-                        </dd>
-                      </div>
-                    </dl>
+                    <ProjectContextProgress
+                      instructions={projectInstructions}
+                      name={projectName}
+                      onSelect={(item) => {
+                        const target =
+                          item === "name"
+                            ? "project-name"
+                            : item === "instructions"
+                              ? "project-instructions"
+                              : "project-source-url"
+                        if (item !== "name")
+                          setProjectSetupTab(
+                            item === "instructions" ? "instructions" : "sources"
+                          )
+                        requestAnimationFrame(() =>
+                          document.getElementById(target)?.focus()
+                        )
+                      }}
+                      sourceCount={
+                        projectSourceFiles.length + projectSourceLinks.length
+                      }
+                    />
                     <Button
                       className="mt-5 w-full"
                       disabled={
@@ -2513,7 +2520,6 @@ function ProjectWorkspace({
           MAX_PROJECT_SOURCE_FILES,
           Math.max(0, MAX_PROJECT_SOURCES - sources.length)
         )
-
   return (
     <UploadThingDropzone
       disabled={!remainingFiles}
@@ -2803,14 +2809,10 @@ function MessageArea({
                                 !hasReasoning &&
                                 !hasTerminalRuns &&
                                 !hasUi) ? (
-                              <span
-                                aria-live="polite"
-                                className="inline-flex items-center gap-2 text-muted-foreground"
-                                role="status"
-                              >
-                                <Spinner className="size-3.5" />
-                                Thinking
-                              </span>
+                              <ThinkingIndicator
+                                className="text-sm"
+                                words={["Thinking"]}
+                              />
                             ) : message.status === "failed" ? (
                               message.errorCode === "insufficient_credits" ? (
                                 <span className="block space-y-2">
