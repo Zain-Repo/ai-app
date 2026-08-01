@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { api, internal } from "./_generated/api"
 import schema from "./schema"
@@ -9,6 +9,8 @@ const identity = (tokenIdentifier: string) => ({
   subject: tokenIdentifier,
   tokenIdentifier,
 })
+
+afterEach(() => vi.useRealTimers())
 
 describe("projects and conversations", () => {
   it("renames and deletes only owned projects without deleting their chats", async () => {
@@ -282,6 +284,7 @@ describe("projects and conversations", () => {
   })
 
   it("creates an owned conversation slug and persists its messages", async () => {
+    vi.useFakeTimers()
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))
     const ben = t.withIdentity(identity("clerk|ben"))
