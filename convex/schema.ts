@@ -424,6 +424,11 @@ export default defineSchema({
   })
     .index("by_conversation_id", ["conversationId"])
     .index("by_owner_id_and_updated_at", ["ownerId", "updatedAt"])
+    .index("by_owner_id_and_project_id_and_updated_at", [
+      "ownerId",
+      "projectId",
+      "updatedAt",
+    ])
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["ownerId"],
@@ -503,6 +508,11 @@ export default defineSchema({
       "ownerId",
       "status",
       "nextAttemptAt",
+    ])
+    .index("by_memory_item_id_and_profile_revision_and_kind", [
+      "memoryItemId",
+      "profileRevision",
+      "kind",
     ]),
 
   memoryTombstones: defineTable({

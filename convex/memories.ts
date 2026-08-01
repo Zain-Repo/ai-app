@@ -8,6 +8,7 @@ import {
   mutation,
   query,
 } from "./_generated/server"
+import type { MutationCtx } from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 import {
   getMemoryProcessingPolicy,
@@ -305,13 +306,16 @@ export const update = mutation({
       const now = Date.now()
       const category = args.category ?? item.category
       const scopeKey = getMemoryScopeKey(scope, projectId)
-      const duplicate = await ctx.db
+      const sameKeyItems = await ctx.db
         .query("memoryItems")
         .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
           q.eq("ownerId", user._id).eq("scopeKey", scopeKey).eq("canonicalKey", canonicalKey)
         )
-        .unique()
-      if (duplicate && duplicate._id !== item._id && duplicate.status !== "removed")
+        .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+      const duplicate = sameKeyItems.find(
+        (other) => other._id !== item._id && other.status === "active"
+      )
+      if (duplicate)
         throw new Error("A memory with this key already exists")
       const revision = item.revision + 1
       await ctx.db.patch(item._id, {
@@ -337,6 +341,13 @@ export const update = mutation({
         .withIndex("by_memory_item_id_and_profile_revision", (q) => q.eq("memoryItemId", item._id))
         .take(10)
       for (const document of documents) await ctx.db.delete(document._id)
+      if (
+        item.status === "active" &&
+        item.confirmation === "confirmed" &&
+        !isSensitiveMemory(canonicalKey, content)
+      ) {
+        await enqueueMemoryEmbedding(ctx, user._id, item._id)
+      }
       await ctx.db.patch(user._id, { memoryRevision: (user.memoryRevision ?? 0) + 1 })
       return null
     }
@@ -1055,7 +1066,24 @@ export const setProcessingProfile = mutation({
       updatedAt: now,
     }
     if (existing) await ctx.db.patch(existing._id, profilePatch)
-    else await ctx.db.insert("memoryProcessingProfiles", { ownerId: user._id, ...profilePatch })
+    else
+      await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId: user._id,
+        ...profilePatch,
+      })
+    if (status === "active") {
+      const activeItems = await ctx.db
+        .query("memoryItems")
+        .withIndex("by_owner_id_and_status_and_updated_at", (q) =>
+          q.eq("ownerId", user._id).eq("status", "active")
+        )
+        .take(MAX_ACTIVE_MEMORY_ITEMS)
+      for (const item of activeItems) {
+        if (item.confirmation !== "confirmed" || item.sensitivity !== "normal")
+          continue
+        await enqueueMemoryEmbedding(ctx, user._id, item._id)
+      }
+    }
     await ctx.db.patch(user._id, { memoryRevision: (user.memoryRevision ?? 0) + 1 })
     return null
   },
@@ -1070,6 +1098,56 @@ async function assertOwnedMemoryProject(
   const project = await ctx.db.get(projectId)
   if (!project || project.ownerId !== ownerId)
     throw new Error("Project unavailable")
+}
+
+export async function enqueueMemoryEmbedding(
+  ctx: MutationCtx,
+  ownerId: Id<"users">,
+  memoryItemId: Id<"memoryItems">
+) {
+  const item = await ctx.db.get(memoryItemId)
+  if (
+    !item ||
+    item.ownerId !== ownerId ||
+    item.status !== "active" ||
+    item.confirmation !== "confirmed" ||
+    item.sensitivity !== "normal"
+  ) {
+    return
+  }
+  const profile = await ctx.db
+    .query("memoryProcessingProfiles")
+    .withIndex("by_owner_id", (q) => q.eq("ownerId", ownerId))
+    .unique()
+  if (!profile || profile.status !== "active") return
+  const activeJob = await ctx.db
+    .query("memoryJobs")
+    .withIndex("by_memory_item_id_and_profile_revision_and_kind", (q) =>
+      q
+        .eq("memoryItemId", memoryItemId)
+        .eq("profileRevision", profile.policyRevision)
+        .eq("kind", "embed")
+    )
+    .take(5)
+  if (activeJob.some((job) => job.status === "queued" || job.status === "running"))
+    return
+  const now = Date.now()
+  const jobId = await ctx.db.insert("memoryJobs", {
+    ownerId,
+    kind: "embed",
+    memoryItemId,
+    profileId: profile._id,
+    profileRevision: profile.policyRevision,
+    policyRevision: profile.policyRevision,
+    status: "queued",
+    attempts: 0,
+    nextAttemptAt: now,
+    createdAt: now,
+    updatedAt: now,
+  })
+  await ctx.scheduler.runAfter(0, internal.memoryActions.processEmbedding, {
+    jobId,
+  })
 }
 
 export const create = mutation({
@@ -1095,7 +1173,7 @@ export const create = mutation({
       throw new Error("Sensitive memory requires explicit confirmation")
     const now = Date.now()
     const scopeKey = getMemoryScopeKey(args.scope, args.projectId)
-    const existing = await ctx.db
+    const sameKeyItems = await ctx.db
       .query("memoryItems")
       .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
         q
@@ -1103,7 +1181,8 @@ export const create = mutation({
           .eq("scopeKey", scopeKey)
           .eq("canonicalKey", canonicalKey)
       )
-      .unique()
+      .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+    const existing = sameKeyItems.find((item) => item.status !== "removed")
     const tombstone = await ctx.db
       .query("memoryTombstones")
       .withIndex("by_owner_id_and_key_hash", (q) =>
@@ -1169,6 +1248,8 @@ export const create = mutation({
       sourceSignal: "manual",
       createdAt: now,
     })
+    if (!isSensitiveMemory(canonicalKey, content))
+      await enqueueMemoryEmbedding(ctx, user._id, id)
     await ctx.db.patch(user._id, { memoryRevision: (user.memoryRevision ?? 0) + 1 })
     return id
   },
@@ -1188,7 +1269,22 @@ export const confirm = mutation({
     if (item.sensitivity === "sensitive" && !args.confirmSensitive)
       throw new Error("Sensitive memory cannot be confirmed without a separate explicit save")
     const now = Date.now()
-    if (item.status !== "active") {
+    const sameKeyItems = await ctx.db
+      .query("memoryItems")
+      .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
+        q
+          .eq("ownerId", user._id)
+          .eq("scopeKey", item.scopeKey)
+          .eq("canonicalKey", item.canonicalKey)
+      )
+      .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+    const activeReplacedItems = sameKeyItems.filter(
+      (other) => other._id !== item._id && other.status === "active"
+    )
+    for (const replaced of activeReplacedItems) {
+      await ctx.db.patch(replaced._id, { status: "archived", updatedAt: now })
+    }
+    if (item.status !== "active" && activeReplacedItems.length === 0) {
       const active = await ctx.db
         .query("memoryItems")
         .withIndex("by_owner_id_and_status_and_updated_at", (q) =>
@@ -1213,6 +1309,8 @@ export const confirm = mutation({
       confirmation: "confirmed",
       updatedAt: now,
     })
+    if (item.sensitivity === "normal")
+      await enqueueMemoryEmbedding(ctx, user._id, item._id)
     await ctx.db.patch(user._id, { memoryRevision: (user.memoryRevision ?? 0) + 1 })
     return null
   },
@@ -1248,6 +1346,40 @@ export const undoRemove = mutation({
     ) {
       throw new Error("Memory can no longer be restored")
     }
+    const sameKeyItems = await ctx.db
+      .query("memoryItems")
+      .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
+        q
+          .eq("ownerId", user._id)
+          .eq("scopeKey", item.scopeKey)
+          .eq("canonicalKey", item.canonicalKey)
+      )
+      .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+    if (
+      sameKeyItems.some(
+        (other) => other._id !== item._id && other.status === "active"
+      )
+    ) {
+      throw new Error("A newer memory with this key already exists")
+    }
+    const active = await ctx.db
+      .query("memoryItems")
+      .withIndex("by_owner_id_and_status_and_updated_at", (q) =>
+        q.eq("ownerId", user._id).eq("status", "active")
+      )
+      .order("asc")
+      .take(MAX_ACTIVE_MEMORY_ITEMS)
+    if (active.length >= MAX_ACTIVE_MEMORY_ITEMS) {
+      const evictable = active.find(
+        (activeItem) =>
+          activeItem.confirmation === "pending" && !activeItem.pinned
+      )
+      if (!evictable) throw new Error("Memory capacity is full")
+      await ctx.db.patch(evictable._id, {
+        status: "archived",
+        updatedAt: now,
+      })
+    }
     const tombstone = await ctx.db
       .query("memoryTombstones")
       .withIndex("by_owner_id_and_key_hash", (q) =>
@@ -1266,6 +1398,12 @@ export const undoRemove = mutation({
       undoExpiresAt: undefined,
       updatedAt: now,
     })
+    if (
+      item.confirmation === "confirmed" &&
+      item.sensitivity === "normal"
+    ) {
+      await enqueueMemoryEmbedding(ctx, user._id, item._id)
+    }
     await ctx.db.patch(user._id, { memoryRevision: (user.memoryRevision ?? 0) + 1 })
     return null
   },
@@ -1301,7 +1439,9 @@ export const retryProcessing = mutation({
         0,
         job.kind === "history_backfill"
           ? internal.memoryActions.processHistoryJob
-          : internal.memoryActions.processCapture,
+          : job.kind === "embed"
+            ? internal.memoryActions.processEmbedding
+            : internal.memoryActions.processCapture,
         { jobId: job._id }
       )
     }

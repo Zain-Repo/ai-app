@@ -682,8 +682,10 @@ export const createRealtimeSession = action({
             internal.memoryActions.buildAgentContextWithRetrieval,
             {
               conversationId: request.conversationId,
-              currentMessageId: request.currentMessageId,
               ownerId: request.ownerId,
+              ...(request.currentMessageId
+                ? { currentMessageId: request.currentMessageId }
+                : {}),
             }
           )
           memoryReferenceText = memoryContext.referenceText

@@ -87,7 +87,7 @@ export const buildAgentContext = internalQuery({
   args: {
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
-    currentMessageId: v.id("messages"),
+    currentMessageId: v.optional(v.id("messages")),
     preferLegacy: v.optional(v.boolean()),
   },
   returns: contextResultValidator,
@@ -95,16 +95,19 @@ export const buildAgentContext = internalQuery({
     const [owner, conversation, currentMessage] = await Promise.all([
       ctx.db.get(args.ownerId),
       ctx.db.get(args.conversationId),
-      ctx.db.get(args.currentMessageId),
+      args.currentMessageId
+        ? ctx.db.get(args.currentMessageId)
+        : Promise.resolve(null),
     ])
     if (
       !owner ||
       !conversation ||
       conversation.ownerId !== owner._id ||
-      !currentMessage ||
-      currentMessage.conversationId !== conversation._id ||
-      currentMessage.role !== "user" ||
-      currentMessage.status !== "complete"
+      (args.currentMessageId !== undefined &&
+        (!currentMessage ||
+          currentMessage.conversationId !== conversation._id ||
+          currentMessage.role !== "user" ||
+          currentMessage.status !== "complete"))
     ) {
       throw new Error("Memory context unavailable")
     }
@@ -119,16 +122,7 @@ export const buildAgentContext = internalQuery({
         budgetUsed: 0,
       }
     }
-    if (!(owner.memoryEnabled ?? false)) {
-      return {
-        memoryMode,
-        degradedReason: "saved_memory_disabled" as const,
-        referenceText: "",
-        selectedMemoryItemIds: [],
-        historySummaryIds: [],
-        budgetUsed: 0,
-      }
-    }
+    const savedMemoryEnabled = owner.memoryEnabled ?? false
     const project = conversation.projectId
       ? await ctx.db.get(conversation.projectId)
       : null
@@ -139,18 +133,20 @@ export const buildAgentContext = internalQuery({
       ...(includeUser ? [getMemoryScopeKey("user")] : []),
       ...(project ? [getMemoryScopeKey("project", project._id)] : []),
     ]
-    const scoped = await Promise.all(
-      scopeKeys.map(async (scopeKey) =>
-        await ctx.db
-          .query("memoryItems")
-          .withIndex("by_owner_id_and_scope_key_and_status_and_updated_at", (q) =>
-            q.eq("ownerId", owner._id).eq("scopeKey", scopeKey).eq("status", "active")
+    const scoped = savedMemoryEnabled
+      ? await Promise.all(
+          scopeKeys.map(async (scopeKey) =>
+            await ctx.db
+              .query("memoryItems")
+              .withIndex("by_owner_id_and_scope_key_and_status_and_updated_at", (q) =>
+                q.eq("ownerId", owner._id).eq("scopeKey", scopeKey).eq("status", "active")
+              )
+              .order("desc")
+              .take(100)
           )
-          .order("desc")
-          .take(100)
-      )
-    )
-    const eligible = (args.preferLegacy ? [] : scoped.flat())
+        )
+      : []
+    const eligible = (args.preferLegacy || !savedMemoryEnabled ? [] : scoped.flat())
       .filter(
         (item) =>
           item.confirmation === "confirmed"
@@ -177,7 +173,8 @@ export const buildAgentContext = internalQuery({
     // During migration, old clients may still have only legacy `memories`.
     // They are reference-only here: v2 source attribution deliberately never
     // invents a memoryItemId for a legacy row.
-    const legacyByScope = selected.length && !args.preferLegacy
+    const legacyByScope =
+      !savedMemoryEnabled || (selected.length && !args.preferLegacy)
       ? []
       : await Promise.all(
           scopeKeys.map(async (scopeKey) =>
@@ -193,8 +190,9 @@ export const buildAgentContext = internalQuery({
       .flat()
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .slice(0, MAX_RETRIEVED_MEMORY_ITEMS)
+    const canUseHistory = owner.memoryHistoryEnabled
     const summaries =
-      owner.memoryHistoryEnabled && memoryMode === "standard"
+      canUseHistory
         ? await ctx.db
             .query("conversationMemorySummaries")
             .withIndex("by_conversation_id", (q) =>
@@ -202,12 +200,14 @@ export const buildAgentContext = internalQuery({
             )
             .take(1)
         : []
-    const historyQuery = currentMessage.content
-      .replace(/[^\p{L}\p{N}_ -]/gu, " ")
-      .trim()
-      .slice(0, 200)
+    const historyQuery = currentMessage
+      ? currentMessage.content
+          .replace(/[^\p{L}\p{N}_ -]/gu, " ")
+          .trim()
+          .slice(0, 200)
+      : ""
     const matchingSummaries =
-      owner.memoryHistoryEnabled && memoryMode === "standard" && historyQuery
+      canUseHistory && historyQuery
         ? await ctx.db
             .query("conversationMemorySummaries")
             .withSearchIndex("search_content", (q) =>
@@ -215,12 +215,31 @@ export const buildAgentContext = internalQuery({
             )
             .take(8)
         : []
+    const summaryProjectIds = Array.from(
+      new Set(
+        matchingSummaries.flatMap((summary) =>
+          summary.projectId ? [summary.projectId] : []
+        )
+      )
+    )
+    const summaryProjects = await Promise.all(
+      summaryProjectIds.map(async (projectId) => await ctx.db.get(projectId))
+    )
+    const summaryProjectById = new Map(
+      summaryProjects.filter((summaryProject) => summaryProject !== null).map(
+        (summaryProject) => [summaryProject._id, summaryProject]
+      )
+    )
     const allowedHistory = matchingSummaries
       .filter(
-        (summary) =>
-          summary.conversationId !== conversation._id &&
-          (project?.memoryScope !== "project_only" ||
-            summary.projectId === project._id)
+        (summary) => {
+          if (summary.conversationId === conversation._id) return false
+          if (project?.memoryScope === "project_only")
+            return summary.projectId === project._id
+          if (!summary.projectId) return true
+          const summaryProject = summaryProjectById.get(summary.projectId)
+          return summaryProject?.memoryScope !== "project_only"
+        }
       )
       .slice(0, 2)
     const allSummaries = [...summaries, ...allowedHistory]
@@ -276,7 +295,9 @@ export const buildAgentContext = internalQuery({
       memoryMode,
       ...(project?.memoryScope === "project_only"
         ? { degradedReason: "project_only" as const }
-        : !processingAvailable
+        : !savedMemoryEnabled
+          ? { degradedReason: "saved_memory_disabled" as const }
+          : !processingAvailable
           ? { degradedReason: "processing_unavailable" as const }
           : {}),
       referenceText,
@@ -343,10 +364,11 @@ export const getRetrievalContext = internalQuery({
   args: {
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
-    currentMessageId: v.id("messages"),
+    currentMessageId: v.optional(v.id("messages")),
   },
   returns: retrievalContextValidator,
   handler: async (ctx, args) => {
+    if (!args.currentMessageId) return null
     const [owner, conversation, currentMessage] = await Promise.all([
       ctx.db.get(args.ownerId),
       ctx.db.get(args.conversationId),

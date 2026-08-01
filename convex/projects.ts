@@ -520,10 +520,10 @@ export const remove = mutation({
       await ctx.db.delete(source._id)
     }
     for (const memory of memories) await ctx.db.delete(memory._id)
-    if (memories.length)
-      await ctx.db.patch(user._id, {
-        memoryRevision: (user.memoryRevision ?? 0) + 1,
-      })
+    await ctx.db.patch(user._id, {
+      memoryRevision: (user.memoryRevision ?? 0) + 1,
+      memoryHistoryRevision: (user.memoryHistoryRevision ?? 0) + 1,
+    })
     await ctx.db.delete(project._id)
     await ctx.scheduler.runAfter(
       0,

@@ -139,6 +139,22 @@ const processingContextValidator = v.union(
   v.null()
 )
 
+const embeddingProcessingContextValidator = v.union(
+  v.object({
+    ciphertext: v.string(),
+    iv: v.string(),
+    connectionId: v.id("providerConnections"),
+    provider: v.union(v.literal("openrouter"), v.literal("openai")),
+    profileId: v.id("memoryProcessingProfiles"),
+    policyRevision: v.number(),
+    ownerId: v.id("users"),
+    memoryItemId: v.id("memoryItems"),
+    content: v.string(),
+    revision: v.number(),
+  }),
+  v.null()
+)
+
 export const getProcessingContext = internalQuery({
   args: {
     jobId: v.id("memoryJobs"),
@@ -267,6 +283,69 @@ export const getProcessingContext = internalQuery({
   },
 })
 
+export const getEmbeddingProcessingContext = internalQuery({
+  args: { jobId: v.id("memoryJobs") },
+  returns: embeddingProcessingContextValidator,
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId)
+    if (
+      !job ||
+      job.kind !== "embed" ||
+      job.status !== "running" ||
+      !job.profileId ||
+      !job.memoryItemId
+    ) {
+      return null
+    }
+    const [owner, profile, item] = await Promise.all([
+      ctx.db.get(job.ownerId),
+      ctx.db.get(job.profileId),
+      ctx.db.get(job.memoryItemId),
+    ])
+    if (
+      !owner ||
+      !(owner.memoryEnabled ?? false) ||
+      !profile ||
+      profile.ownerId !== job.ownerId ||
+      profile.policyRevision !== job.profileRevision ||
+      profile.status !== "active" ||
+      !item ||
+      item.ownerId !== job.ownerId ||
+      item.status !== "active" ||
+      item.confirmation !== "confirmed" ||
+      item.sensitivity !== "normal"
+    ) {
+      return null
+    }
+    const connection = await ctx.db.get(profile.providerConnectionId)
+    if (
+      !connection ||
+      connection.ownerId !== job.ownerId ||
+      connection.provider !== profile.provider ||
+      connection.status !== "connected"
+    ) {
+      return null
+    }
+    const credential = await ctx.db
+      .query("providerCredentials")
+      .withIndex("by_connection_id", (q) => q.eq("connectionId", connection._id))
+      .unique()
+    if (!credential) return null
+    return {
+      ciphertext: credential.ciphertext,
+      iv: credential.iv,
+      connectionId: connection._id,
+      provider: profile.provider,
+      profileId: profile._id,
+      policyRevision: profile.policyRevision,
+      ownerId: job.ownerId,
+      memoryItemId: item._id,
+      content: item.content,
+      revision: item.revision,
+    }
+  },
+})
+
 export const getEmbeddableItems = internalQuery({
   args: {
     ownerId: v.id("users"),
@@ -367,8 +446,14 @@ export const applySearchDocuments = internalMutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const profile = await ctx.db.get(args.profileId)
+    const [owner, profile] = await Promise.all([
+      ctx.db.get(args.ownerId),
+      ctx.db.get(args.profileId),
+    ])
     if (
+      !owner ||
+      owner._id !== args.ownerId ||
+      !(owner.memoryEnabled ?? false) ||
       !profile ||
       profile.ownerId !== args.ownerId ||
       profile.status !== "active" ||
@@ -403,7 +488,7 @@ export const applySearchDocuments = internalMutation({
             .eq("memoryItemId", item._id)
             .eq("profileRevision", args.policyRevision)
         )
-        .take(5)
+        .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
       for (const oldDocument of stale) await ctx.db.delete(oldDocument._id)
       await ctx.db.insert("memorySearchDocuments", {
         ownerId: args.ownerId,
@@ -431,6 +516,7 @@ export const commitCandidates = internalMutation({
     messageId: v.id("messages"),
     profileId: v.id("memoryProcessingProfiles"),
     policyRevision: v.number(),
+    memoryRevision: v.number(),
     candidates: v.array(candidateValidator),
   },
   returns: v.array(v.id("memoryItems")),
@@ -444,6 +530,7 @@ export const commitCandidates = internalMutation({
     if (
       !source ||
       !(source.owner.memoryEnabled ?? false) ||
+      (source.owner.memoryRevision ?? 0) !== args.memoryRevision ||
       (source.conversation.memoryMode ?? "standard") !== "standard"
     ) {
       return []
@@ -502,7 +589,7 @@ export const commitCandidates = internalMutation({
       const direct = candidate.sourceSignal === "direct_statement" && !sensitive
       const status = direct ? "active" : "candidate"
       const confirmation = direct ? "confirmed" : "pending"
-      const existing = await ctx.db
+      const sameKeyItems = await ctx.db
         .query("memoryItems")
         .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
           q
@@ -510,15 +597,106 @@ export const commitCandidates = internalMutation({
             .eq("scopeKey", scopeKey)
             .eq("canonicalKey", canonicalKey)
         )
-        .unique()
+        .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+      const existing = sameKeyItems.find(
+        (item) => item.status === "active"
+      ) ?? sameKeyItems.find((item) => item.status !== "removed")
       if (existing?.status === "removed") continue
       if (existing) {
         // A generated fact cannot silently overwrite a manual/pinned truth.
-        if (existing.pinned || existing.sourceSignal === "manual") {
-          await ctx.db.patch(existing._id, {
+        if (
+          existing.status === "active" &&
+          existing.confirmation === "confirmed" &&
+          (existing.pinned || existing.sourceSignal === "manual")
+        ) {
+          if (existing.content === content) {
+            await ctx.db.insert("memoryEvidence", {
+              ownerId: args.ownerId,
+              memoryItemId: existing._id,
+              sourceConversationId: source.conversation._id,
+              sourceMessageId: source.message._id,
+              sourceSignal: candidate.sourceSignal,
+              createdAt: now,
+            })
+            continue
+          }
+          const matchingProposal = sameKeyItems.find(
+            (item) =>
+              item.status === "needs_review" &&
+              item.confirmation === "pending"
+          )
+          if (matchingProposal) {
+            if (matchingProposal.content !== content) {
+              const revision = matchingProposal.revision + 1
+              await ctx.db.patch(matchingProposal._id, {
+                content,
+                category: candidate.category,
+                sourceSignal: candidate.sourceSignal,
+                sensitivity: sensitive ? "sensitive" : "normal",
+                revision,
+                sourceConversationId: source.conversation._id,
+                sourceMessageId: source.message._id,
+                sourceTimestamp: source.message._creationTime,
+                updatedAt: now,
+              })
+              await ctx.db.insert("memoryVersions", {
+                ownerId: args.ownerId,
+                memoryItemId: matchingProposal._id,
+                revision,
+                content,
+                category: candidate.category,
+                sourceSignal: candidate.sourceSignal,
+                changedAt: now,
+              })
+            }
+            await ctx.db.insert("memoryEvidence", {
+              ownerId: args.ownerId,
+              memoryItemId: matchingProposal._id,
+              sourceConversationId: source.conversation._id,
+              sourceMessageId: source.message._id,
+              sourceSignal: candidate.sourceSignal,
+              createdAt: now,
+            })
+            continue
+          }
+          const proposalId = await ctx.db.insert("memoryItems", {
+            ownerId: args.ownerId,
+            ...(project ? { projectId: project._id } : {}),
+            scope: candidate.scope,
+            scopeKey,
+            category: candidate.category,
+            canonicalKey,
+            content,
             status: "needs_review",
+            sourceSignal: candidate.sourceSignal,
+            confirmation: "pending",
+            pinned: false,
+            sensitivity: sensitive ? "sensitive" : "normal",
+            revision: 1,
+            sourceConversationId: source.conversation._id,
+            sourceMessageId: source.message._id,
+            sourceTimestamp: source.message._creationTime,
+            createdAt: now,
             updatedAt: now,
           })
+          await ctx.db.insert("memoryVersions", {
+            ownerId: args.ownerId,
+            memoryItemId: proposalId,
+            revision: 1,
+            content,
+            category: candidate.category,
+            sourceSignal: candidate.sourceSignal,
+            changedAt: now,
+          })
+          await ctx.db.insert("memoryEvidence", {
+            ownerId: args.ownerId,
+            memoryItemId: proposalId,
+            sourceConversationId: source.conversation._id,
+            sourceMessageId: source.message._id,
+            sourceSignal: candidate.sourceSignal,
+            createdAt: now,
+          })
+          committed.push(proposalId)
           continue
         }
         const revision = existing.revision + 1
@@ -614,6 +792,7 @@ export const applyDeletions = internalMutation({
     messageId: v.id("messages"),
     profileId: v.id("memoryProcessingProfiles"),
     policyRevision: v.number(),
+    memoryRevision: v.number(),
     deletions: v.array(
       v.object({ key: v.string(), scope: memoryScopeValidator })
     ),
@@ -629,6 +808,7 @@ export const applyDeletions = internalMutation({
     const profile = await ctx.db.get(args.profileId)
     if (
       !source ||
+      (source.owner.memoryRevision ?? 0) !== args.memoryRevision ||
       (source.conversation.memoryMode ?? "standard") !== "standard" ||
       !profile ||
       profile.ownerId !== args.ownerId ||
@@ -647,7 +827,7 @@ export const applyDeletions = internalMutation({
       if (deletion.scope === "user" && project?.memoryScope === "project_only")
         continue
       const scopeKey = getMemoryScopeKey(deletion.scope, project?._id)
-      const item = await ctx.db
+      const items = await ctx.db
         .query("memoryItems")
         .withIndex("by_owner_id_and_scope_key_and_canonical_key", (q) =>
           q
@@ -655,16 +835,16 @@ export const applyDeletions = internalMutation({
             .eq("scopeKey", scopeKey)
             .eq("canonicalKey", deletion.key)
         )
-        .unique()
-      if (
-        !item ||
-        !["active", "candidate", "needs_review"].includes(item.status)
+        .take(MAX_ACTIVE_MEMORY_ITEMS + 1)
+      const matchingItems = items.filter((item) =>
+        ["active", "candidate", "needs_review"].includes(item.status)
       )
+      if (!matchingItems.length)
         continue
       const keyHash = createMemoryTombstoneHash(
         args.ownerId,
-        item.scopeKey,
-        item.canonicalKey
+        scopeKey,
+        deletion.key
       )
       const tombstone = await ctx.db
         .query("memoryTombstones")
@@ -683,13 +863,15 @@ export const applyDeletions = internalMutation({
           createdAt: now,
           expiresAt: now + 30 * 24 * 60 * 60 * 1_000,
         })
-      await ctx.db.patch(item._id, {
-        status: "removed",
-        removedAt: now,
-        undoExpiresAt: now + 30_000,
-        updatedAt: now,
-      })
-      removed += 1
+      for (const item of matchingItems) {
+        await ctx.db.patch(item._id, {
+          status: "removed",
+          removedAt: now,
+          undoExpiresAt: now + 30_000,
+          updatedAt: now,
+        })
+        removed += 1
+      }
     }
     return removed
   },

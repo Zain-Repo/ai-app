@@ -122,7 +122,9 @@ export const fail = internalMutation({
       const nextAction =
         job.kind === "history_backfill"
           ? internal.memoryActions.processHistoryJob
-          : internal.memoryActions.processCapture
+          : job.kind === "embed"
+            ? internal.memoryActions.processEmbedding
+            : internal.memoryActions.processCapture
       await ctx.scheduler.runAfter(retryDelay, nextAction, { jobId: job._id })
     }
     return null

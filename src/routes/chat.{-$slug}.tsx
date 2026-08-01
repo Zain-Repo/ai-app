@@ -572,6 +572,7 @@ function ChatWorkspace() {
     conversationId ? { conversationId } : "skip"
   )
   const startConversation = useMutation(api.conversations.start)
+  const startRealtimeConversation = useMutation(api.conversations.startRealtime)
   const sendMessage = useMutation(api.conversations.send)
   const setMemoryMode = useMutation(api.conversations.setMemoryMode)
   const finishDesktopCodexResponse = useMutation(
@@ -655,6 +656,9 @@ function ChatWorkspace() {
     "idle"
   )
   const [voiceMode, setVoiceMode] = useState(false)
+  const [voiceConversationId, setVoiceConversationId] = useState<string | null>(
+    null
+  )
 
   useEffect(() => {
     setExpandedProjectId(search.projectId)
@@ -985,6 +989,27 @@ function ChatWorkspace() {
         projectId: next.projectId,
       },
     })
+
+  const activateVoice = async () => {
+    if (conversationId) {
+      setVoiceConversationId(conversationId)
+      setVoiceMode(true)
+      return
+    }
+    try {
+      const createdConversationId = await startRealtimeConversation({
+        ...(search.projectId ? { projectId: search.projectId } : {}),
+      })
+      await open({
+        slug: createdConversationId,
+        ...(search.projectId ? { projectId: search.projectId } : {}),
+      })
+      setVoiceConversationId(createdConversationId)
+      setVoiceMode(true)
+    } catch {
+      setProjectMenuError("Voice chat could not be created. Try again.")
+    }
+  }
 
   const selectProject = async (projectId?: string) => {
     setProjectActionFailed(false)
@@ -1830,7 +1855,7 @@ function ChatWorkspace() {
                 </SelectContent>
               </Select>
             ) : null}
-            <SidebarVoiceButton onActivate={() => setVoiceMode(true)} />
+            <SidebarVoiceButton onActivate={() => void activateVoice()} />
           </div>
           <SidebarUserMenu
             desktopAvailable={desktopAvailable}
@@ -2397,13 +2422,16 @@ function ChatWorkspace() {
                 </aside>
               </div>
             </div>
-          ) : voiceMode ? (
+          ) : voiceMode && voiceConversationId ? (
             <Suspense
               fallback={<ChatStatus loading message="Starting voice…" />}
             >
               <RealtimeVoice
-                conversationId={conversationId}
-                onClose={() => setVoiceMode(false)}
+                conversationId={voiceConversationId}
+                onClose={() => {
+                  setVoiceMode(false)
+                  setVoiceConversationId(null)
+                }}
               />
             </Suspense>
           ) : selected === null && conversationId ? (

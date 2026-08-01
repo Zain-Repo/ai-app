@@ -80,6 +80,7 @@ export const getHistoryProcessingContext = internalQuery({
       extractionModel: v.string(),
       ownerId: v.id("users"),
       conversationId: v.id("conversations"),
+      historyRevision: v.number(),
       sourceMessageId: v.optional(v.id("messages")),
       transcript: v.string(),
     }),
@@ -137,6 +138,7 @@ export const getHistoryProcessingContext = internalQuery({
       extractionModel: profile.extractionModel,
       ownerId: job.ownerId,
       conversationId: conversation._id,
+      historyRevision: job.historyRevision ?? 0,
       ...(sourceMessage ? { sourceMessageId: sourceMessage._id } : {}),
       transcript: messages
         .reverse()
@@ -152,6 +154,7 @@ export const applySummary = internalMutation({
   args: {
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
+    historyRevision: v.number(),
     sourceMessageId: v.optional(v.id("messages")),
     content: v.string(),
   },
@@ -163,6 +166,7 @@ export const applySummary = internalMutation({
     ])
     if (
       !owner?.memoryHistoryEnabled ||
+      (owner.memoryHistoryRevision ?? 0) !== args.historyRevision ||
       !conversation ||
       conversation.ownerId !== args.ownerId ||
       (conversation.memoryMode ?? "standard") !== "standard"

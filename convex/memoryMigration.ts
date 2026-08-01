@@ -2,6 +2,7 @@ import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
 import { internalMutation } from "./_generated/server"
+import { enqueueMemoryEmbedding } from "./memories"
 
 const BATCH_SIZE = 100
 
@@ -31,8 +32,8 @@ export const migrateOwner = internalMutation({
             .eq("scopeKey", memory.scopeKey)
             .eq("canonicalKey", memory.key)
         )
-        .unique()
-      if (existing) continue
+        .take(BATCH_SIZE + 1)
+      if (existing.some((item) => item.status !== "removed")) continue
       const sourceSignal = memory.sourceMessageId
         ? "direct_statement"
         : "manual"
@@ -77,6 +78,8 @@ export const migrateOwner = internalMutation({
         sourceSignal,
         createdAt: now,
       })
+      if (sourceSignal === "direct_statement")
+        await enqueueMemoryEmbedding(ctx, args.ownerId, itemId)
       migrated += 1
     }
     const remaining = !legacyPage.isDone

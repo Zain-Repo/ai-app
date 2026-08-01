@@ -304,6 +304,45 @@ export const start = mutation({
   },
 })
 
+// Voice sessions begin before a user transcript exists. Create the owned chat
+// first so every finalized transcript and memory operation has one stable
+// conversation scope from the beginning.
+export const startRealtime = mutation({
+  args: { projectId: v.optional(v.string()) },
+  returns: v.id("conversations"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const projectId = args.projectId
+      ? ctx.db.normalizeId("projects", args.projectId)
+      : null
+    if (args.projectId && !projectId) throw new Error("Project unavailable")
+    if (projectId) {
+      const project = await ctx.db.get(projectId)
+      if (!project || project.ownerId !== user._id)
+        throw new Error("Project unavailable")
+    }
+    const openAiConnection = (
+      await ctx.db
+        .query("providerConnections")
+        .withIndex("by_owner_provider", (q) =>
+          q.eq("ownerId", user._id).eq("provider", "openai")
+        )
+        .take(10)
+    ).find((connection) => connection.status === "connected")
+    if (!openAiConnection) throw new Error("Connect OpenAI before starting voice")
+    return await ctx.db.insert("conversations", {
+      ownerId: user._id,
+      ...(projectId ? { projectId } : {}),
+      title: "Voice conversation",
+      status: "active",
+      providerConnectionId: openAiConnection._id,
+      model: "gpt-4o-mini",
+      outputMode: "text",
+      updatedAt: Date.now(),
+    })
+  },
+})
+
 export const send = mutation({
   args: {
     conversationId: v.string(),
@@ -661,7 +700,7 @@ export const getDesktopCodexMemoryContextRequest = internalQuery({
 
 const realtimeMemoryContextRequestValidator = v.object({
   conversationId: v.id("conversations"),
-  currentMessageId: v.id("messages"),
+  currentMessageId: v.optional(v.id("messages")),
   ownerId: v.id("users"),
 })
 
@@ -696,11 +735,10 @@ export const getRealtimeMemoryContextRequest = internalQuery({
     ).find(
       (message) => message.role === "user" && message.status === "complete"
     )
-    if (!lastUserMessage) return null
     return {
       conversationId: conversation._id,
-      currentMessageId: lastUserMessage._id,
       ownerId: owner._id,
+      ...(lastUserMessage ? { currentMessageId: lastUserMessage._id } : {}),
     }
   },
 })

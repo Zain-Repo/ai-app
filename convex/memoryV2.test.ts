@@ -2,6 +2,7 @@ import { convexTest } from "convex-test"
 import { describe, expect, it } from "vitest"
 
 import { api, internal } from "./_generated/api"
+import type { Id } from "./_generated/dataModel"
 import schema from "./schema"
 import { modules } from "./test.setup"
 
@@ -93,6 +94,106 @@ describe("agent memory v2", () => {
         messageId,
       })
     ).resolves.toBeNull()
+  })
+
+  it("rejects stale capture creates and deletions after the memory revision changes", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|capture-revision"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const { conversationId, messageId, profileId } = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Capture revision",
+        memoryMode: "standard",
+        updatedAt: 1,
+      })
+      const createdMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "user",
+        content: "Remember my response style.",
+        status: "complete",
+      })
+      return {
+        conversationId: createdConversationId,
+        messageId: createdMessageId,
+        profileId: createdProfileId,
+      }
+    })
+    const [originalMemoryId] = await t.mutation(internal.memoryCapture.commitCandidates, {
+      ownerId,
+      conversationId,
+      messageId,
+      profileId,
+      policyRevision: 1,
+      memoryRevision: 1,
+      candidates: [
+        {
+          canonicalKey: "preferences.original_style",
+          content: "Prefers concise answers.",
+          category: "preference",
+          scope: "user",
+          sourceSignal: "direct_statement",
+        },
+      ],
+    })
+    expect(originalMemoryId).toBeDefined()
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ownerId, { memoryRevision: 2 })
+    })
+
+    await expect(
+      t.mutation(internal.memoryCapture.commitCandidates, {
+        ownerId,
+        conversationId,
+        messageId,
+        profileId,
+        policyRevision: 1,
+        memoryRevision: 1,
+        candidates: [
+          {
+            canonicalKey: "preferences.stale_style",
+            content: "Must not be recreated.",
+            category: "preference",
+            scope: "user",
+            sourceSignal: "direct_statement",
+          },
+        ],
+      })
+    ).resolves.toEqual([])
+    await expect(
+      t.mutation(internal.memoryCapture.applyDeletions, {
+        ownerId,
+        conversationId,
+        messageId,
+        profileId,
+        policyRevision: 1,
+        memoryRevision: 1,
+        deletions: [{ key: "preferences.original_style", scope: "user" }],
+      })
+    ).resolves.toBe(0)
+    expect((await t.run((ctx) => ctx.db.get(originalMemoryId)))?.status).toBe("active")
+    expect(await owner.query(api.memories.list, { status: "active" })).toHaveLength(1)
   })
 
   it("includes legacy-only keys in the shadow extraction context", async () => {
@@ -247,6 +348,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       candidates: [
         {
           canonicalKey: "contact.email",
@@ -346,6 +448,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       candidates: [
         {
           canonicalKey: "preferences.response_style",
@@ -362,6 +465,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       deletions: [{ key: "preferences.response_style", scope: "user" }],
     })
     expect(await owner.query(api.memories.list, { status: "active" })).toEqual([])
@@ -481,6 +585,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       candidates: [
         {
           canonicalKey: "preferences.focused_answers",
@@ -568,6 +673,469 @@ describe("agent memory v2", () => {
     )
   })
 
+  it("keeps a manual memory active and creates a reviewable conflict proposal", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|manual-conflict"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const manualId = await owner.mutation(api.memories.create, {
+      canonicalKey: "preferences.response_style",
+      content: "Prefer concise responses.",
+      category: "preference",
+      scope: "user",
+      pinned: true,
+    })
+    const { conversationId, messageId, profileId } = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Conflict",
+        updatedAt: 1,
+      })
+      const createdMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "user",
+        content: "Actually, make my answers detailed.",
+        status: "complete",
+      })
+      return {
+        conversationId: createdConversationId,
+        messageId: createdMessageId,
+        profileId: createdProfileId,
+      }
+    })
+    const memoryRevision = (await t.run((ctx) => ctx.db.get(ownerId)))
+      ?.memoryRevision
+    await t.mutation(internal.memoryCapture.commitCandidates, {
+      ownerId,
+      conversationId,
+      messageId,
+      profileId,
+      policyRevision: 1,
+      memoryRevision: memoryRevision ?? 0,
+      candidates: [
+        {
+          canonicalKey: "preferences.response_style",
+          content: "Prefers detailed responses.",
+          category: "preference",
+          scope: "user",
+          sourceSignal: "direct_statement",
+        },
+      ],
+    })
+
+    expect(await t.run((ctx) => ctx.db.get(manualId))).toMatchObject({
+      content: "Prefer concise responses.",
+      status: "active",
+    })
+    const proposals = await owner.query(api.memories.list, {
+      status: "needs_review",
+    })
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0]).toMatchObject({
+      canonicalKey: "preferences.response_style",
+      confirmation: "pending",
+      content: "Prefers detailed responses.",
+      sourceConversationId: conversationId,
+      sourceMessageId: messageId,
+    })
+
+    await t.mutation(internal.memoryCapture.commitCandidates, {
+      ownerId,
+      conversationId,
+      messageId,
+      profileId,
+      policyRevision: 1,
+      memoryRevision: memoryRevision ?? 0,
+      candidates: [
+        {
+          canonicalKey: "preferences.response_style",
+          content: "Prefer concise responses.",
+          category: "preference",
+          scope: "user",
+          sourceSignal: "direct_statement",
+        },
+      ],
+    })
+    const evidence = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryEvidence")
+        .withIndex("by_memory_item_id_and_created_at", (q) =>
+          q.eq("memoryItemId", manualId)
+        )
+        .take(5)
+    )
+    expect(evidence).toHaveLength(2)
+    await t.mutation(internal.memoryCapture.commitCandidates, {
+      ownerId,
+      conversationId,
+      messageId,
+      profileId,
+      policyRevision: 1,
+      memoryRevision: memoryRevision ?? 0,
+      candidates: [
+        {
+          canonicalKey: "preferences.response_style",
+          content: "Prefers precise responses.",
+          category: "preference",
+          scope: "user",
+          sourceSignal: "direct_statement",
+        },
+      ],
+    })
+    const refreshedProposals = await owner.query(api.memories.list, {
+      status: "needs_review",
+    })
+    expect(refreshedProposals).toHaveLength(1)
+    expect(refreshedProposals[0]).toMatchObject({
+      _id: proposals[0]._id,
+      content: "Prefers precise responses.",
+      revision: 2,
+    })
+    const proposal = proposals[0]
+
+    await owner.mutation(api.memories.confirm, {
+      memoryItemId: proposal._id,
+    })
+    expect(await t.run((ctx) => ctx.db.get(manualId))).toMatchObject({
+      status: "archived",
+    })
+    expect(await owner.query(api.memories.list, { status: "active" })).toMatchObject([
+      {
+        _id: proposal._id,
+        content: "Prefers precise responses.",
+      },
+    ])
+    await expect(
+      owner.mutation(api.memories.update, {
+        memoryItemId: proposal._id,
+        content: "Prefer precise responses with examples.",
+      })
+    ).resolves.toBeNull()
+    expect(await owner.query(api.memories.list, { status: "active" })).toMatchObject([
+      {
+        _id: proposal._id,
+        content: "Prefer precise responses with examples.",
+      },
+    ])
+  })
+
+  it("queues a profile-bound embedding job for a normal manual memory", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|manual-embedding"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const connectionId = await t.run(async (ctx) =>
+      await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+    )
+    await owner.mutation(api.memories.setProcessingProfile, {
+      providerConnectionId: connectionId,
+    })
+    const memoryItemId = await owner.mutation(api.memories.create, {
+      canonicalKey: "preferences.review_depth",
+      content: "Prefer detailed code reviews.",
+      category: "preference",
+      scope: "user",
+    })
+    const profile = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryProcessingProfiles")
+        .withIndex("by_owner_id", (q) => q.eq("ownerId", ownerId))
+        .unique()
+    )
+    const jobs = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_owner_id_and_status_and_next_attempt_at", (q) =>
+          q.eq("ownerId", ownerId).eq("status", "queued")
+        )
+        .take(5)
+    )
+    expect(jobs).toContainEqual(
+      expect.objectContaining({
+        kind: "embed",
+        memoryItemId,
+        profileId: profile?._id,
+        profileRevision: profile?.policyRevision,
+      })
+    )
+  })
+
+  it("rejects a stale embedding commit after the owner disables memory", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|embedding-opt-out"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const { memoryItemId, profileId } = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      const createdMemoryItemId = await ctx.db.insert("memoryItems", {
+        ownerId,
+        scope: "user",
+        scopeKey: "user",
+        category: "preference",
+        canonicalKey: "preferences.opt_out_embedding",
+        content: "Do not persist an embedding after opt-out.",
+        status: "active",
+        sourceSignal: "manual",
+        confirmation: "confirmed",
+        pinned: false,
+        sensitivity: "normal",
+        revision: 1,
+        sourceTimestamp: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+      return { memoryItemId: createdMemoryItemId, profileId: createdProfileId }
+    })
+
+    await expect(
+      t.mutation(internal.memoryCapture.applySearchDocuments, {
+        ownerId,
+        profileId,
+        policyRevision: 1,
+        documents: [
+          {
+            memoryItemId,
+            content: "Do not persist an embedding after opt-out.",
+            contentHash: "content-hash",
+            itemRevision: 1,
+            embedding: Array.from({ length: 1536 }, () => 0.1),
+          },
+        ],
+      })
+    ).resolves.toBe(0)
+    const documents = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memorySearchDocuments")
+        .withIndex("by_memory_item_id_and_profile_revision", (q) =>
+          q.eq("memoryItemId", memoryItemId).eq("profileRevision", 1)
+        )
+        .take(5)
+    )
+    expect(documents).toEqual([])
+  })
+
+  it("queues migrated direct statements for embedding under an active profile", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|migration-embedding"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const { connectionId, conversationId, messageId } = await t.run(async (ctx) => {
+      const createdConnectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Migrated source",
+        updatedAt: 1,
+      })
+      const createdMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "user",
+        content: "I prefer concise answers.",
+        status: "complete",
+      })
+      await ctx.db.insert("memories", {
+        ownerId,
+        scope: "user",
+        scopeKey: "user",
+        searchScope: `${ownerId}:user`,
+        kind: "preference",
+        key: "preferences.migrated_style",
+        content: "Prefers concise answers.",
+        sourceConversationId: createdConversationId,
+        sourceMessageId: createdMessageId,
+        sourceTimestamp: 1,
+        updatedAt: 1,
+      })
+      return {
+        connectionId: createdConnectionId,
+        conversationId: createdConversationId,
+        messageId: createdMessageId,
+      }
+    })
+    await owner.mutation(api.memories.setProcessingProfile, {
+      providerConnectionId: connectionId,
+    })
+    await t.mutation(internal.memoryMigration.migrateOwner, { ownerId })
+    const migrated = await owner.query(api.memories.list, { status: "active" })
+    const migratedItem = migrated.find(
+      (item) => item.canonicalKey === "preferences.migrated_style"
+    )
+    if (!migratedItem) throw new Error("Missing migrated memory")
+    const jobs = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_memory_item_id_and_profile_revision_and_kind", (q) =>
+          q
+            .eq("memoryItemId", migratedItem._id)
+            .eq("profileRevision", 1)
+            .eq("kind", "embed")
+        )
+        .take(5)
+    )
+    expect(jobs).toHaveLength(1)
+    expect(migratedItem).toMatchObject({
+      sourceConversationId: conversationId,
+      sourceMessageId: messageId,
+      sourceSignal: "direct_statement",
+    })
+  })
+
+  it("requeues eligible active memories when the processing profile changes", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|profile-reembedding"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const memoryItemId = await owner.mutation(api.memories.create, {
+      canonicalKey: "preferences.profile_reembedding",
+      content: "Use Canadian English.",
+      category: "preference",
+      scope: "user",
+    })
+    const connectionId = await t.run(async (ctx) =>
+      await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+    )
+
+    await owner.mutation(api.memories.setProcessingProfile, {
+      providerConnectionId: connectionId,
+    })
+    await owner.mutation(api.memories.setProcessingProfile, {
+      providerConnectionId: connectionId,
+    })
+    const jobs = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_memory_item_id_and_profile_revision_and_kind", (q) =>
+          q
+            .eq("memoryItemId", memoryItemId)
+            .eq("profileRevision", 2)
+            .eq("kind", "embed")
+        )
+        .take(5)
+    )
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]).toMatchObject({ status: "queued" })
+  })
+
+  it("evicts the least-useful pending memory before undoing a removal at capacity", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|undo-capacity"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const now = Date.now()
+    const { evictableId, removedId } = await t.run(async (ctx) => {
+      let createdEvictableId: Id<"memoryItems"> | null = null
+      for (let index = 0; index < 100; index += 1) {
+        const id = await ctx.db.insert("memoryItems", {
+          ownerId,
+          scope: "user",
+          scopeKey: "user",
+          category: "fact",
+          canonicalKey: `fact.active_${index}`,
+          content: `Active fact ${index}.`,
+          status: "active",
+          sourceSignal: "direct_statement",
+          confirmation: index === 0 ? "pending" : "confirmed",
+          pinned: false,
+          sensitivity: "normal",
+          revision: 1,
+          sourceTimestamp: 1,
+          createdAt: 1,
+          updatedAt: index,
+        })
+        if (index === 0) createdEvictableId = id
+      }
+      const createdRemovedId = await ctx.db.insert("memoryItems", {
+        ownerId,
+        scope: "user",
+        scopeKey: "user",
+        category: "fact",
+        canonicalKey: "fact.restore_me",
+        content: "Restore me.",
+        status: "removed",
+        sourceSignal: "manual",
+        confirmation: "confirmed",
+        pinned: false,
+        sensitivity: "normal",
+        revision: 1,
+        sourceTimestamp: 1,
+        removedAt: now,
+        undoExpiresAt: now + 30_000,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+      if (!createdEvictableId) throw new Error("Missing evictable memory")
+      return { evictableId: createdEvictableId, removedId: createdRemovedId }
+    })
+
+    await owner.mutation(api.memories.undoRemove, { memoryItemId: removedId })
+    expect(await t.run((ctx) => ctx.db.get(evictableId))).toMatchObject({
+      status: "archived",
+    })
+    expect(await t.run((ctx) => ctx.db.get(removedId))).toMatchObject({
+      status: "active",
+    })
+    expect(await owner.query(api.memories.list, { status: "active" })).toHaveLength(
+      100
+    )
+  })
+
   it("does not recreate a removed memory while its tombstone is active", async () => {
     const t = convexTest(schema, modules)
     const owner = t.withIdentity(identity("clerk|removed-key"))
@@ -639,6 +1207,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       candidates: [
         {
           canonicalKey: "preferences.inferred_style",
@@ -655,6 +1224,7 @@ describe("agent memory v2", () => {
       messageId,
       profileId,
       policyRevision: 1,
+      memoryRevision: 1,
       deletions: [{ key: "preferences.inferred_style", scope: "user" }],
     })
     expect(await owner.query(api.memories.list, { status: "candidate" })).toEqual([])

@@ -37,6 +37,69 @@ function processingErrorCode(cause: unknown) {
   return "processing_failed" as const
 }
 
+export const processEmbedding = internalAction({
+  args: { jobId: v.id("memoryJobs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    let connectionId: Id<"providerConnections"> | undefined
+    try {
+      const job = await ctx.runMutation(internal.memoryJobs.claim, args)
+      if (!job || job.kind !== "embed") return null
+      const context = await ctx.runQuery(
+        internal.memoryCapture.getEmbeddingProcessingContext,
+        args
+      )
+      if (!context) {
+        await ctx.runMutation(internal.memoryJobs.fail, {
+          jobId: args.jobId,
+          errorCode: "stale_source",
+        })
+        return null
+      }
+      connectionId = context.connectionId
+      const token = await decryptProviderToken(
+        context.ciphertext,
+        context.iv,
+        env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+        context.provider
+      )
+      const [embedding] = await createProviderEmbeddings(token, context.provider, [
+        context.content,
+      ])
+      await ctx.runMutation(internal.memoryCapture.applySearchDocuments, {
+        ownerId: context.ownerId,
+        profileId: context.profileId,
+        policyRevision: context.policyRevision,
+        documents: [
+          {
+            memoryItemId: context.memoryItemId,
+            content: context.content,
+            contentHash: createHash("sha256")
+              .update(context.content)
+              .digest("hex"),
+            itemRevision: context.revision,
+            embedding,
+          },
+        ],
+      })
+      await ctx.runMutation(internal.memoryJobs.complete, args)
+    } catch (cause) {
+      const errorCode = processingErrorCode(cause)
+      if (connectionId && errorCode === "needs_reauthentication") {
+        await ctx.runMutation(
+          internal.providerConnections.markProviderNeedsAuthentication,
+          { connectionId }
+        )
+      }
+      await ctx.runMutation(internal.memoryJobs.fail, {
+        jobId: args.jobId,
+        errorCode,
+      })
+    }
+    return null
+  },
+})
+
 export const processCapture = internalAction({
   args: { jobId: v.id("memoryJobs") },
   returns: v.null(),
@@ -121,6 +184,7 @@ export const processCapture = internalAction({
         messageId: context.messageId,
         profileId: context.profileId,
         policyRevision: context.policyRevision,
+        memoryRevision: context.memoryRevision,
         deletions: parsed.deletions,
       })
       const memoryItemIds = await ctx.runMutation(
@@ -131,6 +195,7 @@ export const processCapture = internalAction({
           messageId: context.messageId,
           profileId: context.profileId,
           policyRevision: context.policyRevision,
+          memoryRevision: context.memoryRevision,
           candidates: parsed.memories.map((candidate) => ({
             canonicalKey: candidate.key,
             content: candidate.content,
@@ -265,7 +330,7 @@ export const buildAgentContextWithRetrieval = internalAction({
   args: {
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
-    currentMessageId: v.id("messages"),
+    currentMessageId: v.optional(v.id("messages")),
   },
   returns: agentContextValidator,
   handler: async (ctx, args): Promise<AgentContext> => {
@@ -435,6 +500,7 @@ export const processHistoryJob = internalAction({
       await ctx.runMutation(internal.memoryHistory.applySummary, {
         ownerId: context.ownerId,
         conversationId: context.conversationId,
+        historyRevision: context.historyRevision,
         ...(context.sourceMessageId
           ? { sourceMessageId: context.sourceMessageId }
           : {}),

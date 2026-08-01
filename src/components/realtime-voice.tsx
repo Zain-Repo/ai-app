@@ -53,7 +53,7 @@ export function RealtimeVoice({
   conversationId,
   onClose,
 }: {
-  conversationId?: string
+  conversationId: string
   onClose: () => void
 }) {
   const createRealtimeSession = useAction(
@@ -106,12 +106,11 @@ export function RealtimeVoice({
         ...current,
         { id: id ?? crypto.randomUUID(), role, text: clean },
       ])
-      if (conversationId)
-        void commitRealtimeTranscript({
-          content: clean,
-          conversationId,
-          role,
-        }).catch(() => undefined)
+      void commitRealtimeTranscript({
+        content: clean,
+        conversationId,
+        role,
+      }).catch(() => undefined)
     },
     [commitRealtimeTranscript, conversationId]
   )
@@ -294,7 +293,7 @@ export function RealtimeVoice({
       if (!offer.sdp)
         throw new Error("The browser did not create an audio offer")
       const session = await createRealtimeSession({
-        ...(conversationId ? { conversationId } : {}),
+        conversationId,
         offer: offer.sdp,
         voice,
       })

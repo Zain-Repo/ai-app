@@ -16,7 +16,7 @@ async function deleteMemoryItemArtifacts(
   ctx: MutationCtx,
   item: Doc<"memoryItems">
 ) {
-  const [documents, evidence, versions, references] = await Promise.all([
+  const [documents, evidence, versions, references, jobs] = await Promise.all([
     ctx.db
       .query("memorySearchDocuments")
       .withIndex("by_memory_item_id_and_profile_revision", (q) =>
@@ -39,14 +39,21 @@ async function deleteMemoryItemArtifacts(
       .query("responseMemoryReferences")
       .withIndex("by_memory_item_id", (q) => q.eq("memoryItemId", item._id))
       .take(MAX_RETENTION_BATCH),
+    ctx.db
+      .query("memoryJobs")
+      .withIndex("by_memory_item_id_and_profile_revision_and_kind", (q) =>
+        q.eq("memoryItemId", item._id)
+      )
+      .take(MAX_RETENTION_BATCH),
   ])
-  for (const row of [...documents, ...evidence, ...versions, ...references])
+  for (const row of [...documents, ...evidence, ...versions, ...references, ...jobs])
     await ctx.db.delete(row._id)
   if (
     documents.length === MAX_RETENTION_BATCH ||
     evidence.length === MAX_RETENTION_BATCH ||
     versions.length === MAX_RETENTION_BATCH ||
-    references.length === MAX_RETENTION_BATCH
+    references.length === MAX_RETENTION_BATCH ||
+    jobs.length === MAX_RETENTION_BATCH
   ) {
     return false
   }
@@ -181,17 +188,24 @@ export const eraseProjectMemoryArtifacts = internalMutation({
           .take(MAX_RETENTION_BATCH)
       )
     )
+    let incompleteItemArtifacts = false
     for (const item of itemBatches.flat())
-      if (item.ownerId === args.ownerId) await deleteMemoryItemArtifacts(ctx, item)
+      if (
+        item.ownerId === args.ownerId &&
+        !(await deleteMemoryItemArtifacts(ctx, item))
+      )
+        incompleteItemArtifacts = true
     const summaries = await ctx.db
       .query("conversationMemorySummaries")
-      .withIndex("by_owner_id_and_updated_at", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_owner_id_and_project_id_and_updated_at", (q) =>
+        q.eq("ownerId", args.ownerId).eq("projectId", args.projectId)
+      )
       .take(MAX_RETENTION_BATCH)
-    for (const summary of summaries)
-      if (summary.projectId === args.projectId) await ctx.db.delete(summary._id)
-    const remaining = itemBatches.some(
-      (items) => items.length === MAX_RETENTION_BATCH
-    )
+    for (const summary of summaries) await ctx.db.delete(summary._id)
+    const remaining =
+      incompleteItemArtifacts ||
+      itemBatches.some((items) => items.length === MAX_RETENTION_BATCH) ||
+      summaries.length === MAX_RETENTION_BATCH
     if (remaining)
       await ctx.scheduler.runAfter(
         0,
@@ -215,7 +229,8 @@ export const eraseOwnerMemoryArtifacts = internalMutation({
           q.eq("ownerId", args.ownerId).eq("status", status)
         )
         .take(MAX_RETENTION_BATCH)
-      for (const item of items) await deleteMemoryItemArtifacts(ctx, item)
+      for (const item of items)
+        if (!(await deleteMemoryItemArtifacts(ctx, item))) remaining = true
       remaining ||= items.length === MAX_RETENTION_BATCH
     }
     const jobStatuses = ["queued", "running", "failed", "complete", "cancelled"] as const
