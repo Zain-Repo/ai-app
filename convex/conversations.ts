@@ -25,9 +25,9 @@ import {
 const MAX_CONVERSATIONS = 30
 const MAX_MESSAGES = 200
 const MAX_PROJECT_SOURCES = 8
+const MAX_ALWAYS_INCLUDED_MEMORIES = 20
 const MAX_MESSAGE_LENGTH = 32_000
 const MAX_MODEL_LENGTH = 200
-const MAX_ALWAYS_INCLUDED_MEMORIES = 20
 const REASONING_EFFORTS = new Set([
   "ultra",
   "max",
@@ -39,6 +39,11 @@ const REASONING_EFFORTS = new Set([
   "none",
 ])
 const outputModeValidator = v.union(v.literal("image"), v.literal("text"))
+const memoryModeValidator = v.union(
+  v.literal("standard"),
+  v.literal("read_only"),
+  v.literal("off")
+)
 
 const conversationValidator = v.object({
   _id: v.id("conversations"),
@@ -56,6 +61,7 @@ const conversationValidator = v.object({
   outputMode: v.optional(outputModeValidator),
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
+  memoryMode: v.optional(memoryModeValidator),
   updatedAt: v.number(),
 })
 
@@ -277,6 +283,11 @@ export const start = mutation({
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
+    await ctx.scheduler.runAfter(0, internal.memoryCapture.enqueueForMessage, {
+      conversationId,
+      messageId: initialUserMessageId,
+      ownerId: user._id,
+    })
     if (connection.provider !== "codex") {
       await ctx.scheduler.runAfter(
         0,
@@ -290,6 +301,45 @@ export const start = mutation({
     }
 
     return conversationId
+  },
+})
+
+// Voice sessions begin before a user transcript exists. Create the owned chat
+// first so every finalized transcript and memory operation has one stable
+// conversation scope from the beginning.
+export const startRealtime = mutation({
+  args: { projectId: v.optional(v.string()) },
+  returns: v.id("conversations"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const projectId = args.projectId
+      ? ctx.db.normalizeId("projects", args.projectId)
+      : null
+    if (args.projectId && !projectId) throw new Error("Project unavailable")
+    if (projectId) {
+      const project = await ctx.db.get(projectId)
+      if (!project || project.ownerId !== user._id)
+        throw new Error("Project unavailable")
+    }
+    const openAiConnection = (
+      await ctx.db
+        .query("providerConnections")
+        .withIndex("by_owner_provider", (q) =>
+          q.eq("ownerId", user._id).eq("provider", "openai")
+        )
+        .take(10)
+    ).find((connection) => connection.status === "connected")
+    if (!openAiConnection) throw new Error("Connect OpenAI before starting voice")
+    return await ctx.db.insert("conversations", {
+      ownerId: user._id,
+      ...(projectId ? { projectId } : {}),
+      title: "Voice conversation",
+      status: "active",
+      providerConnectionId: openAiConnection._id,
+      model: "gpt-4o-mini",
+      outputMode: "text",
+      updatedAt: Date.now(),
+    })
   },
 })
 
@@ -391,6 +441,11 @@ export const send = mutation({
       reasoningEffort,
       updatedAt: Date.now(),
     })
+    await ctx.scheduler.runAfter(0, internal.memoryCapture.enqueueForMessage, {
+      conversationId,
+      messageId,
+      ownerId: user._id,
+    })
     if (connection.provider !== "codex")
       await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
         assistantMessageId,
@@ -400,12 +455,36 @@ export const send = mutation({
   },
 })
 
+export const setMemoryMode = mutation({
+  args: {
+    conversationId: v.string(),
+    memoryMode: memoryModeValidator,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (conversation.memoryMode !== args.memoryMode)
+      await ctx.db.patch(conversation._id, {
+        memoryMode: args.memoryMode,
+        updatedAt: Date.now(),
+      })
+    return null
+  },
+})
+
 export const finishDesktopCodexResponse = mutation({
   args: {
     conversationId: v.string(),
     content: v.string(),
     failed: v.boolean(),
+    memoryItemIds: v.optional(v.array(v.id("memoryItems"))),
     reasoningSteps: v.optional(v.array(v.string())),
+    summaryIds: v.optional(v.array(v.id("conversationMemorySummaries"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -454,6 +533,24 @@ export const finishDesktopCodexResponse = mutation({
       status: args.failed ? "failed" : "complete",
     })
     await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
+    if (!args.failed)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: pending[0]._id }
+      )
+    if (!args.failed && (args.memoryItemIds?.length || args.summaryIds?.length))
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryContext.recordResponseReferences,
+        {
+          conversationId: conversation._id,
+          memoryItemIds: args.memoryItemIds ?? [],
+          ownerId: user._id,
+          responseMessageId: pending[0]._id,
+          summaryIds: args.summaryIds ?? [],
+        }
+      )
     return null
   },
 })
@@ -494,6 +591,7 @@ const responseContextValidator = v.object({
   memoryPreferences: v.array(v.string()),
   memoryRevision: v.number(),
   memorySearchScopes: v.array(v.string()),
+  ownerId: v.id("users"),
   model: v.string(),
   outputMode: outputModeValidator,
   provider: v.union(v.literal("openrouter"), v.literal("openai")),
@@ -552,6 +650,148 @@ const desktopCodexProjectSourceRequestValidator = v.object({
   ownerId: v.id("users"),
   projectId: v.id("projects"),
   query: v.string(),
+})
+
+const desktopCodexMemoryContextRequestValidator = v.object({
+  conversationId: v.id("conversations"),
+  currentMessageId: v.id("messages"),
+  ownerId: v.id("users"),
+})
+
+export const getDesktopCodexMemoryContextRequest = internalQuery({
+  args: { conversationId: v.string() },
+  returns: v.union(desktopCodexMemoryContextRequestValidator, v.null()),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return null
+    const conversationId = ctx.db.normalizeId(
+      "conversations",
+      args.conversationId
+    )
+    if (!conversationId) return null
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation?.providerConnectionId) return null
+    const [owner, connection] = await Promise.all([
+      ctx.db.get(conversation.ownerId),
+      ctx.db.get(conversation.providerConnectionId),
+    ])
+    if (
+      !owner ||
+      owner.tokenIdentifier !== identity.tokenIdentifier ||
+      !connection ||
+      connection.ownerId !== owner._id ||
+      connection.provider !== "codex" ||
+      connection.status !== "connected"
+    )
+      return null
+    const lastUserMessage = (
+      await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (indexQuery) =>
+          indexQuery.eq("conversationId", conversation._id)
+        )
+        .order("desc")
+        .take(MAX_MESSAGES)
+    ).find(
+      (message) => message.role === "user" && message.status === "complete"
+    )
+    if (!lastUserMessage) return null
+    return {
+      conversationId: conversation._id,
+      currentMessageId: lastUserMessage._id,
+      ownerId: owner._id,
+    }
+  },
+})
+
+const realtimeMemoryContextRequestValidator = v.object({
+  conversationId: v.id("conversations"),
+  currentMessageId: v.optional(v.id("messages")),
+  ownerId: v.id("users"),
+})
+
+export const getRealtimeMemoryContextRequest = internalQuery({
+  args: { conversationId: v.string() },
+  returns: v.union(realtimeMemoryContextRequestValidator, v.null()),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return null
+    const conversationId = ctx.db.normalizeId(
+      "conversations",
+      args.conversationId
+    )
+    if (!conversationId) return null
+    const conversation = await ctx.db.get(conversationId)
+    const owner = conversation ? await ctx.db.get(conversation.ownerId) : null
+    if (
+      !conversation ||
+      conversation.status !== "active" ||
+      !owner ||
+      owner.tokenIdentifier !== identity.tokenIdentifier
+    )
+      return null
+    const lastUserMessage = (
+      await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (indexQuery) =>
+          indexQuery.eq("conversationId", conversation._id)
+        )
+        .order("desc")
+        .take(MAX_MESSAGES)
+    ).find(
+      (message) => message.role === "user" && message.status === "complete"
+    )
+    return {
+      conversationId: conversation._id,
+      ownerId: owner._id,
+      ...(lastUserMessage ? { currentMessageId: lastUserMessage._id } : {}),
+    }
+  },
+})
+
+export const commitRealtimeTranscript = mutation({
+  args: {
+    content: v.string(),
+    conversationId: v.string(),
+    role: v.union(v.literal("assistant"), v.literal("user")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (conversation.status !== "active")
+      throw new Error("Conversation unavailable")
+    const content = normalizeMessage(args.content)
+    const messageId = await ctx.db.insert("messages", {
+      content,
+      conversationId: conversation._id,
+      provider: "openai",
+      role: args.role,
+      status: "complete",
+    })
+    await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
+    if (args.role === "user")
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryCapture.enqueueForMessage,
+        {
+          conversationId: conversation._id,
+          messageId,
+          ownerId: user._id,
+        }
+      )
+    else
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: messageId }
+      )
+    return null
+  },
 })
 
 export const getDesktopCodexProjectSourceRequest = internalQuery({
@@ -802,6 +1042,7 @@ export const getOpenRouterResponseContext = internalQuery({
         conversation.projectId,
         includeUserMemory
       ),
+      ownerId: owner._id,
       messages: [
         {
           attachments: [],
@@ -934,6 +1175,7 @@ export const finishOpenRouterResponse = internalMutation({
     )
       throw new Error("Generated interface is too large")
     const message = await ctx.db.get(args.assistantMessageId)
+    let completed = false
     if (
       message?.role === "assistant" &&
       (message.status === "pending" || message.status === "streaming")
@@ -947,7 +1189,14 @@ export const finishOpenRouterResponse = internalMutation({
         ...(args.uiPayload ? { uiPayload: args.uiPayload } : {}),
         status: args.failed ? "failed" : "complete",
       })
+      completed = !args.failed
     }
+    if (completed)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: args.assistantMessageId }
+      )
     return null
   },
 })
@@ -1067,6 +1316,11 @@ export const remove = mutation({
       args.conversationId
     )
     await deleteConversationMessages(ctx, conversation._id)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.memoryRetention.eraseConversationMemoryArtifacts,
+      { conversationId: conversation._id, ownerId: user._id }
+    )
     await ctx.db.delete(conversation._id)
     if (!conversation.projectId)
       await ctx.scheduler.runAfter(

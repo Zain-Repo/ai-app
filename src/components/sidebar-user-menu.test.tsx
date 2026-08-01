@@ -71,8 +71,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenMemory={vi.fn()}
-        onOpenPreferences={vi.fn()}
+        onOpenPersonalization={vi.fn()}
       />
     )
 
@@ -100,8 +99,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenMemory={vi.fn()}
-        onOpenPreferences={vi.fn()}
+        onOpenPersonalization={vi.fn()}
       />
     )
 
@@ -128,8 +126,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenMemory={vi.fn()}
-        onOpenPreferences={vi.fn()}
+        onOpenPersonalization={vi.fn()}
       />
     )
 

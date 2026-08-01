@@ -5,7 +5,6 @@ import {
   Archive02Icon,
   Logout01Icon,
   Moon02Icon,
-  Settings02Icon,
   Sun03Icon,
   SystemUpdate02Icon,
   UnfoldMoreIcon,
@@ -35,8 +34,7 @@ type SidebarUserMenuProps = {
   name?: string | null
   onOpenAppUpdates: () => void
   onOpenArchivedChats: () => void
-  onOpenMemory: () => void
-  onOpenPreferences: () => void
+  onOpenPersonalization: () => void
 }
 
 function getUserInitials(name?: string | null, email?: string | null) {
@@ -76,8 +74,7 @@ function SidebarUserMenu({
   name: fallbackName,
   onOpenAppUpdates,
   onOpenArchivedChats,
-  onOpenMemory,
-  onOpenPreferences,
+  onOpenPersonalization,
 }: SidebarUserMenuProps) {
   const { openUserProfile, signOut } = useClerk()
   const { user } = useUser()
@@ -187,21 +184,13 @@ function SidebarUserMenu({
           />
           Archived chats
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onOpenMemory}>
+        <DropdownMenuItem onClick={onOpenPersonalization}>
           <HugeiconsIcon
             aria-hidden="true"
             icon={AiBrain01Icon}
             strokeWidth={1.8}
           />
-          Memory
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onOpenPreferences}>
-          <HugeiconsIcon
-            aria-hidden="true"
-            icon={Settings02Icon}
-            strokeWidth={1.8}
-          />
-          Preferences
+          Personalization
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

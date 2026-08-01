@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { api, internal } from "./_generated/api"
 import schema from "./schema"
@@ -9,6 +9,8 @@ const identity = (tokenIdentifier: string) => ({
   subject: tokenIdentifier,
   tokenIdentifier,
 })
+
+afterEach(() => vi.useRealTimers())
 
 describe("projects and conversations", () => {
   it("renames and deletes only owned projects without deleting their chats", async () => {
@@ -48,6 +50,98 @@ describe("projects and conversations", () => {
     expect(
       await ada.query(api.conversations.get, { conversationId })
     ).not.toHaveProperty("projectId")
+  })
+
+  it("invalidates in-flight memory capture and history work when removing a project", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|project-memory-race"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    await owner.mutation(api.memories.setHistoryEnabled, { enabled: true })
+    const projectId = await owner.mutation(api.projects.create, {
+      name: "Memory race project",
+    })
+    const { conversationId, messageId, profileId } = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        projectId,
+        status: "active",
+        title: "Project capture",
+        memoryMode: "standard",
+        updatedAt: 1,
+      })
+      const createdMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "user",
+        content: "Remember this project detail.",
+        status: "complete",
+      })
+      return {
+        conversationId: createdConversationId,
+        messageId: createdMessageId,
+        profileId: createdProfileId,
+      }
+    })
+    const beforeRemoval = await t.run(async (ctx) => await ctx.db.get(ownerId))
+    expect(beforeRemoval).toMatchObject({
+      memoryHistoryRevision: 1,
+      memoryRevision: 2,
+    })
+
+    await owner.mutation(api.projects.remove, { projectId })
+    const afterRemoval = await t.run(async (ctx) => await ctx.db.get(ownerId))
+    expect(afterRemoval).toMatchObject({
+      memoryHistoryRevision: 2,
+      memoryRevision: 3,
+    })
+    expect((await t.run((ctx) => ctx.db.get(conversationId)))?.projectId).toBeUndefined()
+
+    await expect(
+      t.mutation(internal.memoryCapture.commitCandidates, {
+        ownerId,
+        conversationId,
+        messageId,
+        profileId,
+        policyRevision: 1,
+        memoryRevision: 2,
+        candidates: [
+          {
+            canonicalKey: "project.stale_capture",
+            content: "Must not become personal memory.",
+            category: "fact",
+            scope: "user",
+            sourceSignal: "direct_statement",
+          },
+        ],
+      })
+    ).resolves.toEqual([])
+    await expect(
+      t.mutation(internal.memoryHistory.applySummary, {
+        ownerId,
+        conversationId,
+        historyRevision: 1,
+        content: "Must not become personal history.",
+      })
+    ).resolves.toBe(false)
   })
 
   it("rejects anonymous callers and scopes data to the authenticated owner", async () => {
@@ -190,6 +284,7 @@ describe("projects and conversations", () => {
   })
 
   it("creates an owned conversation slug and persists its messages", async () => {
+    vi.useFakeTimers()
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))
     const ben = t.withIdentity(identity("clerk|ben"))

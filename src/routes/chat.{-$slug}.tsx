@@ -43,7 +43,7 @@ import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
-import { MemorySettingsDialog } from "@/components/memory-settings-dialog"
+import { PersonalizationCenter } from "@/components/personalization-center"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
 import { ProjectContextProgress } from "@/components/project-context-progress"
 import {
@@ -58,7 +58,6 @@ import type {
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
-import { UserPreferencesDialog } from "@/components/user-preferences-dialog"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
 import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
 import type {
@@ -596,7 +595,9 @@ function ChatWorkspace() {
     conversationId ? { conversationId } : "skip"
   )
   const startConversation = useMutation(api.conversations.start)
+  const startRealtimeConversation = useMutation(api.conversations.startRealtime)
   const sendMessage = useMutation(api.conversations.send)
+  const setMemoryMode = useMutation(api.conversations.setMemoryMode)
   const finishDesktopCodexResponse = useMutation(
     api.conversations.finishDesktopCodexResponse
   )
@@ -626,6 +627,9 @@ function ChatWorkspace() {
   const getDesktopCodexProjectContext = useAction(
     api.openRouterResponses.getDesktopCodexProjectContext
   )
+  const getDesktopCodexMemoryContext = useAction(
+    api.openRouterResponses.getDesktopCodexMemoryContext
+  )
   const [projectName, setProjectName] = useState("")
   const [projectInstructions, setProjectInstructions] = useState("")
   const [projectSetupTab, setProjectSetupTab] =
@@ -647,8 +651,7 @@ function ChatWorkspace() {
     "creating" | "failed" | "idle"
   >("idle")
   const [searchQuery, setSearchQuery] = useState("")
-  const [preferencesOpen, setPreferencesOpen] = useState(false)
-  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [personalizationOpen, setPersonalizationOpen] = useState(false)
   const [archivedOpen, setArchivedOpen] = useState(false)
   const [connectorOpen, setConnectorOpen] = useState(false)
   const [projectActionFailed, setProjectActionFailed] = useState(false)
@@ -676,6 +679,9 @@ function ChatWorkspace() {
     "idle"
   )
   const [voiceMode, setVoiceMode] = useState(false)
+  const [voiceConversationId, setVoiceConversationId] = useState<string | null>(
+    null
+  )
 
   useEffect(() => {
     setExpandedProjectId(search.projectId)
@@ -1014,6 +1020,27 @@ function ChatWorkspace() {
         projectId: next.projectId,
       },
     })
+
+  const activateVoice = async () => {
+    if (conversationId) {
+      setVoiceConversationId(conversationId)
+      setVoiceMode(true)
+      return
+    }
+    try {
+      const createdConversationId = await startRealtimeConversation({
+        ...(search.projectId ? { projectId: search.projectId } : {}),
+      })
+      await open({
+        slug: createdConversationId,
+        ...(search.projectId ? { projectId: search.projectId } : {}),
+      })
+      setVoiceConversationId(createdConversationId)
+      setVoiceMode(true)
+    } catch {
+      setProjectMenuError("Voice chat could not be created. Try again.")
+    }
+  }
 
   const selectProject = async (projectId?: string) => {
     setProjectActionFailed(false)
@@ -1434,6 +1461,15 @@ function ChatWorkspace() {
             )
             return ""
           })
+          const memoryContext = await getDesktopCodexMemoryContext({
+            conversationId: targetConversationId,
+          }).catch(() => ({
+            budgetUsed: 0,
+            historySummaryIds: [],
+            memoryMode: "off" as const,
+            referenceText: "",
+            selectedMemoryItemIds: [],
+          }))
           const result = await desktop.codex.generate({
             model: meta.settings.model,
             ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
@@ -1451,7 +1487,15 @@ function ChatWorkspace() {
               ...(projectSourceContext
                 ? [
                     {
-                      content: `Reference context for the next user request:${projectSourceContext}`,
+                      content: `Reference context for the next user request:\n${projectSourceContext}`,
+                      role: "user" as const,
+                    },
+                  ]
+                : []),
+              ...(memoryContext.referenceText
+                ? [
+                    {
+                      content: `Reference context for the next user request:\n${memoryContext.referenceText}`,
                       role: "user" as const,
                     },
                   ]
@@ -1463,8 +1507,14 @@ function ChatWorkspace() {
             conversationId: targetConversationId,
             content: result.content,
             failed: false,
+            ...(memoryContext.selectedMemoryItemIds.length
+              ? { memoryItemIds: memoryContext.selectedMemoryItemIds }
+              : {}),
             ...(result.reasoningSteps.length
               ? { reasoningSteps: result.reasoningSteps }
+              : {}),
+            ...(memoryContext.historySummaryIds.length
+              ? { summaryIds: memoryContext.historySummaryIds }
               : {}),
           })
         } catch (cause) {
@@ -1810,7 +1860,33 @@ function ChatWorkspace() {
                 ) : null}
               </SelectContent>
             </Select>
-            <SidebarVoiceButton onActivate={() => setVoiceMode(true)} />
+            {conversationId ? (
+              <Select
+                aria-label="Chat memory mode"
+                onValueChange={(memoryMode) => {
+                  if (!memoryMode) return
+                  void setMemoryMode({
+                    conversationId,
+                    memoryMode,
+                  })
+                }}
+                value={selected?.memoryMode ?? "standard"}
+              >
+                <SelectTrigger
+                  aria-label="Chat memory mode"
+                  className="min-w-0 flex-1"
+                  size="sm"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Memory: standard</SelectItem>
+                  <SelectItem value="read_only">Memory: read only</SelectItem>
+                  <SelectItem value="off">Memory: off</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <SidebarVoiceButton onActivate={() => void activateVoice()} />
           </div>
           <SidebarUserMenu
             desktopAvailable={desktopAvailable}
@@ -1818,17 +1894,12 @@ function ChatWorkspace() {
             name={viewer?.name}
             onOpenAppUpdates={openDesktopUpdaterDialog}
             onOpenArchivedChats={() => setArchivedOpen(true)}
-            onOpenMemory={() => setMemoryOpen(true)}
-            onOpenPreferences={() => setPreferencesOpen(true)}
+            onOpenPersonalization={() => setPersonalizationOpen(true)}
           />
-          <UserPreferencesDialog
+          <PersonalizationCenter
             models={currentCatalog}
-            onOpenChange={setPreferencesOpen}
-            open={preferencesOpen}
-          />
-          <MemorySettingsDialog
-            onOpenChange={setMemoryOpen}
-            open={memoryOpen}
+            onOpenChange={setPersonalizationOpen}
+            open={personalizationOpen}
           />
           <ArchivedChatsDialog
             onOpenChange={setArchivedOpen}
@@ -2382,11 +2453,17 @@ function ChatWorkspace() {
                 </aside>
               </div>
             </div>
-          ) : voiceMode ? (
+          ) : voiceMode && voiceConversationId ? (
             <Suspense
               fallback={<ChatStatus loading message="Starting voice…" />}
             >
-              <RealtimeVoice onClose={() => setVoiceMode(false)} />
+              <RealtimeVoice
+                conversationId={voiceConversationId}
+                onClose={() => {
+                  setVoiceMode(false)
+                  setVoiceConversationId(null)
+                }}
+              />
             </Suspense>
           ) : selected === null && conversationId ? (
             <ChatStatus message="That conversation is unavailable." />
@@ -2402,6 +2479,7 @@ function ChatWorkspace() {
                 }
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
+                onManageMemory={() => setPersonalizationOpen(true)}
                 onAction={(value) => {
                   void send(
                     value,
@@ -2690,12 +2768,14 @@ function MessageArea({
   messages,
   name,
   onAction,
+  onManageMemory,
   userMessageBubbleColor,
 }: {
   actionsDisabled: boolean
   messages: ChatMessage[] | undefined
   name: string | null | undefined
   onAction: (value: string) => void
+  onManageMemory: () => void
   userMessageBubbleColor: UserMessageBubbleColor | undefined
 }) {
   if (messages === undefined)
@@ -2935,6 +3015,12 @@ function MessageArea({
                                 ) : null}
                               </div>
                             )}
+                            {!isUser && message.status === "complete" ? (
+                              <MemoryUsed
+                                onManageMemory={onManageMemory}
+                                responseMessageId={message._id}
+                              />
+                            ) : null}
                             {remainingAttachments.length ? (
                               <AttachmentGroup className="mt-2 max-w-full">
                                 {remainingAttachments.map((attachment) => {
@@ -2990,6 +3076,86 @@ function MessageArea({
         <MessageScrollerButton />
       </MessageScroller>
     </MessageScrollerProvider>
+  )
+}
+
+function MemoryUsed({
+  onManageMemory,
+  responseMessageId,
+}: {
+  onManageMemory: () => void
+  responseMessageId: Id<"messages">
+}) {
+  const sources = useQuery(api.memories.listResponseSources, {
+    responseMessageId,
+  })
+  const feedback = useMutation(api.memories.submitFeedback)
+  const [open, setOpen] = useState(false)
+  if (!sources?.length) return null
+  return (
+    <div className="mt-3 border-t pt-2">
+      <Button
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        size="sm"
+        variant="outline"
+      >
+        Memory used ({sources.length})
+      </Button>
+      {open ? (
+        <div className="mt-2 space-y-2 text-xs" aria-label="Memory sources">
+          <Button onClick={onManageMemory} size="sm" variant="ghost">
+            Correct or manage memory
+          </Button>
+          {sources.map((source) => (
+            <div
+              className="flex flex-wrap items-center gap-2"
+              key={source.referenceId}
+            >
+              <span>
+                {source.memoryItemId ? "Saved memory" : "History summary"}
+              </span>
+              <Button
+                onClick={() =>
+                  void feedback({
+                    feedback: "helpful",
+                    referenceId: source.referenceId,
+                  })
+                }
+                size="sm"
+                variant="ghost"
+              >
+                Helpful
+              </Button>
+              <Button
+                onClick={() =>
+                  void feedback({
+                    feedback: "incorrect",
+                    referenceId: source.referenceId,
+                  })
+                }
+                size="sm"
+                variant="ghost"
+              >
+                Incorrect
+              </Button>
+              <Button
+                onClick={() =>
+                  void feedback({
+                    feedback: "dont_use",
+                    referenceId: source.referenceId,
+                  })
+                }
+                size="sm"
+                variant="ghost"
+              >
+                Don’t use this again
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 

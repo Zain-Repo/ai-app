@@ -7,6 +7,7 @@ import {
   parseEmbeddingResponse,
   parseMemoryExtraction,
   selectRelevantMemoryFacts,
+  memoryExtractionInstructions,
 } from "./memoryPolicy"
 
 describe("memory policy", () => {
@@ -155,5 +156,39 @@ describe("memory policy", () => {
         memories: Array.from({ length: 6 }, () => item),
       }).success
     ).toBe(false)
+  })
+
+  it("allows only explicitly requested sensitive candidates while permanently rejecting secrets", () => {
+    expect(
+      parseMemoryExtraction(
+        {
+          memories: [
+            {
+              key: "contact.email",
+              content: "Email is person@example.com.",
+              kind: "fact",
+              scope: "user",
+            },
+            {
+              key: "credentials.api_key",
+              content: "API key is sk-secret-value.",
+              kind: "fact",
+              scope: "user",
+            },
+          ],
+          deletions: [],
+        },
+        false
+      ).memories
+    ).toEqual([
+      {
+        key: "contact.email",
+        content: "Email is person@example.com.",
+        kind: "fact",
+        scope: "user",
+      },
+    ])
+    expect(memoryExtractionInstructions).toContain("explicitly asks")
+    expect(memoryExtractionInstructions).toContain("Never extract secrets")
   })
 })

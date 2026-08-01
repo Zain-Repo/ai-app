@@ -303,6 +303,9 @@ export const setProjectSourceIndexStatus = internalMutation({
     if (!state?.embeddingProfileId) return false
     const project = await ctx.db.get(state.projectId)
     if (project?.embeddingProfileId !== state.embeddingProfileId) return false
+    const expectedPreviousStatus =
+      args.status === "extracting" ? "queued" : "extracting"
+    if (state.status !== expectedPreviousStatus) return false
     await ctx.db.patch(state._id, {
       status: args.status,
       errorCode: undefined,
