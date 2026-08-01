@@ -13,6 +13,7 @@ import { getCurrentUser } from "./authHelpers"
 import { messageAttachmentValidator } from "./attachmentPolicy"
 import { consumeDraftAttachments } from "./attachments"
 import { getMemorySearchScopes } from "./memories"
+import { isIndexableProjectSource } from "./projectEmbeddingPolicy"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
 import { terminalRunValidator } from "./terminalPolicy"
 import { MAX_GENERATIVE_UI_PAYLOAD_LENGTH } from "../shared/generative-ui"
@@ -425,6 +426,9 @@ const responseContextValidator = v.object({
   lastUserMessageId: v.id("messages"),
   hasSearchableMemoryFacts: v.boolean(),
   hasProjectLinks: v.boolean(),
+  projectSourceFallbackAttachments: v.array(
+    messageAttachmentValidator.extend({ url: v.string() })
+  ),
   memoryEnabled: v.boolean(),
   memoryKeys: v.array(
     v.object({
@@ -522,6 +526,28 @@ export const getOpenRouterResponseContext = internalQuery({
     const projectFileNames = projectSources.flatMap((source) =>
       source.kind === "file" ? [source.name] : []
     )
+    const indexedProjectSourceIds = new Set<Id<"projectSources">>()
+    if (project?.embeddingProfileId)
+      for (const source of projectSources) {
+        if (
+          source.kind !== "file" ||
+          !isIndexableProjectSource(source.contentType, source.name)
+        )
+          continue
+        const states = await ctx.db
+          .query("projectSourceIndexStates")
+          .withIndex("by_source_id_and_updated_at", (indexQuery) =>
+            indexQuery.eq("sourceId", source._id)
+          )
+          .order("desc")
+          .take(20)
+        const currentState = states.find(
+          (state) =>
+            state.embeddingProfileId === project.embeddingProfileId &&
+            (state.status === "ready" || state.status === "partial")
+        )
+        if (currentState) indexedProjectSourceIds.add(source._id)
+      }
     const projectFiles = await Promise.all(
       projectSources.flatMap((source) =>
         source.kind === "file"
@@ -533,6 +559,19 @@ export const getOpenRouterResponseContext = internalQuery({
             ]
           : []
       )
+    )
+    const projectSourceFallbackAttachments = projectFiles.flatMap((source) =>
+      source && indexedProjectSourceIds.has(source._id)
+        ? [
+            {
+              contentType: source.contentType,
+              name: source.name,
+              size: source.size,
+              storageId: source.storageId,
+              url: source.url,
+            },
+          ]
+        : []
     )
     const memoryEnabled = owner.memoryEnabled ?? false
     const includeUserMemory = project?.memoryScope !== "project_only"
@@ -601,6 +640,7 @@ export const getOpenRouterResponseContext = internalQuery({
       iv: credential.iv,
       hasSearchableMemoryFacts,
       hasProjectLinks: projectLinks.length > 0,
+      projectSourceFallbackAttachments,
       lastUserMessage: lastUserMessage.content,
       lastUserMessageCreatedAt: lastUserMessage._creationTime,
       lastUserMessageId: lastUserMessage._id,
@@ -631,7 +671,7 @@ export const getOpenRouterResponseContext = internalQuery({
           ? [
               {
                 attachments: projectFiles.flatMap((source) =>
-                  source
+                  source && !indexedProjectSourceIds.has(source._id)
                     ? [
                         {
                           contentType: source.contentType,

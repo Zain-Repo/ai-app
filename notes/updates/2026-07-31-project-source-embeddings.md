@@ -1,0 +1,76 @@
+# Add Project source embeddings
+
+## Outcome
+
+Added semantic indexing and retrieval for text-like files attached to Projects.
+Each Project pins an owned OpenAI or OpenRouter connection in a versioned
+embedding profile. Files are indexed asynchronously, expose durable progress
+and error states, and contribute bounded, explicitly untrusted source excerpts
+to Project chats regardless of which supported provider generates the chat
+response.
+
+## Affected areas
+
+- The Convex schema now separates Project embedding profiles, per-source index
+  states, and source chunks with a 1536-dimension vector index scoped by owner,
+  Project, and profile revision.
+- Project creation and source management can configure, switch, retry, inspect,
+  and remove embedding-backed sources. Switching providers creates a new
+  profile revision and schedules a complete re-index.
+- OpenAI and OpenRouter use a shared, strictly validated embedding bridge with
+  provider-specific `text-embedding-3-small` model identifiers. Existing Memory
+  embedding behavior continues to use OpenRouter through the same bridge.
+- Deterministic text normalization, fingerprinting, overlapping chunking,
+  batched embedding, stale-job checks, and bounded cleanup make indexing
+  idempotent and prevent superseded vectors from entering retrieval. Large
+  sources are streamed once for full-content fingerprinting while retaining
+  only the bounded text window used for indexing.
+- Response generation embeds the latest user request with the Project's pinned
+  credential, hydrates only authorized current-profile chunks, and adds the
+  selected excerpts as untrusted user-level reference data, never as system
+  instructions. A file remains available through the direct-attachment path
+  until its current index is ready or partially ready; indexed attachments are
+  retained as a fallback when retrieval is unavailable, fails, or returns no
+  usable chunks. Projects without a current searchable source skip query
+  embedding entirely, avoiding unnecessary provider charges. Retrieval also
+  revalidates that each candidate source still exists while asynchronous
+  deletion cleanup is pending.
+- Reconfiguring the same provider connection remains idempotent only while the
+  stored provider, model, dimensions, ownership, and revision still match the
+  current embedding policy. Policy drift creates a canonical new revision and
+  re-indexes the Project.
+- The Project Sources interface exposes provider configuration, explicit
+  provider switching and re-index confirmation, indexing progress, durable
+  errors, retry, indexed chunk counts, and source removal. Retry remains
+  disabled for every non-connected pinned provider until reconnection.
+- Current-request attachments receive the shared inline-text budget before
+  retained Project fallback files, so fallback recovery cannot starve a file
+  the user explicitly attached to the active prompt.
+
+## Validation
+
+- `bun run typecheck`
+- Scoped ESLint for the changed Convex implementation and tests
+- Full test suite: 33 files and 129 tests passed
+- Production client and SSR build
+- `git diff --check`
+
+The tests cover provider and owner authorization, profile revisions, model and
+dimension integrity, exact vector validation, stale-profile and cross-owner
+retrieval rejection, queued-file fallback, ready-file retrieval behavior,
+retrieval failure fallback, user-priority source context, policy-driven profile
+revisioning, empty-index retrieval avoidance, bounded source streaming, and
+bounded Project and superseded-profile cleanup. Tests also cover deleted-source
+retrieval races and current-attachment budget priority.
+
+## Known limitations
+
+- Initial indexing supports text-like uploaded files only. Links, PDF, Office,
+  image, audio, and other binary sources remain unsupported for embedding and
+  are not fetched or parsed by the backend.
+- Indexing and semantic retrieval consume the pinned provider account's API
+  credits. There is no silent credential or provider fallback.
+- Changing the provider or embedding model requires a complete Project
+  re-index because vectors from different embedding spaces cannot be mixed.
+- A readable text source is capped and may be marked partially indexed when it
+  exceeds the configured text or chunk bounds.
