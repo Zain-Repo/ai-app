@@ -2,6 +2,7 @@ import { auth } from "@clerk/tanstack-react-start/server"
 import {
   Add01Icon,
   AiBrain01Icon,
+  ArrowLeft01Icon,
   Archive02Icon,
   Cancel01Icon,
   Delete02Icon,
@@ -414,11 +415,7 @@ const preferenceReasoningEfforts = {
 
 export const Route = createFileRoute("/chat/{-$slug}")({
   beforeLoad: async () => await requireAuth(),
-  errorComponent: () => (
-    <div className="grid min-h-svh place-items-center bg-background p-6 text-sm text-muted-foreground">
-      We could not display this chat. Please try again.
-    </div>
-  ),
+  errorComponent: ChatErrorState,
   validateSearch: (search: Record<string, unknown>) => ({
     mode:
       search.mode === "chat-new" ||
@@ -431,6 +428,47 @@ export const Route = createFileRoute("/chat/{-$slug}")({
   }),
   component: ChatPage,
 })
+
+function ChatErrorState() {
+  const navigate = useNavigate()
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      window.history.back()
+      return
+    }
+
+    void navigate({
+      to: "/chat/{-$slug}",
+      params: { slug: undefined },
+      search: {
+        mode: undefined,
+        projectId: undefined,
+      },
+    })
+  }
+
+  return (
+    <main className="app-view grid min-h-svh place-items-center bg-background p-6 text-foreground">
+      <div className="app-callback-surface w-full max-w-sm border-y border-border py-8 text-center">
+        <p className="font-heading text-xs font-semibold tracking-[0.18em] text-primary uppercase">
+          Chat unavailable
+        </p>
+        <p className="mx-auto mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
+          We could not display this chat. Please try again.
+        </p>
+        <Button className="mt-5" variant="outline" onClick={handleBack}>
+          <HugeiconsIcon
+            icon={ArrowLeft01Icon}
+            strokeWidth={2}
+            data-icon="inline-start"
+          />
+          Back
+        </Button>
+      </div>
+    </main>
+  )
+}
 
 function ChatPage() {
   return (
