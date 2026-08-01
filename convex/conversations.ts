@@ -533,6 +533,12 @@ export const finishDesktopCodexResponse = mutation({
       status: args.failed ? "failed" : "complete",
     })
     await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
+    if (!args.failed)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: pending[0]._id }
+      )
     if (!args.failed && (args.memoryItemIds?.length || args.summaryIds?.length))
       await ctx.scheduler.runAfter(
         0,
@@ -777,6 +783,12 @@ export const commitRealtimeTranscript = mutation({
           messageId,
           ownerId: user._id,
         }
+      )
+    else
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: messageId }
       )
     return null
   },
@@ -1163,6 +1175,7 @@ export const finishOpenRouterResponse = internalMutation({
     )
       throw new Error("Generated interface is too large")
     const message = await ctx.db.get(args.assistantMessageId)
+    let completed = false
     if (
       message?.role === "assistant" &&
       (message.status === "pending" || message.status === "streaming")
@@ -1176,7 +1189,14 @@ export const finishOpenRouterResponse = internalMutation({
         ...(args.uiPayload ? { uiPayload: args.uiPayload } : {}),
         status: args.failed ? "failed" : "complete",
       })
+      completed = !args.failed
     }
+    if (completed)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryHistory.enqueueForAssistantMessage,
+        { assistantMessageId: args.assistantMessageId }
+      )
     return null
   },
 })

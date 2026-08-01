@@ -12,6 +12,7 @@ const terminalErrorValidator = v.union(
 )
 
 const MAX_ATTEMPTS = 5
+const HISTORY_JOB_SERIALIZATION_DELAY_MS = 5_000
 
 export const claim = internalMutation({
   args: { jobId: v.id("memoryJobs") },
@@ -37,6 +38,27 @@ export const claim = internalMutation({
     const job = await ctx.db.get(args.jobId)
     const now = Date.now()
     if (!job || job.status !== "queued" || job.nextAttemptAt > now) return null
+    if (job.kind === "history_backfill" && job.sourceConversationId) {
+      const runningJob = await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_source_conversation_id_and_kind", (q) =>
+          q
+            .eq("sourceConversationId", job.sourceConversationId)
+            .eq("kind", "history_backfill")
+        )
+        .filter((q) => q.eq(q.field("status"), "running"))
+        .first()
+      if (runningJob) {
+        const nextAttemptAt = now + HISTORY_JOB_SERIALIZATION_DELAY_MS
+        await ctx.db.patch(job._id, { nextAttemptAt, updatedAt: now })
+        await ctx.scheduler.runAfter(
+          HISTORY_JOB_SERIALIZATION_DELAY_MS,
+          internal.memoryActions.processHistoryJob,
+          { jobId: job._id }
+        )
+        return null
+      }
+    }
     const profile = job.profileId ? await ctx.db.get(job.profileId) : null
     const connection = profile
       ? await ctx.db.get(profile.providerConnectionId)

@@ -4,6 +4,17 @@ import type { ReactNode } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
 
 import { api } from "../../convex/_generated/api"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -100,6 +111,7 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
   const undoRemove = useMutation(api.memories.undoRemove)
   const setProcessingProfile = useMutation(api.memories.setProcessingProfile)
   const retryProcessing = useMutation(api.memories.retryProcessing)
+  const clearSavedMemory = useMutation(api.memories.clear)
   const clearHistoryMemory = useMutation(api.memories.clearHistoryMemory)
   const [preferences, setPreferences] = useState<Preferences>(emptyPreferences)
   const [query, setQuery] = useState("")
@@ -111,6 +123,10 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
   const legacyEditCancelled = useRef(false)
   const [notice, setNotice] = useState("")
   const [busy, setBusy] = useState(false)
+  const [clearSavedMemoryOpen, setClearSavedMemoryOpen] = useState(false)
+  const [clearSavedMemoryError, setClearSavedMemoryError] = useState<
+    string | null
+  >(null)
   const [removedId, setRemovedId] = useState<Id<"memoryItems"> | null>(null)
   const [sensitiveConsent, setSensitiveConsent] = useState(false)
 
@@ -137,6 +153,10 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
       ),
     [personalization?.legacyMemories, query]
   )
+  const hasSavedMemories =
+    (personalization?.items.length ?? 0) +
+      (personalization?.legacyMemories.length ?? 0) >
+    0
 
   function report(text: string) {
     setNotice(text)
@@ -224,6 +244,20 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
       report("Chat-history memory cleared")
     } catch {
       report("Could not clear chat-history memory")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clearAllSavedMemories() {
+    setBusy(true)
+    setClearSavedMemoryError(null)
+    try {
+      await clearSavedMemory({})
+      setClearSavedMemoryOpen(false)
+      report("Saved memories cleared")
+    } catch {
+      setClearSavedMemoryError("Could not clear saved memories. Try again.")
     } finally {
       setBusy(false)
     }
@@ -452,6 +486,60 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                     void setSavedMemoryEnabled(checked)
                   }
                 />
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <div>
+                  <p className="text-sm font-medium">Clear saved memory</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Permanently delete every saved and legacy memory. Chat
+                    history memory will not be affected.
+                  </p>
+                </div>
+                <AlertDialog
+                  open={clearSavedMemoryOpen}
+                  onOpenChange={(nextOpen) => {
+                    setClearSavedMemoryOpen(nextOpen)
+                    if (nextOpen) setClearSavedMemoryError(null)
+                  }}
+                >
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        disabled={!hasSavedMemories || busy}
+                        type="button"
+                        variant="destructive"
+                      />
+                    }
+                  >
+                    Clear all saved memories
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Clear all saved memories?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This permanently deletes every saved and legacy memory.
+                        Chat history memory will not be affected.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    {clearSavedMemoryError ? (
+                      <p className="text-sm text-destructive" role="alert">
+                        {clearSavedMemoryError}
+                      </p>
+                    ) : null}
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={busy}
+                        onClick={() => void clearAllSavedMemories()}
+                        variant="destructive"
+                      >
+                        {busy ? <Spinner /> : null} Clear saved memories
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
               {!personalization?.savedMemoryEnabled ? (
                 <p className="mt-3 text-sm text-muted-foreground">

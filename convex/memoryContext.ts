@@ -193,12 +193,14 @@ export const buildAgentContext = internalQuery({
     const canUseHistory = owner.memoryHistoryEnabled
     const summaries =
       canUseHistory
-        ? await ctx.db
-            .query("conversationMemorySummaries")
-            .withIndex("by_conversation_id", (q) =>
-              q.eq("conversationId", conversation._id)
-            )
-            .take(1)
+        ? (
+            await ctx.db
+              .query("conversationMemorySummaries")
+              .withIndex("by_conversation_id", (q) =>
+                q.eq("conversationId", conversation._id)
+              )
+              .take(1)
+          ).filter((summary) => summary.suppressedAt === undefined)
         : []
     const historyQuery = currentMessage
       ? currentMessage.content
@@ -233,6 +235,7 @@ export const buildAgentContext = internalQuery({
     const allowedHistory = matchingSummaries
       .filter(
         (summary) => {
+          if (summary.suppressedAt !== undefined) return false
           if (summary.conversationId === conversation._id) return false
           if (project?.memoryScope === "project_only")
             return summary.projectId === project._id
@@ -336,6 +339,7 @@ export const recordResponseReferences = internalMutation({
     for (const memoryItemId of args.memoryItemIds.slice(0, MAX_RETRIEVED_MEMORY_ITEMS)) {
       const item = await ctx.db.get(memoryItemId)
       if (item?.ownerId !== args.ownerId || item.status !== "active") continue
+      await ctx.db.patch(item._id, { lastUsedAt: now })
       await ctx.db.insert("responseMemoryReferences", {
         ownerId: args.ownerId,
         conversationId: conversation._id,
@@ -346,7 +350,10 @@ export const recordResponseReferences = internalMutation({
     }
     for (const summaryId of args.summaryIds.slice(0, 2)) {
       const summary = await ctx.db.get(summaryId)
-      if (summary?.ownerId !== args.ownerId)
+      if (
+        summary?.ownerId !== args.ownerId ||
+        summary.suppressedAt !== undefined
+      )
         continue
       await ctx.db.insert("responseMemoryReferences", {
         ownerId: args.ownerId,

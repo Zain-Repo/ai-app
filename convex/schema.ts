@@ -431,6 +431,7 @@ export default defineSchema({
     content: v.string(),
     sourceMessageId: v.optional(v.id("messages")),
     revision: v.number(),
+    suppressedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_conversation_id", ["conversationId"])

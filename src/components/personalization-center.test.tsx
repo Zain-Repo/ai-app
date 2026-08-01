@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import { getFunctionName } from "convex/server"
 import type { FunctionReference } from "convex/server"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { PersonalizationCenter } from "./personalization-center"
 
 const calls = vi.hoisted(() => ({
   confirm: vi.fn(),
+  clear: vi.fn(),
   clearHistory: vi.fn(),
   create: vi.fn(),
   remove: vi.fn(),
@@ -81,6 +89,8 @@ const personalizationFixture = {
 vi.mock("convex/react", () => ({
   useMutation: (reference: FunctionReference<"mutation">) => {
     switch (getFunctionName(reference)) {
+      case "memories:clear":
+        return calls.clear
       case "memories:clearHistoryMemory":
         return calls.clearHistory
       case "memories:confirm":
@@ -133,6 +143,8 @@ beforeEach(() => {
   personalizationFixture.savedMemoryEnabled = true
   vi.spyOn(window, "confirm").mockReturnValue(true)
 })
+
+afterEach(cleanup)
 
 describe("PersonalizationCenter", () => {
   it("initializes controlled defaults and manages memory, history, and processing", async () => {
@@ -274,6 +286,46 @@ describe("PersonalizationCenter", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }))
     await waitFor(() => expect(calls.retryProcessing).toHaveBeenCalledWith({}))
+  })
+
+  it("confirms clearing every saved memory and restores focus after cancellation", async () => {
+    render(
+      <PersonalizationCenter
+        models={[{ label: "GPT 5", value: "gpt-5" }]}
+        onOpenChange={vi.fn()}
+        open
+      />
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "Saved memory" }))
+    const clearSavedMemoryButton = screen.getByRole("button", {
+      name: "Clear all saved memories",
+    })
+    clearSavedMemoryButton.focus()
+    expect(document.activeElement).toBe(clearSavedMemoryButton)
+    fireEvent.click(clearSavedMemoryButton)
+    const confirmation = await screen.findByRole("alertdialog")
+    expect(
+      within(confirmation).getByRole("heading", {
+        name: "Clear all saved memories?",
+      })
+    ).toBeTruthy()
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }))
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).toBeNull()
+    )
+    expect(document.activeElement).toBe(clearSavedMemoryButton)
+
+    fireEvent.click(clearSavedMemoryButton)
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Clear saved memories",
+      })
+    )
+    await waitFor(() => expect(calls.clear).toHaveBeenCalledWith({}))
+    expect(screen.getByRole("status").textContent).toContain(
+      "Saved memories cleared"
+    )
   })
 
   it("lets an opted-out user enable saved memory while keeping legacy rows manageable", async () => {

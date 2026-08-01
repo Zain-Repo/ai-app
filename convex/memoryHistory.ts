@@ -69,6 +69,99 @@ export const enqueueBackfill = internalMutation({
   },
 })
 
+// Assistant completions reuse the bounded history pipeline. Queued work absorbs
+// the latest completion, while a running job gets one serialized follow-up so
+// activity that arrives during provider processing is not lost.
+export const enqueueForAssistantMessage = internalMutation({
+  args: { assistantMessageId: v.id("messages") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.assistantMessageId)
+    if (
+      !message ||
+      message.role !== "assistant" ||
+      message.status !== "complete"
+    )
+      return false
+    const conversation = await ctx.db.get(message.conversationId)
+    if (
+      !conversation ||
+      (conversation.memoryMode ?? "standard") !== "standard"
+    )
+      return false
+    const owner = await ctx.db.get(conversation.ownerId)
+    if (!owner?.memoryHistoryEnabled) return false
+    const profile = await ctx.db
+      .query("memoryProcessingProfiles")
+      .withIndex("by_owner_id", (q) => q.eq("ownerId", owner._id))
+      .unique()
+    if (!profile || profile.status !== "active") return false
+    const existingJobs = await ctx.db
+      .query("memoryJobs")
+      .withIndex("by_source_conversation_id_and_kind", (q) =>
+        q
+          .eq("sourceConversationId", conversation._id)
+          .eq("kind", "history_backfill")
+      )
+      .take(10)
+    const now = Date.now()
+    const queuedJob = existingJobs.find((job) => job.status === "queued")
+    if (queuedJob) {
+      await ctx.db.patch(queuedJob._id, {
+        sourceMessageId: message._id,
+        profileId: profile._id,
+        profileRevision: profile.policyRevision,
+        policyRevision: profile.policyRevision,
+        historyRevision: owner.memoryHistoryRevision ?? 0,
+        attempts: 0,
+        errorCode: undefined,
+        nextAttemptAt: now,
+        updatedAt: now,
+      })
+      await ctx.scheduler.runAfter(0, internal.memoryActions.processHistoryJob, {
+        jobId: queuedJob._id,
+      })
+      return true
+    }
+    const reusableJob = existingJobs.find((job) => job.status !== "running")
+    if (reusableJob) {
+      await ctx.db.patch(reusableJob._id, {
+        sourceMessageId: message._id,
+        profileId: profile._id,
+        profileRevision: profile.policyRevision,
+        policyRevision: profile.policyRevision,
+        historyRevision: owner.memoryHistoryRevision ?? 0,
+        status: "queued",
+        attempts: 0,
+        errorCode: undefined,
+        nextAttemptAt: now,
+        updatedAt: now,
+      })
+      await ctx.scheduler.runAfter(0, internal.memoryActions.processHistoryJob, {
+        jobId: reusableJob._id,
+      })
+      return true
+    }
+    const jobId = await ctx.db.insert("memoryJobs", {
+      ownerId: owner._id,
+      kind: "history_backfill",
+      sourceConversationId: conversation._id,
+      sourceMessageId: message._id,
+      profileId: profile._id,
+      profileRevision: profile.policyRevision,
+      policyRevision: profile.policyRevision,
+      historyRevision: owner.memoryHistoryRevision ?? 0,
+      status: "queued",
+      attempts: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.scheduler.runAfter(0, internal.memoryActions.processHistoryJob, { jobId })
+    return true
+  },
+})
+
 export const getHistoryProcessingContext = internalQuery({
   args: { jobId: v.id("memoryJobs") },
   returns: v.union(
@@ -210,12 +303,17 @@ export const clearForOwner = internalMutation({
       .query("conversationMemorySummaries")
       .withIndex("by_owner_id_and_updated_at", (q) => q.eq("ownerId", args.ownerId))
       .take(MAX_BACKFILL_CONVERSATIONS)
+    let referencesRemaining = false
     for (const summary of summaries) {
       const references = await ctx.db
         .query("responseMemoryReferences")
         .withIndex("by_summary_id", (q) => q.eq("summaryId", summary._id))
         .take(MAX_BACKFILL_CONVERSATIONS)
       for (const reference of references) await ctx.db.delete(reference._id)
+      if (references.length === MAX_BACKFILL_CONVERSATIONS) {
+        referencesRemaining = true
+        continue
+      }
       await ctx.db.delete(summary._id)
     }
     const jobStatuses = ["queued", "running", "failed", "complete", "cancelled"] as const
@@ -234,7 +332,8 @@ export const clearForOwner = internalMutation({
     for (const job of jobs)
       if (job.kind === "history_backfill")
         await ctx.db.delete(job._id)
-    const remaining = summaries.length === MAX_BACKFILL_CONVERSATIONS
+    const remaining =
+      referencesRemaining || summaries.length === MAX_BACKFILL_CONVERSATIONS
     if (remaining)
       await ctx.scheduler.runAfter(0, internal.memoryHistory.clearForOwner, args)
     return remaining

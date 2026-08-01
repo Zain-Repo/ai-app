@@ -40,7 +40,7 @@ The feature is protected by a server rollout mode that defaults to shadow.
 
 - `bunx convex codegen`
 - `bun run typecheck`
-- `bun run test` — 47 files and 217 tests passed
+- `bun run test` — 47 files and 222 tests passed
 - Scoped ESLint for all changed TypeScript and TSX files
 - `bun run build` — client and SSR builds passed
 - `git diff --check`
@@ -72,6 +72,15 @@ The feature is protected by a server rollout mode that defaults to shadow.
   memory context and finalized transcript capture share one owned project scope.
 - Merged the latest account/chat experience changes and retained message bubble
   color controls inside the unified Personalization center.
+- Refreshed history summaries after completed hosted, desktop Codex, and
+  realtime responses while preserving `standard`, `read_only`, and `off`
+  capture rules.
+- Made history do-not-use feedback durable, excluded suppressed summaries from
+  recall and late provenance writes, and recorded `lastUsedAt` for active
+  memories that contributed to a completed response.
+- Drained large history-summary reference sets in bounded batches, switched the
+  retention schedule to the required cron API, and restored a confirmed,
+  accessible clear-all saved-memory action in Personalization.
 
 The build continues to report the pre-existing TanStack Router warning for
 `src/routes/chat-sidebar.test.tsx`; the file is excluded from the route tree and

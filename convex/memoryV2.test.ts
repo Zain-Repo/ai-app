@@ -51,6 +51,213 @@ describe("agent memory v2", () => {
     expect(context.memoryMode).toBe("standard")
   })
 
+  it("suppresses rejected history summaries and removes their response provenance", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|summary-feedback-owner"))
+    const outsider = t.withIdentity(identity("clerk|summary-feedback-outsider"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await outsider.mutation(api.users.syncCurrent)
+    const { conversationId, messageId, referenceId, summaryId } = await t.run(
+      async (ctx) => {
+        await ctx.db.patch(ownerId, {
+          memoryHistoryEnabled: true,
+          memoryHistoryRevision: 1,
+        })
+        const createdConversationId = await ctx.db.insert("conversations", {
+          ownerId,
+          status: "active",
+          title: "History feedback",
+          updatedAt: 1,
+        })
+        const createdMessageId = await ctx.db.insert("messages", {
+          conversationId: createdConversationId,
+          role: "user",
+          content: "What do you remember about this decision?",
+          status: "complete",
+        })
+        const responseMessageId = await ctx.db.insert("messages", {
+          conversationId: createdConversationId,
+          role: "assistant",
+          content: "The old decision.",
+          status: "complete",
+        })
+        const createdSummaryId = await ctx.db.insert(
+          "conversationMemorySummaries",
+          {
+            ownerId,
+            conversationId: createdConversationId,
+            content: "The old decision should be recalled.",
+            revision: 1,
+            updatedAt: 1,
+          }
+        )
+        const createdReferenceId = await ctx.db.insert(
+          "responseMemoryReferences",
+          {
+            ownerId,
+            conversationId: createdConversationId,
+            responseMessageId,
+            summaryId: createdSummaryId,
+            createdAt: 1,
+          }
+        )
+        await ctx.db.insert("responseMemoryReferences", {
+          ownerId,
+          conversationId: createdConversationId,
+          responseMessageId,
+          summaryId: createdSummaryId,
+          createdAt: 2,
+        })
+        return {
+          conversationId: createdConversationId,
+          messageId: createdMessageId,
+          referenceId: createdReferenceId,
+          summaryId: createdSummaryId,
+        }
+      }
+    )
+
+    await expect(
+      outsider.mutation(api.memories.submitFeedback, {
+        referenceId,
+        feedback: "dont_use",
+      })
+    ).rejects.toThrow("Memory reference unavailable")
+    await owner.mutation(api.memories.submitFeedback, {
+      referenceId,
+      feedback: "dont_use",
+    })
+
+    const suppressedSummary = await t.run((ctx) => ctx.db.get(summaryId))
+    expect(suppressedSummary?.suppressedAt).toEqual(expect.any(Number))
+    expect(
+      await t.run(async (ctx) =>
+        await ctx.db
+          .query("responseMemoryReferences")
+          .withIndex("by_summary_id", (q) => q.eq("summaryId", summaryId))
+          .take(10)
+      )
+    ).toEqual([])
+    await expect(
+      t.mutation(internal.memoryHistory.applySummary, {
+        ownerId,
+        conversationId,
+        historyRevision: 1,
+        content: "A refreshed version must remain suppressed.",
+      })
+    ).resolves.toBe(true)
+    const context = await t.query(internal.memoryContext.buildAgentContext, {
+      ownerId,
+      conversationId,
+      currentMessageId: messageId,
+    })
+    expect(context.historySummaryIds).not.toContain(summaryId)
+    expect(context.referenceText).not.toContain("refreshed version")
+    const responseMessageId = await t.run(async (ctx) =>
+      await ctx.db.insert("messages", {
+        conversationId,
+        role: "assistant",
+        content: "A response that raced with suppression.",
+        status: "complete",
+      })
+    )
+    await t.mutation(internal.memoryContext.recordResponseReferences, {
+      ownerId,
+      conversationId,
+      responseMessageId,
+      memoryItemIds: [],
+      summaryIds: [summaryId],
+    })
+    expect(
+      await t.run(async (ctx) =>
+        await ctx.db
+          .query("responseMemoryReferences")
+          .withIndex("by_summary_id", (q) => q.eq("summaryId", summaryId))
+          .take(1)
+      )
+    ).toEqual([])
+  })
+
+  it("records usage time only for owned active memories used by a completed response", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|reference-usage-owner"))
+    const outsider = t.withIdentity(identity("clerk|reference-usage-outsider"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const outsiderId = await outsider.mutation(api.users.syncCurrent)
+    const { conversationId, memoryItemId, outsiderMemoryItemId, responseMessageId } =
+      await t.run(async (ctx) => {
+        const createdConversationId = await ctx.db.insert("conversations", {
+          ownerId,
+          status: "active",
+          title: "Response attribution",
+          updatedAt: 1,
+        })
+        const createdResponseMessageId = await ctx.db.insert("messages", {
+          conversationId: createdConversationId,
+          role: "assistant",
+          content: "A completed response.",
+          status: "complete",
+        })
+        const baseMemory = {
+          scope: "user" as const,
+          scopeKey: "user",
+          category: "preference" as const,
+          content: "Prefers focused tests.",
+          status: "active" as const,
+          sourceSignal: "manual" as const,
+          confirmation: "confirmed" as const,
+          pinned: false,
+          sensitivity: "normal" as const,
+          revision: 1,
+          sourceTimestamp: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: 1,
+        }
+        const createdMemoryItemId = await ctx.db.insert("memoryItems", {
+          ...baseMemory,
+          ownerId,
+          canonicalKey: "preferences.focused_tests",
+        })
+        const createdOutsiderMemoryItemId = await ctx.db.insert("memoryItems", {
+          ...baseMemory,
+          ownerId: outsiderId,
+          canonicalKey: "preferences.outsider",
+        })
+        return {
+          conversationId: createdConversationId,
+          memoryItemId: createdMemoryItemId,
+          outsiderMemoryItemId: createdOutsiderMemoryItemId,
+          responseMessageId: createdResponseMessageId,
+        }
+      })
+
+    await t.mutation(internal.memoryContext.recordResponseReferences, {
+      ownerId,
+      conversationId,
+      responseMessageId,
+      memoryItemIds: [memoryItemId, outsiderMemoryItemId],
+      summaryIds: [],
+    })
+
+    expect((await t.run((ctx) => ctx.db.get(memoryItemId)))?.lastUsedAt).toBeGreaterThan(
+      1
+    )
+    expect(
+      (await t.run((ctx) => ctx.db.get(outsiderMemoryItemId)))?.lastUsedAt
+    ).toBe(1)
+    expect(
+      await t.run(async (ctx) =>
+        await ctx.db
+          .query("responseMemoryReferences")
+          .withIndex("by_response_message_id", (q) =>
+            q.eq("responseMessageId", responseMessageId)
+          )
+          .take(10)
+      )
+    ).toHaveLength(1)
+  })
+
   it("does not queue capture for read-only or off conversations", async () => {
     const t = convexTest(schema, modules)
     const owner = t.withIdentity(identity("clerk|owner"))

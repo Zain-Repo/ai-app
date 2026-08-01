@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { api, internal } from "./_generated/api"
 import schema from "./schema"
@@ -10,6 +10,243 @@ function identity(tokenIdentifier: string) {
 }
 
 describe("memory history capture", () => {
+  it("queues and refreshes history after successful standard assistant responses", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|assistant-history-lifecycle"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const now = Date.now()
+    const {
+      offAssistantMessageId,
+      profileId,
+      readOnlyAssistantMessageId,
+      standardAssistantMessageId,
+      standardConversationId,
+    } = await t.run(async (ctx) => {
+      await ctx.db.patch(ownerId, {
+        memoryHistoryEnabled: true,
+        memoryHistoryRevision: 3,
+      })
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: ["responses"],
+        updatedAt: now,
+      })
+      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 2,
+        status: "active",
+        updatedAt: now,
+      })
+      const createdStandardConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Standard assistant history",
+        memoryMode: "standard",
+        updatedAt: now,
+      })
+      const readOnlyConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Read only assistant history",
+        memoryMode: "read_only",
+        updatedAt: now,
+      })
+      const offConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Off assistant history",
+        memoryMode: "off",
+        updatedAt: now,
+      })
+      const createdStandardAssistantMessageId = await ctx.db.insert("messages", {
+        conversationId: createdStandardConversationId,
+        role: "assistant",
+        content: "",
+        status: "pending",
+      })
+      const createdReadOnlyAssistantMessageId = await ctx.db.insert("messages", {
+        conversationId: readOnlyConversationId,
+        role: "assistant",
+        content: "Read-only answer.",
+        status: "complete",
+      })
+      const createdOffAssistantMessageId = await ctx.db.insert("messages", {
+        conversationId: offConversationId,
+        role: "assistant",
+        content: "Off answer.",
+        status: "complete",
+      })
+      return {
+        offAssistantMessageId: createdOffAssistantMessageId,
+        profileId: createdProfileId,
+        readOnlyAssistantMessageId: createdReadOnlyAssistantMessageId,
+        standardAssistantMessageId: createdStandardAssistantMessageId,
+        standardConversationId: createdStandardConversationId,
+      }
+    })
+
+    await t.mutation(internal.conversations.finishOpenRouterResponse, {
+      assistantMessageId: standardAssistantMessageId,
+      content: "A completed hosted response.",
+      failed: false,
+    })
+    const scheduledAfterCompletion = await t.run(async (ctx) =>
+      await ctx.db.system.query("_scheduled_functions").take(10)
+    )
+    expect(scheduledAfterCompletion.map((job) => job.name)).toContain(
+      "memoryHistory:enqueueForAssistantMessage"
+    )
+
+    await expect(
+      t.mutation(internal.memoryHistory.enqueueForAssistantMessage, {
+        assistantMessageId: standardAssistantMessageId,
+      })
+    ).resolves.toBe(true)
+    await expect(
+      t.mutation(internal.memoryHistory.enqueueForAssistantMessage, {
+        assistantMessageId: readOnlyAssistantMessageId,
+      })
+    ).resolves.toBe(false)
+    await expect(
+      t.mutation(internal.memoryHistory.enqueueForAssistantMessage, {
+        assistantMessageId: offAssistantMessageId,
+      })
+    ).resolves.toBe(false)
+
+    const firstJob = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_source_conversation_id_and_kind", (q) =>
+          q
+            .eq("sourceConversationId", standardConversationId)
+            .eq("kind", "history_backfill")
+        )
+        .unique()
+    )
+    expect(firstJob).toMatchObject({
+      historyRevision: 3,
+      profileId,
+      profileRevision: 2,
+      sourceMessageId: standardAssistantMessageId,
+      status: "queued",
+    })
+    if (!firstJob) throw new Error("Expected a queued history job")
+
+    const refreshedAssistantMessageId = await t.run(async (ctx) => {
+      await ctx.db.patch(firstJob._id, { status: "running" })
+      return await ctx.db.insert("messages", {
+        conversationId: standardConversationId,
+        role: "assistant",
+        content: "A later completed response.",
+        status: "complete",
+      })
+    })
+    await expect(
+      t.mutation(internal.memoryHistory.enqueueForAssistantMessage, {
+        assistantMessageId: refreshedAssistantMessageId,
+      })
+    ).resolves.toBe(true)
+    const refreshedJob = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_source_conversation_id_and_kind", (q) =>
+          q
+            .eq("sourceConversationId", standardConversationId)
+            .eq("kind", "history_backfill")
+        )
+        .filter((q) => q.eq(q.field("status"), "queued"))
+        .unique()
+    )
+    expect(refreshedJob).toMatchObject({
+      sourceMessageId: refreshedAssistantMessageId,
+      status: "queued",
+    })
+    if (!refreshedJob) throw new Error("Expected a coalesced follow-up job")
+    await expect(
+      t.mutation(internal.memoryJobs.claim, { jobId: refreshedJob._id })
+    ).resolves.toBeNull()
+    expect((await t.run((ctx) => ctx.db.get(refreshedJob._id)))?.status).toBe(
+      "queued"
+    )
+  })
+
+  it("drains every response reference before deleting a cleared history summary", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|clear-history-summary-references"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const { conversationId, summaryId } = await t.run(async (ctx) => {
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Summary cleanup",
+        memoryMode: "standard",
+        updatedAt: 1,
+      })
+      const responseMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "assistant",
+        content: "A response with sources.",
+        status: "complete",
+      })
+      const createdSummaryId = await ctx.db.insert("conversationMemorySummaries", {
+        ownerId,
+        conversationId: createdConversationId,
+        content: "A history summary.",
+        revision: 1,
+        updatedAt: 1,
+      })
+      for (let index = 0; index < 101; index += 1)
+        await ctx.db.insert("responseMemoryReferences", {
+          ownerId,
+          conversationId: createdConversationId,
+          responseMessageId,
+          summaryId: createdSummaryId,
+          createdAt: index,
+        })
+      return { conversationId: createdConversationId, summaryId: createdSummaryId }
+    })
+
+    vi.useFakeTimers()
+    try {
+      await expect(
+        t.mutation(internal.memoryHistory.clearForOwner, { ownerId })
+      ).resolves.toBe(true)
+      expect(
+        await t.run(async (ctx) =>
+          await ctx.db
+            .query("responseMemoryReferences")
+            .withIndex("by_summary_id", (q) => q.eq("summaryId", summaryId))
+            .take(102)
+        )
+      ).toHaveLength(1)
+      expect(
+        await t.run(async (ctx) => await ctx.db.get(summaryId))
+      ).not.toBeNull()
+
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers())
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(
+      await t.run(async (ctx) =>
+        await ctx.db
+          .query("responseMemoryReferences")
+          .withIndex("by_conversation_id", (q) => q.eq("conversationId", conversationId))
+          .take(1)
+      )
+    ).toEqual([])
+    expect(await t.run(async (ctx) => await ctx.db.get(summaryId))).toBeNull()
+  })
+
   it("only queues, processes, and writes summaries for standard conversations", async () => {
     const t = convexTest(schema, modules)
     const owner = t.withIdentity(identity("clerk|history-mode"))

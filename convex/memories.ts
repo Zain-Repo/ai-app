@@ -28,6 +28,7 @@ import {
 const MAX_MEMORIES_PER_USER = 100
 const MAX_RETRIEVED_MEMORIES = 8
 const MAX_PERSONALIZATION_LIST = 100
+const MAX_REFERENCE_CLEANUP_BATCH = 100
 
 type MemoryDatabaseContext = Parameters<typeof getCurrentUser>[0]
 
@@ -1501,6 +1502,25 @@ export const submitFeedback = mutation({
     if (!reference || reference.ownerId !== user._id)
       throw new Error("Memory reference unavailable")
     await ctx.db.patch(reference._id, { feedback: args.feedback })
+    if (args.feedback === "dont_use" && reference.summaryId) {
+      const summary = await ctx.db.get(reference.summaryId)
+      if (summary?.ownerId === user._id) {
+        const now = Date.now()
+        await ctx.db.patch(summary._id, { suppressedAt: now })
+        const references = await ctx.db
+          .query("responseMemoryReferences")
+          .withIndex("by_summary_id", (q) => q.eq("summaryId", summary._id))
+          .take(MAX_REFERENCE_CLEANUP_BATCH)
+        for (const summaryReference of references)
+          await ctx.db.delete(summaryReference._id)
+        if (references.length === MAX_REFERENCE_CLEANUP_BATCH)
+          await ctx.scheduler.runAfter(
+            0,
+            internal.memories.cleanupSuppressedSummaryReferences,
+            { ownerId: user._id, summaryId: summary._id }
+          )
+      }
+    }
     if (args.feedback === "dont_use" && reference.memoryItemId) {
       const item = await ctx.db.get(reference.memoryItemId)
       if (item?.ownerId === user._id) {
@@ -1542,6 +1562,31 @@ export const submitFeedback = mutation({
         })
       }
     }
+    return null
+  },
+})
+
+export const cleanupSuppressedSummaryReferences = internalMutation({
+  args: {
+    ownerId: v.id("users"),
+    summaryId: v.id("conversationMemorySummaries"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const summary = await ctx.db.get(args.summaryId)
+    if (summary?.ownerId !== args.ownerId || summary.suppressedAt === undefined)
+      return null
+    const references = await ctx.db
+      .query("responseMemoryReferences")
+      .withIndex("by_summary_id", (q) => q.eq("summaryId", summary._id))
+      .take(MAX_REFERENCE_CLEANUP_BATCH)
+    for (const reference of references) await ctx.db.delete(reference._id)
+    if (references.length === MAX_REFERENCE_CLEANUP_BATCH)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memories.cleanupSuppressedSummaryReferences,
+        args
+      )
     return null
   },
 })
