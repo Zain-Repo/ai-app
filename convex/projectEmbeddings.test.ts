@@ -49,7 +49,10 @@ describe("project embedding policy", () => {
     expect(
       isIndexableProjectSource("application/octet-stream", "source.ts")
     ).toBe(true)
-    expect(isIndexableProjectSource("application/pdf", "brief.pdf")).toBe(false)
+    expect(isIndexableProjectSource("application/pdf", "brief.pdf")).toBe(true)
+    expect(
+      isIndexableProjectSource("application/octet-stream", "brief.pdf")
+    ).toBe(true)
     const input = `${"A".repeat(900)}\n\n${"B".repeat(900)}`
     expect(chunkProjectSourceText(input)).toEqual(
       chunkProjectSourceText(input.replace(/\n/g, "\r\n"))
@@ -99,6 +102,61 @@ describe("project embedding policy", () => {
 })
 
 describe("project embedding profiles and indexes", () => {
+  it("makes PDFs uploaded before support was added retryable", async () => {
+    const t = convexTest(schema, modules)
+    const ada = t.withIdentity(identity("clerk|ada"))
+    const adaId = await ada.mutation(api.users.syncCurrent)
+    const openaiId = await insertConnection(t, adaId, "openai")
+    const storageId = await t.run(
+      async (ctx) =>
+        await ctx.storage.store(
+          new Blob(["legacy PDF"], { type: "application/pdf" })
+        )
+    )
+    const draftId = await ada.mutation(api.attachments.register, {
+      name: "legacy.pdf",
+      storageId,
+    })
+    const projectId = await ada.mutation(api.projects.create, {
+      embeddingProviderConnectionId: openaiId,
+      name: "Legacy PDF",
+      sourceDraftAttachmentIds: [draftId],
+    })
+    const [source] = await ada.query(api.projects.listSources, { projectId })
+    const state = await t.run(
+      async (ctx) =>
+        await ctx.db
+          .query("projectSourceIndexStates")
+          .withIndex("by_source_id_and_updated_at", (query) =>
+            query.eq("sourceId", source._id)
+          )
+          .unique()
+    )
+    if (!state) throw new Error("Expected PDF index state")
+    await t.run(
+      async (ctx) =>
+        await ctx.db.patch(state._id, {
+          status: "unsupported",
+          errorCode: "unsupported",
+        })
+    )
+
+    await expect(
+      ada.query(api.projects.listSources, { projectId })
+    ).resolves.toMatchObject([
+      { indexErrorCode: "indexing_failed", indexStatus: "failed" },
+    ])
+    await expect(
+      ada.mutation(api.projects.retrySourceEmbedding, {
+        projectId,
+        sourceId: source._id,
+      })
+    ).resolves.toBeNull()
+    await expect(
+      ada.query(api.projects.listSources, { projectId })
+    ).resolves.toMatchObject([{ indexStatus: "queued" }])
+  })
+
   it("pins only an owned OpenAI or OpenRouter connection and versions switches", async () => {
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))

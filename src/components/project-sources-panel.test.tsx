@@ -135,6 +135,35 @@ describe("project source embeddings", () => {
     expect(retry).toHaveBeenCalledWith(source._id)
   })
 
+  it("explains PDFs that need OCR instead of calling them unsupported", () => {
+    const view = render(
+      <ProjectSourcesPanel
+        connections={connections}
+        onConnectProvider={vi.fn()}
+        onPinProvider={vi.fn()}
+        onRemoveSource={vi.fn()}
+        onRetryIndexing={vi.fn()}
+        profile={null}
+        sources={[
+          {
+            ...source,
+            indexErrorCode: "pdf_no_text",
+            indexStatus: "unsupported",
+            name: "scan.pdf",
+          },
+        ]}
+      />
+    )
+
+    expect(view.getByText("No readable text")).toBeTruthy()
+    expect(
+      view.getByText(
+        "No selectable text was found. Scanned PDFs need OCR before upload."
+      )
+    ).toBeTruthy()
+    expect(view.queryByText("Unsupported")).toBeNull()
+  })
+
   it("requires an explicit confirmation before switching providers", () => {
     const pinProvider = vi.fn()
     const eligibleConnections: ProjectEmbeddingConnection[] = [

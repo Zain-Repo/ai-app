@@ -80,10 +80,18 @@ const SUPPORTED_TEXT_EXTENSIONS = new Set([
   "yml",
 ])
 
+export function isPdfProjectSource(contentType: string, name?: string) {
+  const normalized = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
+  return (
+    normalized === "application/pdf" || name?.toLowerCase().endsWith(".pdf")
+  )
+}
+
 export function isIndexableProjectSource(contentType: string, name?: string) {
   const normalized = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? ""
   const extension = name?.split(".").at(-1)?.toLowerCase()
   return (
+    isPdfProjectSource(contentType, name) ||
     normalized.startsWith("text/") ||
     SUPPORTED_APPLICATION_TYPES.has(normalized) ||
     (extension !== undefined && SUPPORTED_TEXT_EXTENSIONS.has(extension))

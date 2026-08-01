@@ -43,6 +43,9 @@ export type ProjectEmbeddingStatus =
   | "provider_required"
   | "needs_reauthentication"
   | "insufficient_credits"
+  | "pdf_no_text"
+  | "pdf_too_large"
+  | "pdf_unreadable"
   | "unsupported"
 
 export type ProjectEmbeddingConnection = {
@@ -67,6 +70,9 @@ export type ProjectSourceItem = {
     | "provider_required"
     | "needs_reauthentication"
     | "insufficient_credits"
+    | "pdf_no_text"
+    | "pdf_too_large"
+    | "pdf_unreadable"
     | "unsupported"
     | "indexing_failed"
   indexedChunkCount?: number
@@ -120,7 +126,18 @@ const statusPresentation: Record<ProjectEmbeddingStatus, StatusPresentation> = {
     label: "Credits required",
     tone: "destructive",
   },
+  pdf_no_text: { label: "No readable text", tone: "outline" },
+  pdf_too_large: { label: "PDF too long", tone: "outline" },
+  pdf_unreadable: { label: "Unreadable PDF", tone: "destructive" },
   unsupported: { label: "Unsupported", tone: "outline" },
+}
+
+const statusDescriptions: Partial<Record<ProjectEmbeddingStatus, string>> = {
+  pdf_no_text:
+    "No selectable text was found. Scanned PDFs need OCR before upload.",
+  pdf_too_large: "This PDF exceeds the 250-page indexing limit.",
+  pdf_unreadable:
+    "This PDF could not be read. It may be damaged or password-protected.",
 }
 
 const retryableStatuses = new Set<ProjectEmbeddingStatus>([
@@ -359,6 +376,7 @@ export function ProjectSourcesPanel({
           {sources.map((source) => {
             const effectiveStatus = getProjectSourceEmbeddingStatus(source)
             const status = statusPresentation[effectiveStatus]
+            const statusDescription = statusDescriptions[effectiveStatus]
             const isWorking = ["queued", "extracting", "indexing"].includes(
               effectiveStatus
             )
@@ -398,6 +416,11 @@ export function ProjectSourcesPanel({
                     {" \u00b7 "}
                     {formatProjectDate(source.createdAt)}
                   </span>
+                  {statusDescription ? (
+                    <span className="mt-1 block text-xs text-destructive">
+                      {statusDescription}
+                    </span>
+                  ) : null}
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   <Badge variant={status.tone}>
