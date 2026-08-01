@@ -232,27 +232,61 @@ function readImagePrice(value: unknown) {
     : undefined
 }
 
-export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.data) ||
-    !Array.isArray(value.data.endpoints)
+type OpenRouterEndpoint = Record<string, unknown> & {
+  status: number
+  provider_name: string
+  tag: string
+  pricing: Record<string, unknown>
+}
+
+type OpenRouterEndpointCatalog = {
+  data: {
+    endpoints: OpenRouterEndpoint[]
+  }
+}
+
+function isValidPriceInput(value: unknown): boolean {
+  const price = typeof value === "string" ? Number(value) : value
+  return (
+    (typeof value !== "string" || value.trim().length > 0) &&
+    isFiniteNumber(price) &&
+    price >= 0
   )
-    return []
+}
+
+function isOpenRouterEndpoint(value: unknown): value is OpenRouterEndpoint {
+  if (!isRecord(value) || !isRecord(value.pricing)) return false
+
+  return (
+    isFiniteNumber(value.status) &&
+    typeof value.provider_name === "string" &&
+    value.provider_name.length > 0 &&
+    value.provider_name.length <= 100 &&
+    typeof value.tag === "string" &&
+    value.tag.length > 0 &&
+    value.tag.length <= 100 &&
+    isValidPriceInput(value.pricing.prompt) &&
+    isValidPriceInput(value.pricing.completion)
+  )
+}
+
+export function isOpenRouterEndpointCatalog(
+  value: unknown
+): value is OpenRouterEndpointCatalog {
+  return (
+    isRecord(value) &&
+    isRecord(value.data) &&
+    Array.isArray(value.data.endpoints) &&
+    value.data.endpoints.every(isOpenRouterEndpoint)
+  )
+}
+
+export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
+  if (!isOpenRouterEndpointCatalog(value)) return []
 
   return value.data.endpoints
-    .filter(isRecord)
     .flatMap((endpoint) => {
-      if (
-        endpoint.status !== 0 ||
-        typeof endpoint.provider_name !== "string" ||
-        typeof endpoint.tag !== "string" ||
-        endpoint.provider_name.length > 100 ||
-        endpoint.tag.length > 100 ||
-        !isRecord(endpoint.pricing)
-      ) {
-        return []
-      }
+      if (endpoint.status !== 0) return []
       const promptPrice = readPrice(endpoint.pricing.prompt)
       const completionPrice = readPrice(endpoint.pricing.completion)
       if (promptPrice === undefined || completionPrice === undefined) return []
@@ -295,13 +329,13 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
     )
 }
 
-function getModelEndpointsUrl(model: string) {
+export function getOpenRouterModelEndpointsUrl(model: string) {
   const parts = model.split("/")
   if (
     parts.length !== 2 ||
-    parts.some(
-      (part) => !part || part.length > 100 || !/^[A-Za-z0-9._:-]+$/.test(part)
-    )
+    parts.some((part) => !part || part.length > 100) ||
+    !/^~?[A-Za-z0-9._:-]+$/.test(parts[0]) ||
+    !/^[A-Za-z0-9._:-]+$/.test(parts[1])
   ) {
     throw new Error("Model is unavailable")
   }
@@ -711,7 +745,7 @@ export const listModelEndpoints = action({
       credential.iv,
       env.PROVIDER_TOKEN_ENCRYPTION_KEY
     )
-    const response = await fetch(getModelEndpointsUrl(args.model), {
+    const response = await fetch(getOpenRouterModelEndpointsUrl(args.model), {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     })
@@ -724,9 +758,11 @@ export const listModelEndpoints = action({
     }
     if (!response.ok) throw new Error("Could not load model providers")
 
-    const endpoints = parseOpenRouterEndpoints(await readJson(response))
-    if (!endpoints.length) throw new Error("No model providers are available")
-    return endpoints
+    const endpointCatalog = await readJson(response)
+    if (!isOpenRouterEndpointCatalog(endpointCatalog)) {
+      throw new Error("Provider returned an invalid endpoint catalog")
+    }
+    return parseOpenRouterEndpoints(endpointCatalog)
   },
 })
 
