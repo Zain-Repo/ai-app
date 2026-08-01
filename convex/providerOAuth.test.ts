@@ -183,6 +183,65 @@ describe("OpenRouter model endpoints", () => {
     expect(isOpenRouterEndpointCatalog(null)).toBe(false)
     expect(isOpenRouterEndpointCatalog({ data: {} })).toBe(false)
     expect(isOpenRouterEndpointCatalog({ data: { endpoints: {} } })).toBe(false)
+    expect(
+      isOpenRouterEndpointCatalog({
+        data: {
+          endpoints: [
+            {
+              provider_name: "Missing pricing",
+              tag: "missing-pricing",
+              status: 0,
+            },
+          ],
+        },
+      })
+    ).toBe(false)
+    expect(
+      isOpenRouterEndpointCatalog({
+        data: {
+          endpoints: [
+            {
+              provider_name: "Invalid status",
+              tag: "invalid-status",
+              status: "0",
+              pricing: { prompt: "0", completion: "0" },
+            },
+          ],
+        },
+      })
+    ).toBe(false)
+    expect(
+      isOpenRouterEndpointCatalog({
+        data: {
+          endpoints: [
+            {
+              provider_name: "Invalid price",
+              tag: "invalid-price",
+              status: 0,
+              pricing: { prompt: "not-a-price", completion: "0" },
+            },
+          ],
+        },
+      })
+    ).toBe(false)
+  })
+
+  it("accepts structurally valid unavailable endpoints", () => {
+    const offlineCatalog = {
+      data: {
+        endpoints: [
+          {
+            provider_name: "Offline",
+            tag: "offline",
+            status: 1,
+            pricing: { prompt: "0", completion: "0" },
+          },
+        ],
+      },
+    }
+
+    expect(isOpenRouterEndpointCatalog(offlineCatalog)).toBe(true)
+    expect(parseOpenRouterEndpoints(offlineCatalog)).toEqual([])
   })
 
   it("keeps available endpoints and sorts live per-token prices per million", () => {

@@ -232,10 +232,42 @@ function readImagePrice(value: unknown) {
     : undefined
 }
 
+type OpenRouterEndpoint = Record<string, unknown> & {
+  status: number
+  provider_name: string
+  tag: string
+  pricing: Record<string, unknown>
+}
+
 type OpenRouterEndpointCatalog = {
   data: {
-    endpoints: unknown[]
+    endpoints: OpenRouterEndpoint[]
   }
+}
+
+function isValidPriceInput(value: unknown): boolean {
+  const price = typeof value === "string" ? Number(value) : value
+  return (
+    (typeof value !== "string" || value.trim().length > 0) &&
+    isFiniteNumber(price) &&
+    price >= 0
+  )
+}
+
+function isOpenRouterEndpoint(value: unknown): value is OpenRouterEndpoint {
+  if (!isRecord(value) || !isRecord(value.pricing)) return false
+
+  return (
+    isFiniteNumber(value.status) &&
+    typeof value.provider_name === "string" &&
+    value.provider_name.length > 0 &&
+    value.provider_name.length <= 100 &&
+    typeof value.tag === "string" &&
+    value.tag.length > 0 &&
+    value.tag.length <= 100 &&
+    isValidPriceInput(value.pricing.prompt) &&
+    isValidPriceInput(value.pricing.completion)
+  )
 }
 
 export function isOpenRouterEndpointCatalog(
@@ -244,7 +276,8 @@ export function isOpenRouterEndpointCatalog(
   return (
     isRecord(value) &&
     isRecord(value.data) &&
-    Array.isArray(value.data.endpoints)
+    Array.isArray(value.data.endpoints) &&
+    value.data.endpoints.every(isOpenRouterEndpoint)
   )
 }
 
@@ -252,18 +285,8 @@ export function parseOpenRouterEndpoints(value: unknown): ModelEndpoint[] {
   if (!isOpenRouterEndpointCatalog(value)) return []
 
   return value.data.endpoints
-    .filter(isRecord)
     .flatMap((endpoint) => {
-      if (
-        endpoint.status !== 0 ||
-        typeof endpoint.provider_name !== "string" ||
-        typeof endpoint.tag !== "string" ||
-        endpoint.provider_name.length > 100 ||
-        endpoint.tag.length > 100 ||
-        !isRecord(endpoint.pricing)
-      ) {
-        return []
-      }
+      if (endpoint.status !== 0) return []
       const promptPrice = readPrice(endpoint.pricing.prompt)
       const completionPrice = readPrice(endpoint.pricing.completion)
       if (promptPrice === undefined || completionPrice === undefined) return []
