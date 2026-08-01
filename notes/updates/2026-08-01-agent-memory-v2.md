@@ -40,7 +40,7 @@ The feature is protected by a server rollout mode that defaults to shadow.
 
 - `bunx convex codegen`
 - `bun run typecheck`
-- `bun run test` — 41 files and 176 tests passed
+- `bun run test` — 47 files and 217 tests passed
 - Scoped ESLint for all changed TypeScript and TSX files
 - `bun run build` — client and SSR builds passed
 - `git diff --check`
@@ -57,6 +57,21 @@ The feature is protected by a server rollout mode that defaults to shadow.
   the standard default for pre-migration chats.
 - Continued conversation-reference cleanup in bounded batches and staged the
   new user-retention index for a non-blocking production backfill.
+- Rejected stale saved-memory and history commits after clear, opt-out, project
+  deletion, profile changes, content edits, and source removal.
+- Preserved confirmed manual and pinned memories during extraction conflicts;
+  one source-backed proposal remains reviewable and confirmation supersedes the
+  prior value without exceeding capacity.
+- Added idempotent embedding jobs for manual, migrated, corrected, restored,
+  and profile-revision memories, including retry routing and commit-time opt-out
+  checks.
+- Restored history recall in read-only chats, kept project-only summaries
+  isolated, and continued project/account cleanup when summary or child-artifact
+  batches reach their limit.
+- Created and routed new realtime voice chats before session startup so initial
+  memory context and finalized transcript capture share one owned project scope.
+- Merged the latest account/chat experience changes and retained message bubble
+  color controls inside the unified Personalization center.
 
 The build continues to report the pre-existing TanStack Router warning for
 `src/routes/chat-sidebar.test.tsx`; the file is excluded from the route tree and
