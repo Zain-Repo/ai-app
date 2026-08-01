@@ -25,7 +25,7 @@ import {
 } from "@/components/ai-elements/terminal"
 import { cn } from "@/lib/utils"
 import { executeBrowserPython } from "@/lib/browser-python"
-import { math } from "@streamdown/math"
+import { createMathPlugin } from "@streamdown/math"
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -470,7 +470,9 @@ const markdownComponents: Components = {
   ),
 }
 
-const markdownPlugins = { math }
+const markdownPlugins = {
+  math: createMathPlugin({ singleDollarTextMath: true }),
+}
 
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (

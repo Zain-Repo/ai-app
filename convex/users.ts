@@ -23,6 +23,16 @@ const responseDetailValidator = v.union(
   v.literal("detailed")
 )
 
+const userMessageBubbleColorValidator = v.union(
+  v.literal("default"),
+  v.literal("sky"),
+  v.literal("violet"),
+  v.literal("rose"),
+  v.literal("emerald"),
+  v.literal("amber"),
+  v.literal("slate")
+)
+
 const MAX_MODEL_LENGTH = 200
 
 const preferencesValidator = v.object({
@@ -30,6 +40,7 @@ const preferencesValidator = v.object({
   language: languageValidator,
   intelligenceLevel: intelligenceLevelValidator,
   responseDetail: responseDetailValidator,
+  userMessageBubbleColor: userMessageBubbleColorValidator,
 })
 
 export const getPreferences = query({
@@ -42,6 +53,7 @@ export const getPreferences = query({
       language: user.language ?? "auto",
       intelligenceLevel: user.intelligenceLevel ?? "adaptive",
       responseDetail: user.responseDetail ?? "balanced",
+      userMessageBubbleColor: user.userMessageBubbleColor ?? "default",
     }
   },
 })

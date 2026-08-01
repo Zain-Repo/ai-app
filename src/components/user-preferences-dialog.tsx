@@ -21,12 +21,15 @@ import {
 } from "@/components/ui/dialog"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
+import { userMessageBubbleColorOptions } from "@/lib/user-message-bubble-color"
+import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
 
 const defaultPreferences = {
   defaultModel: null,
   language: "auto",
   intelligenceLevel: "adaptive",
   responseDetail: "balanced",
+  userMessageBubbleColor: "default",
 } as const
 
 type Preferences = {
@@ -34,6 +37,7 @@ type Preferences = {
   language: "auto" | "en" | "fr" | "es"
   intelligenceLevel: "adaptive" | "quick" | "balanced" | "deep"
   responseDetail: "concise" | "balanced" | "detailed"
+  userMessageBubbleColor: UserMessageBubbleColor
 }
 
 type UserPreferencesDialogProps = {
@@ -252,6 +256,61 @@ export function UserPreferencesDialog({
                 </NativeSelectOption>
               </NativeSelect>
             </PreferenceField>
+
+            <fieldset
+              aria-describedby="preference-message-color-description"
+              className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_11rem] sm:grid-rows-[auto_auto] sm:gap-x-6 sm:gap-y-1"
+              disabled={loading || pending}
+            >
+              <legend className="text-sm font-medium sm:col-start-1 sm:row-start-1">
+                Your message color
+              </legend>
+              <p
+                className="text-xs leading-relaxed text-muted-foreground sm:col-start-1 sm:row-start-2"
+                id="preference-message-color-description"
+              >
+                Choose the color used for messages you send.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:grid-cols-1 sm:self-center">
+                {userMessageBubbleColorOptions.map((option) => {
+                  const selected =
+                    preferences.userMessageBubbleColor === option.value
+                  return (
+                    <label
+                      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-[background-color,border-color,box-shadow] has-[input:checked]:border-primary/50 has-[input:checked]:bg-primary/5 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring/50 has-[input:focus-visible]:ring-offset-2"
+                      key={option.value}
+                    >
+                      <input
+                        checked={selected}
+                        className="peer sr-only"
+                        name="user-message-bubble-color"
+                        onChange={() =>
+                          setPreferences((current) => ({
+                            ...current,
+                            userMessageBubbleColor: option.value,
+                          }))
+                        }
+                        type="radio"
+                        value={option.value}
+                      />
+                      <span
+                        aria-hidden="true"
+                        className={`size-6 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20 ${option.swatchClassName}`}
+                      />
+                      <span className="min-w-0 flex-1 text-sm">
+                        {option.label}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="hidden text-xs font-medium text-primary peer-checked:inline"
+                      >
+                        Selected
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </fieldset>
           </div>
 
           <DialogFooter className="items-stretch border-t border-border/70 bg-muted/20 px-5 py-4 sm:items-center sm:px-6">

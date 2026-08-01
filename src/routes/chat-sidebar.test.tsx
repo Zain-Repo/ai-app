@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   getConnectedProviderOptions,
+  getCurrentCatalogModels,
   getExecutionProviderOptions,
   getPreferredProvider,
   isActiveProvider,
@@ -98,6 +99,35 @@ describe("connected provider selector", () => {
         requiresDesktop: false,
       },
     ])
+  })
+
+  it("does not reuse a catalog from another provider, connection, or output mode", () => {
+    const openRouterCatalog = {
+      connectionId: "openrouter-connection",
+      provider: "openrouter" as const,
+      models: [
+        { outputMode: "text" as const, value: "openai/gpt-latest" },
+        { outputMode: "image" as const, value: "openai/gpt-image-latest" },
+      ],
+    }
+
+    expect(
+      getCurrentCatalogModels(
+        openRouterCatalog,
+        "openrouter",
+        "openrouter-connection"
+      ).filter((model) => model.outputMode === "image")
+    ).toEqual([{ outputMode: "image", value: "openai/gpt-image-latest" }])
+    expect(
+      getCurrentCatalogModels(openRouterCatalog, "openai", "openai-connection")
+    ).toEqual([])
+    expect(
+      getCurrentCatalogModels(
+        openRouterCatalog,
+        "openrouter",
+        "reconnected-openrouter"
+      )
+    ).toEqual([])
   })
 
   it("excludes disconnected and desktop-only providers in the web app", () => {

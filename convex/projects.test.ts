@@ -342,6 +342,7 @@ describe("projects and conversations", () => {
       language: "fr",
       intelligenceLevel: "deep",
       responseDetail: "concise",
+      userMessageBubbleColor: "default",
     })
     const storageId = await t.run(
       async (ctx) =>

@@ -1,9 +1,12 @@
+import { convexTest } from "convex-test"
 import { describe, expect, it } from "vitest"
 
+import { api } from "./_generated/api"
 import {
   getOpenRouterModelEndpointsUrl,
   OPENAI_MODELS,
   isOpenRouterEndpointCatalog,
+  isValidOpenRouterModelId,
   isValidSdpOffer,
   parseOpenAIModels,
   parseOpenRouterCreditStatus,
@@ -11,6 +14,8 @@ import {
   parseOpenRouterModels,
   resolveRealtimeVoice,
 } from "./providerOAuth"
+import schema from "./schema"
+import { modules } from "./test.setup"
 
 describe("OpenAI model catalog", () => {
   it("accepts SDP offers and limits realtime voice selection", () => {
@@ -142,6 +147,28 @@ describe("OpenRouter model catalog", () => {
       defaultReasoningEffort: "medium",
     })
   })
+
+  it("filters IDs that cannot safely request model endpoints", () => {
+    expect(
+      parseOpenRouterModels([
+        {
+          id: "openai/gpt-latest",
+          name: "OpenAI: GPT Latest",
+          architecture: { output_modalities: ["text"] },
+        },
+        {
+          id: "openai/gpt-latest/extra",
+          name: "OpenAI: Unsafe path",
+          architecture: { output_modalities: ["text"] },
+        },
+        {
+          id: "openai/../endpoints",
+          name: "OpenAI: Unsafe segment",
+          architecture: { output_modalities: ["text"] },
+        },
+      ]).map((model) => model.value)
+    ).toEqual(["openai/gpt-latest"])
+  })
 })
 
 describe("OpenRouter model endpoints", () => {
@@ -170,6 +197,28 @@ describe("OpenRouter model endpoints", () => {
         "Model is unavailable"
       )
     }
+  })
+
+  it("returns no endpoints for stale or malformed input before credential lookup", async () => {
+    const t = convexTest(schema, modules)
+
+    await expect(
+      t.action(api.providerOAuth.listModelEndpoints, {
+        model: "gpt-5.6-sol",
+      })
+    ).resolves.toEqual([])
+    await expect(
+      t.action(api.providerOAuth.listModelEndpoints, {
+        model: "openai/gpt-latest/extra",
+      })
+    ).resolves.toEqual([])
+  })
+
+  it("shares the endpoint invariant with the catalog parser", () => {
+    expect(isValidOpenRouterModelId("~x-ai/grok-latest")).toBe(true)
+    expect(isValidOpenRouterModelId("openai/gpt-image-2")).toBe(true)
+    expect(isValidOpenRouterModelId("openai/gpt-image-2/extra")).toBe(false)
+    expect(isValidOpenRouterModelId("openai/../endpoints")).toBe(false)
   })
 
   it("treats a successful endpoint response with no endpoints as empty", () => {

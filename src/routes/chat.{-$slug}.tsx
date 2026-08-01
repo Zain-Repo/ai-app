@@ -58,6 +58,8 @@ import type {
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
+import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
+import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
 import type {
   AIInputMenuItem,
   AIInputOption,
@@ -229,6 +231,21 @@ export function getPreferredProvider(
   )
 }
 
+export function getCurrentCatalogModels<T>(
+  catalog: {
+    connectionId: string
+    models: T[]
+    provider: ActiveProvider
+  } | null,
+  activeProvider: ActiveProvider,
+  activeConnectionId: string | undefined
+): T[] {
+  return catalog?.provider === activeProvider &&
+    catalog.connectionId === activeConnectionId
+    ? catalog.models
+    : []
+}
+
 const IMAGE_MODEL_PRIORITY = [
   "black-forest-labs/flux.2-klein-4b",
   "sourceful/riverflow-v2.5-pro",
@@ -312,6 +329,12 @@ type CatalogModel = {
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
+}
+
+type LoadedCatalog = {
+  connectionId: string
+  models: CatalogModel[]
+  provider: ActiveProvider
 }
 
 type ModelEndpoint = {
@@ -639,7 +662,7 @@ function ChatWorkspace() {
   const [conversationActionId, setConversationActionId] = useState<
     string | null
   >(null)
-  const [catalog, setCatalog] = useState<CatalogModel[]>([])
+  const [catalog, setCatalog] = useState<LoadedCatalog | null>(null)
   const [catalogState, setCatalogState] = useState<
     "failed" | "idle" | "loading" | "ready"
   >("idle")
@@ -726,7 +749,7 @@ function ChatWorkspace() {
 
   useEffect(() => {
     if (!activeConnectionId) {
-      setCatalog([])
+      setCatalog(null)
       setCatalogState("idle")
       return
     }
@@ -764,12 +787,16 @@ function ChatWorkspace() {
     ).then(
       (models) => {
         if (cancelled) return
-        setCatalog(models)
+        setCatalog({
+          connectionId: activeConnectionId,
+          models,
+          provider: activeProvider,
+        })
         setCatalogState("ready")
       },
       () => {
         if (cancelled) return
-        setCatalog([])
+        setCatalog(null)
         setCatalogState("failed")
       }
     )
@@ -779,9 +806,13 @@ function ChatWorkspace() {
     }
   }, [activeConnectionId, activeProvider, listModels])
 
+  const currentCatalog = useMemo(
+    () => getCurrentCatalogModels(catalog, activeProvider, activeConnectionId),
+    [activeConnectionId, activeProvider, catalog]
+  )
   const availableModels = useMemo(
-    () => catalog.filter((model) => model.outputMode === outputMode),
-    [catalog, outputMode]
+    () => currentCatalog.filter((model) => model.outputMode === outputMode),
+    [currentCatalog, outputMode]
   )
   const providerModels = useMemo(
     () =>
@@ -811,7 +842,7 @@ function ChatWorkspace() {
     if (
       activeProvider !== "openrouter" ||
       !activeConnectionId ||
-      !selectedModelId
+      !selectedModel
     ) {
       setModelEndpoints([])
       setEndpointState("idle")
@@ -821,7 +852,7 @@ function ChatWorkspace() {
     let cancelled = false
     setModelEndpoints([])
     setEndpointState("loading")
-    void listModelEndpoints({ model: selectedModelId }).then(
+    void listModelEndpoints({ model: selectedModel.value }).then(
       (endpoints) => {
         if (cancelled) return
         setModelEndpoints(endpoints)
@@ -836,7 +867,7 @@ function ChatWorkspace() {
     return () => {
       cancelled = true
     }
-  }, [activeConnectionId, activeProvider, listModelEndpoints, selectedModelId])
+  }, [activeConnectionId, activeProvider, listModelEndpoints, selectedModel])
 
   const settingGroups = useMemo<PromptSettingGroup[]>(() => {
     if (providerModels.length === 0) return []
@@ -1866,7 +1897,7 @@ function ChatWorkspace() {
             onOpenPersonalization={() => setPersonalizationOpen(true)}
           />
           <PersonalizationCenter
-            models={catalog}
+            models={currentCatalog}
             onOpenChange={setPersonalizationOpen}
             open={personalizationOpen}
           />
@@ -2456,6 +2487,7 @@ function ChatWorkspace() {
                     []
                   ).catch(() => undefined)
                 }}
+                userMessageBubbleColor={preferences?.userMessageBubbleColor}
               />
               <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-8 pb-4 sm:px-6">
                 <div className="mx-auto w-full max-w-3xl">
@@ -2737,12 +2769,14 @@ function MessageArea({
   name,
   onAction,
   onManageMemory,
+  userMessageBubbleColor,
 }: {
   actionsDisabled: boolean
   messages: ChatMessage[] | undefined
   name: string | null | undefined
   onAction: (value: string) => void
   onManageMemory: () => void
+  userMessageBubbleColor: UserMessageBubbleColor | undefined
 }) {
   if (messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
@@ -2805,7 +2839,13 @@ function MessageArea({
                           variant={isUser ? "default" : "ghost"}
                         >
                           <BubbleContent
-                            className={isUser ? undefined : "w-full"}
+                            className={
+                              isUser
+                                ? getUserMessageBubbleColorClassName(
+                                    userMessageBubbleColor
+                                  )
+                                : "w-full"
+                            }
                           >
                             {!isUser && message.terminalRuns?.length ? (
                               <div className="mb-3 space-y-2">

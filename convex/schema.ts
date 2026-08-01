@@ -57,6 +57,17 @@ export default defineSchema({
         v.literal("detailed")
       )
     ),
+    userMessageBubbleColor: v.optional(
+      v.union(
+        v.literal("default"),
+        v.literal("sky"),
+        v.literal("violet"),
+        v.literal("rose"),
+        v.literal("emerald"),
+        v.literal("amber"),
+        v.literal("slate")
+      )
+    ),
     defaultModel: v.optional(v.string()),
     memoryEnabled: v.optional(v.boolean()),
     memoryHistoryEnabled: v.optional(v.boolean()),

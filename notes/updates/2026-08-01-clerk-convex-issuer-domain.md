@@ -5,7 +5,7 @@
 - Added the Clerk Frontend API URL for the configured development instance to
   the local `.env.local` as `CLERK_JWT_ISSUER_DOMAIN`.
 - Updated the local configuration to target the cloud development deployment
-  `brazen-aardvark-376`, rather than a local Convex deployment.
+  `clear-narwhal-936`, rather than a local or older Convex deployment.
 - Verified the cloud environment contains `CLERK_JWT_ISSUER_DOMAIN`.
 - Kept `convex/auth.config.ts` environment-driven so the issuer remains
   deployment-specific and no credential is committed.

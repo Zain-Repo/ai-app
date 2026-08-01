@@ -17,6 +17,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { userMessageBubbleColorOptions } from "@/lib/user-message-bubble-color"
+import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
 
 type Props = {
   models: Array<{ label: string; value: string }>
@@ -29,6 +31,7 @@ type Preferences = {
   intelligenceLevel: "adaptive" | "quick" | "balanced" | "deep"
   language: "auto" | "en" | "fr" | "es"
   responseDetail: "concise" | "balanced" | "detailed"
+  userMessageBubbleColor: UserMessageBubbleColor
 }
 
 const emptyPreferences: Preferences = {
@@ -36,6 +39,7 @@ const emptyPreferences: Preferences = {
   intelligenceLevel: "adaptive",
   language: "auto",
   responseDetail: "balanced",
+  userMessageBubbleColor: "default",
 }
 
 type MemoryProvenance = {
@@ -339,6 +343,60 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                   </NativeSelectOption>
                 </NativeSelect>
               </PreferenceSelect>
+              <fieldset
+                aria-describedby="message-bubble-color-description"
+                className="space-y-2"
+                disabled={busy || saved === undefined}
+              >
+                <legend className="text-sm font-medium">
+                  Your message color
+                </legend>
+                <p
+                  className="text-xs text-muted-foreground"
+                  id="message-bubble-color-description"
+                >
+                  Choose the color used for messages you send.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {userMessageBubbleColorOptions.map((option) => {
+                    const selected =
+                      preferences.userMessageBubbleColor === option.value
+                    return (
+                      <label
+                        className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-[background-color,border-color,box-shadow] has-[input:checked]:border-primary/50 has-[input:checked]:bg-primary/5 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring/50 has-[input:focus-visible]:ring-offset-2"
+                        key={option.value}
+                      >
+                        <input
+                          checked={selected}
+                          className="peer sr-only"
+                          name="user-message-bubble-color"
+                          onChange={() =>
+                            setPreferences((current) => ({
+                              ...current,
+                              userMessageBubbleColor: option.value,
+                            }))
+                          }
+                          type="radio"
+                          value={option.value}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`size-6 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20 ${option.swatchClassName}`}
+                        />
+                        <span className="min-w-0 flex-1 text-sm">
+                          {option.label}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="hidden text-xs font-medium text-primary peer-checked:inline"
+                        >
+                          Selected
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
               <Button
                 disabled={busy || saved === undefined}
                 onClick={() => void saveDefaults()}

@@ -2,8 +2,9 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { forwardRef, useEffect, useId, useState } from "react"
-import type { CSSProperties, HTMLAttributes } from "react"
+import type { HTMLAttributes } from "react"
 import { cn } from "@/lib/utils"
+import { TextShimmer } from "@/components/text-shimmer"
 
 /**
  * Glyph keyframes. Every path shares the same command structure
@@ -190,20 +191,8 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
             ) : (
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
-                  animate={{
-                    y: 0,
-                    opacity: 1,
-                    filter: "blur(0px)",
-                    backgroundPosition: "0% center",
-                  }}
-                  className={cn(
-                    "col-start-1 row-start-1 bg-[length:250%_100%,auto] bg-clip-text text-transparent",
-                    // Theme tokens, not a hardcoded palette: the resting text
-                    // is the theme's muted foreground and the sweeping sheen
-                    // is its full foreground, in light and dark alike.
-                    "[--ti-base:var(--muted-foreground)] [--ti-sheen:var(--foreground)]",
-                    "[background-repeat:no-repeat,padding-box]"
-                  )}
+                  animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+                  className="col-start-1 row-start-1"
                   exit={{
                     y: "-70%",
                     opacity: 0,
@@ -214,28 +203,22 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
                     y: "70%",
                     opacity: 0,
                     filter: "blur(3px)",
-                    backgroundPosition: "100% center",
                   }}
                   key={word}
-                  style={
-                    {
-                      "--ti-spread": `${word.length * 2}px`,
-                      backgroundImage:
-                        "linear-gradient(90deg,#0000 calc(50% - var(--ti-spread)),var(--ti-sheen),#0000 calc(50% + var(--ti-spread))), linear-gradient(var(--ti-base),var(--ti-base))",
-                    } as CSSProperties
-                  }
                   transition={{
                     y: { type: "spring", stiffness: 420, damping: 34 },
                     opacity: { duration: 0.28, ease: [0.4, 0, 0.2, 1] },
                     filter: { duration: 0.28, ease: [0.4, 0, 0.2, 1] },
-                    backgroundPosition: {
-                      duration: 2,
-                      ease: "linear",
-                      repeat: Number.POSITIVE_INFINITY,
-                    },
                   }}
                 >
-                  {word}
+                  <TextShimmer
+                    as="span"
+                    baseColor="var(--muted-foreground)"
+                    duration={2}
+                    shimmerColor="var(--foreground)"
+                  >
+                    {word}
+                  </TextShimmer>
                 </motion.span>
               </AnimatePresence>
             )}

@@ -30,6 +30,7 @@ const preferencesFixture = {
   intelligenceLevel: "deep" as const,
   language: "en" as const,
   responseDetail: "detailed" as const,
+  userMessageBubbleColor: "sky" as const,
 }
 const connectionsFixture = [
   {
@@ -145,10 +146,19 @@ describe("PersonalizationCenter", () => {
     expect(screen.getByRole("tab", { name: "Defaults" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Saved memory" })).toBeTruthy()
     expect(screen.getByLabelText("Language")).toHaveProperty("value", "en")
+    expect(screen.getByRole("radio", { name: "Sky" })).toHaveProperty(
+      "checked",
+      true
+    )
+    fireEvent.click(screen.getByRole("radio", { name: "Violet" }))
     fireEvent.click(screen.getByRole("button", { name: "Save defaults" }))
     await waitFor(() =>
       expect(calls.updatePreferences).toHaveBeenCalledWith(
-        expect.objectContaining({ language: "en", responseDetail: "detailed" })
+        expect.objectContaining({
+          language: "en",
+          responseDetail: "detailed",
+          userMessageBubbleColor: "violet",
+        })
       )
     )
 

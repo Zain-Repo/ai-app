@@ -10,21 +10,35 @@ const clerk = vi.hoisted(() => ({
   signOut: vi.fn(),
 }))
 
+const githubProfile = vi.hoisted(() => ({
+  createGitHubProfileCustomPage: vi.fn(),
+  customPage: { label: "GitHub profile" },
+}))
+
 const theme = vi.hoisted(() => ({
   resolvedTheme: "light",
   setTheme: vi.fn(),
 }))
 
+const user = vi.hoisted(() => ({
+  current: {
+    fullName: "Ada Lovelace",
+    imageUrl: "",
+    primaryEmailAddress: { emailAddress: "ada@example.com" },
+    username: "ada",
+    externalAccounts: [] as { provider: string; providerUserId: string }[],
+  },
+}))
+
 vi.mock("@clerk/tanstack-react-start", () => ({
   useClerk: () => clerk,
   useUser: () => ({
-    user: {
-      fullName: "Ada Lovelace",
-      imageUrl: "",
-      primaryEmailAddress: { emailAddress: "ada@example.com" },
-      username: "ada",
-    },
+    user: user.current,
   }),
+}))
+
+vi.mock("@/components/github-account-profile", () => ({
+  createGitHubProfileCustomPage: githubProfile.createGitHubProfileCustomPage,
 }))
 
 vi.mock("next-themes", () => ({
@@ -34,8 +48,13 @@ vi.mock("next-themes", () => ({
 beforeEach(() => {
   clerk.openUserProfile.mockReset()
   clerk.signOut.mockReset()
+  githubProfile.createGitHubProfileCustomPage.mockReset()
+  githubProfile.createGitHubProfileCustomPage.mockReturnValue(
+    githubProfile.customPage
+  )
   theme.resolvedTheme = "light"
   theme.setTheme.mockReset()
+  user.current.externalAccounts = []
 })
 
 afterEach(cleanup)
@@ -68,5 +87,59 @@ describe("sidebar user menu", () => {
     fireEvent.click(themeItem)
 
     expect(theme.setTheme).toHaveBeenCalledWith("dark")
+  })
+
+  it("adds the GitHub profile page when the user has a linked GitHub account", async () => {
+    user.current.externalAccounts = [
+      { provider: "github", providerUserId: "583231" },
+    ]
+
+    render(
+      <SidebarUserMenu
+        desktopAvailable={false}
+        onOpenAppUpdates={vi.fn()}
+        onOpenArchivedChats={vi.fn()}
+        onOpenPersonalization={vi.fn()}
+      />
+    )
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open account menu for Ada Lovelace",
+      })
+    )
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Manage account" })
+    )
+
+    expect(githubProfile.createGitHubProfileCustomPage).toHaveBeenCalledWith(
+      "583231"
+    )
+    expect(clerk.openUserProfile).toHaveBeenCalledWith({
+      customPages: [githubProfile.customPage],
+    })
+  })
+
+  it("opens the standard account dialog when GitHub is not linked", async () => {
+    render(
+      <SidebarUserMenu
+        desktopAvailable={false}
+        onOpenAppUpdates={vi.fn()}
+        onOpenArchivedChats={vi.fn()}
+        onOpenPersonalization={vi.fn()}
+      />
+    )
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open account menu for Ada Lovelace",
+      })
+    )
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Manage account" })
+    )
+
+    expect(githubProfile.createGitHubProfileCustomPage).not.toHaveBeenCalled()
+    expect(clerk.openUserProfile).toHaveBeenCalledWith()
   })
 })
