@@ -16,6 +16,7 @@ import {
 } from "ai"
 import type { ModelMessage } from "ai"
 import { v } from "convex/values"
+import { getDocumentProxy } from "unpdf"
 
 import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
@@ -39,6 +40,7 @@ import {
 import {
   buildProjectRetrievalContext,
   chunkProjectSourceText,
+  isPdfProjectSource,
   MAX_PROJECT_SOURCE_CHUNKS,
   MAX_PROJECT_SOURCE_TEXT_CHARS,
 } from "./projectEmbeddingPolicy"
@@ -70,6 +72,8 @@ const MIN_MEMORY_SCORE = 0.35
 const MAX_RELEVANT_PROJECT_CHUNKS = 8
 const MIN_PROJECT_CHUNK_SCORE = 0.3
 const PROJECT_EMBEDDING_BATCH_SIZE = 32
+const MAX_PROJECT_PDF_PAGES = 250
+const MAX_PROJECT_PDF_IMAGE_PIXELS = 16_777_216
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
@@ -641,6 +645,7 @@ async function generateConversationTitle(
 }
 
 function projectIndexErrorCode(cause: unknown) {
+  if (cause instanceof ProjectSourceExtractionError) return cause.code
   const status =
     cause instanceof ProviderEmbeddingError ? cause.statusCode : undefined
   if (status === 401 || status === 403) return "needs_reauthentication" as const
@@ -648,7 +653,65 @@ function projectIndexErrorCode(cause: unknown) {
   return "indexing_failed" as const
 }
 
-export async function readProjectSourceForIndexing(blob: Blob) {
+class ProjectSourceExtractionError extends Error {
+  constructor(
+    readonly code: "pdf_no_text" | "pdf_too_large" | "pdf_unreadable"
+  ) {
+    super(code)
+  }
+}
+
+async function readPdfSourceForIndexing(blob: Blob) {
+  if (blob.size > MAX_ATTACHMENT_BYTES)
+    throw new ProjectSourceExtractionError("pdf_too_large")
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const sourceFingerprint = createHash("sha256").update(bytes).digest("hex")
+  let pdf: Awaited<ReturnType<typeof getDocumentProxy>> | undefined
+  try {
+    pdf = await getDocumentProxy(bytes, {
+      maxImageSize: MAX_PROJECT_PDF_IMAGE_PIXELS,
+    })
+    if (pdf.numPages > MAX_PROJECT_PDF_PAGES)
+      throw new ProjectSourceExtractionError("pdf_too_large")
+
+    let indexedText = ""
+    let textWasTruncated = false
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber)
+      try {
+        const content = await page.getTextContent()
+        const pageText = content.items
+          .flatMap((item) =>
+            "str" in item ? `${item.str}${item.hasEOL ? "\n" : ""}` : []
+          )
+          .join("")
+        const separator = indexedText && pageText ? "\n" : ""
+        const remaining = MAX_PROJECT_SOURCE_TEXT_CHARS - indexedText.length
+        const nextText = `${separator}${pageText}`
+        if (nextText.length > remaining) textWasTruncated = true
+        if (remaining > 0) indexedText += nextText.slice(0, remaining)
+        if (textWasTruncated) break
+      } finally {
+        page.cleanup()
+      }
+    }
+    if (!indexedText.trim())
+      throw new ProjectSourceExtractionError("pdf_no_text")
+    return { indexedText, sourceFingerprint, textWasTruncated }
+  } catch (cause) {
+    if (cause instanceof ProjectSourceExtractionError) throw cause
+    throw new ProjectSourceExtractionError("pdf_unreadable")
+  } finally {
+    await pdf?.cleanup()
+  }
+}
+
+export async function readProjectSourceForIndexing(
+  blob: Blob,
+  source?: { contentType: string; name?: string }
+) {
+  if (source && isPdfProjectSource(source.contentType, source.name))
+    return await readPdfSourceForIndexing(blob)
   const hash = createHash("sha256")
   const decoder = new TextDecoder()
   const reader = blob.stream().getReader()
@@ -718,7 +781,10 @@ export const indexProjectSource = internalAction({
       const blob = await ctx.storage.get(context.storageId)
       if (!blob) throw new Error("Project source storage unavailable")
       const { indexedText, sourceFingerprint, textWasTruncated } =
-        await readProjectSourceForIndexing(blob)
+        await readProjectSourceForIndexing(blob, {
+          contentType: context.contentType,
+          name: context.sourceName,
+        })
       const chunks = chunkProjectSourceText(indexedText)
       if (!chunks.length) {
         await ctx.runMutation(

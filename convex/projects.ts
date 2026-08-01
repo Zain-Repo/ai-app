@@ -393,6 +393,8 @@ export const listSources = query({
         const supported =
           source.kind === "file" &&
           isIndexableProjectSource(source.contentType, source.name)
+        const legacyUnsupported =
+          supported && state?.errorCode === "unsupported"
         return {
           _id: source._id,
           _creationTime: source._creationTime,
@@ -406,14 +408,22 @@ export const listSources = query({
             source.kind === "link"
               ? source.url
               : await ctx.storage.getUrl(source.storageId),
-          indexStatus: state?.status ?? (supported ? "failed" : "unsupported"),
-          ...(state?.errorCode
-            ? { indexErrorCode: state.errorCode }
-            : state
-              ? {}
-              : !supported
-                ? { indexErrorCode: "unsupported" as const }
-                : { indexErrorCode: "provider_required" as const }),
+          indexStatus: legacyUnsupported
+            ? "failed"
+            : (state?.status ?? (supported ? "failed" : "unsupported")),
+          ...(legacyUnsupported
+            ? {
+                indexErrorCode: project.embeddingProfileId
+                  ? ("indexing_failed" as const)
+                  : ("provider_required" as const),
+              }
+            : state?.errorCode
+              ? { indexErrorCode: state.errorCode }
+              : state
+                ? {}
+                : !supported
+                  ? { indexErrorCode: "unsupported" as const }
+                  : { indexErrorCode: "provider_required" as const }),
           indexedChunkCount: state?.chunkCount ?? 0,
           ...(state?.embeddingProfileRevision
             ? { embeddingProfileRevision: state.embeddingProfileRevision }

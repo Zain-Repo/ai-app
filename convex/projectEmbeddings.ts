@@ -30,6 +30,9 @@ export const indexErrorCodeValidator = v.union(
   v.literal("provider_required"),
   v.literal("needs_reauthentication"),
   v.literal("insufficient_credits"),
+  v.literal("pdf_no_text"),
+  v.literal("pdf_too_large"),
+  v.literal("pdf_unreadable"),
   v.literal("unsupported"),
   v.literal("indexing_failed")
 )
@@ -196,6 +199,7 @@ export const getProjectSourceIndexingContext = internalQuery({
       sourceId: v.id("projectSources"),
       storageId: v.id("_storage"),
       contentType: v.string(),
+      sourceName: v.string(),
       provider: embeddingProviderValidator,
       profileId: v.id("projectEmbeddingProfiles"),
       profileRevision: v.number(),
@@ -279,6 +283,7 @@ export const getProjectSourceIndexingContext = internalQuery({
       sourceId: source._id,
       storageId: source.storageId,
       contentType: source.contentType,
+      sourceName: source.name,
       provider: connection.provider,
       profileId: profile._id,
       profileRevision: profile.revision,
@@ -324,7 +329,11 @@ export const failProjectSourceIndex = internalMutation({
     )
       return null
     await ctx.db.patch(state._id, {
-      status: args.errorCode === "unsupported" ? "unsupported" : "failed",
+      status: ["pdf_no_text", "pdf_too_large", "unsupported"].includes(
+        args.errorCode
+      )
+        ? "unsupported"
+        : "failed",
       errorCode: args.errorCode,
       updatedAt: Date.now(),
     })

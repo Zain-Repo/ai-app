@@ -155,6 +155,9 @@ export default defineSchema({
         v.literal("provider_required"),
         v.literal("needs_reauthentication"),
         v.literal("insufficient_credits"),
+        v.literal("pdf_no_text"),
+        v.literal("pdf_too_large"),
+        v.literal("pdf_unreadable"),
         v.literal("unsupported"),
         v.literal("indexing_failed")
       )
