@@ -585,6 +585,18 @@ describe("project embedding profiles and indexes", () => {
         (attachment) => attachment.name
       )
     ).toContain("fallback.txt")
+    await expect(
+      t.mutation(internal.projectEmbeddings.setProjectSourceIndexStatus, {
+        stateId: state._id,
+        status: "extracting",
+      })
+    ).resolves.toBe(false)
+    await expect(
+      t.mutation(internal.projectEmbeddings.setProjectSourceIndexStatus, {
+        stateId: state._id,
+        status: "indexing",
+      })
+    ).resolves.toBe(false)
     await t.run(async (ctx) => await ctx.db.delete(source._id))
     await expect(
       t.run(async (ctx) => await ctx.db.get(state._id))
