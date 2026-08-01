@@ -95,6 +95,111 @@ describe("agent memory v2", () => {
     ).resolves.toBeNull()
   })
 
+  it("includes legacy-only keys in the shadow extraction context", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|shadow-forget"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const { jobId } = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: ["responses"],
+        updatedAt: 1,
+      })
+      await ctx.db.insert("providerCredentials", {
+        connectionId,
+        ciphertext: "encrypted-token",
+        iv: "initialization-vector",
+        updatedAt: 1,
+      })
+      const profileId = await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      const createdConversationId = await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Shadow forget",
+        updatedAt: 1,
+      })
+      const createdMessageId = await ctx.db.insert("messages", {
+        conversationId: createdConversationId,
+        role: "user",
+        content: "Forget my saved preferences.",
+        status: "complete",
+      })
+      await ctx.db.insert("memories", {
+        ownerId,
+        scope: "user",
+        scopeKey: "user",
+        searchScope: `user:${ownerId}`,
+        kind: "preference",
+        key: "preferences.legacy_only",
+        content: "Legacy preference.",
+        sourceTimestamp: 1,
+        updatedAt: 1,
+      })
+      const createdJobId = await ctx.db.insert("memoryJobs", {
+        ownerId,
+        kind: "capture",
+        sourceConversationId: createdConversationId,
+        sourceMessageId: createdMessageId,
+        profileId,
+        profileRevision: 1,
+        policyRevision: 1,
+        status: "running",
+        attempts: 1,
+        nextAttemptAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+      return { jobId: createdJobId }
+    })
+    await owner.mutation(api.memories.create, {
+      canonicalKey: "preferences.v2_only",
+      content: "V2 preference.",
+      category: "preference",
+      scope: "user",
+    })
+
+    const enabledContext = await t.query(internal.memoryCapture.getProcessingContext, {
+      jobId,
+      useLegacy: false,
+    })
+    const shadowContext = await t.query(internal.memoryCapture.getProcessingContext, {
+      jobId,
+      useLegacy: false,
+      includeLegacyExistingKeys: true,
+    })
+    const offContext = await t.query(internal.memoryCapture.getProcessingContext, {
+      jobId,
+      useLegacy: true,
+    })
+
+    expect(enabledContext?.existingKeys).toEqual([
+      { key: "preferences.v2_only", scope: "user" },
+    ])
+    expect(shadowContext?.existingKeys).toEqual(
+      expect.arrayContaining([
+        { key: "preferences.legacy_only", scope: "user" },
+        { key: "preferences.v2_only", scope: "user" },
+      ])
+    )
+    expect(offContext?.existingKeys).toEqual([
+      { key: "preferences.legacy_only", scope: "user" },
+    ])
+  })
+
   it("keeps extracted sensitive details pending until the user explicitly confirms", async () => {
     const t = convexTest(schema, modules)
     const owner = t.withIdentity(identity("clerk|owner"))

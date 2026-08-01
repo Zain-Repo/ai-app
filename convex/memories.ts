@@ -925,7 +925,9 @@ export const getPersonalization = query({
       pendingJobs: queuedJobs.length,
       failedJobs: failedJobs.length,
       historyBackfill: {
-        eligible: historyChats.filter((chat) => chat.memoryMode !== "off").length,
+        eligible: historyChats.filter(
+          (chat) => (chat.memoryMode ?? "standard") === "standard"
+        ).length,
         pending: queuedJobs.filter((job) => job.kind === "history_backfill").length,
       },
       degradedReason: !savedMemoryEnabled

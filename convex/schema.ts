@@ -66,7 +66,7 @@ export default defineSchema({
   })
     .index("by_token_identifier", ["tokenIdentifier"])
     .index("by_clerk_user_id", ["clerkUserId"])
-    .index("by_last_seen_at", ["lastSeenAt"]),
+    .index("by_last_seen_at", { fields: ["lastSeenAt"], staged: true }),
 
   // Credential material is intentionally excluded. This table stores only
   // safe connection metadata; provider tokens require encrypted secret storage.

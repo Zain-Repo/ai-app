@@ -40,10 +40,23 @@ The feature is protected by a server rollout mode that defaults to shadow.
 
 - `bunx convex codegen`
 - `bun run typecheck`
-- `bun run test` — 39 files and 172 tests passed
+- `bun run test` — 41 files and 176 tests passed
 - Scoped ESLint for all changed TypeScript and TSX files
 - `bun run build` — client and SSR builds passed
 - `git diff --check`
+
+## Pull request review fixes
+
+- Prevented delayed project-indexing jobs from moving a completed source back
+  from `ready` to `indexing`.
+- Restored saved-memory enablement and legacy-memory management in the
+  Personalization center.
+- Included legacy keys in shadow-mode forget extraction while preserving
+  provider-neutral v2 capture.
+- Prevented read-only chats from contributing history summaries while retaining
+  the standard default for pre-migration chats.
+- Continued conversation-reference cleanup in bounded batches and staged the
+  new user-retention index for a non-blocking production backfill.
 
 The build continues to report the pre-existing TanStack Router warning for
 `src/routes/chat-sidebar.test.tsx`; the file is excluded from the route tree and

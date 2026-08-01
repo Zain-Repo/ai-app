@@ -49,7 +49,12 @@ export const processCapture = internalAction({
       const captureStorage = getMemoryCaptureStoragePlan(rolloutMode)
       const context = await ctx.runQuery(
         internal.memoryCapture.getProcessingContext,
-        { ...args, useLegacy: !captureStorage.writeV2 }
+        {
+          ...args,
+          useLegacy: !captureStorage.writeV2,
+          includeLegacyExistingKeys:
+            captureStorage.writeV2 && captureStorage.writeLegacy,
+        }
       )
       if (!context) {
         await ctx.runMutation(internal.memoryJobs.fail, {

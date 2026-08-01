@@ -140,7 +140,11 @@ const processingContextValidator = v.union(
 )
 
 export const getProcessingContext = internalQuery({
-  args: { jobId: v.id("memoryJobs"), useLegacy: v.optional(v.boolean()) },
+  args: {
+    jobId: v.id("memoryJobs"),
+    useLegacy: v.optional(v.boolean()),
+    includeLegacyExistingKeys: v.optional(v.boolean()),
+  },
   returns: processingContextValidator,
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId)
@@ -164,7 +168,7 @@ export const getProcessingContext = internalQuery({
     if (
       !source ||
       !(source.owner.memoryEnabled ?? false) ||
-      source.conversation.memoryMode !== "standard" ||
+      (source.conversation.memoryMode ?? "standard") !== "standard" ||
       !profile ||
       profile.ownerId !== job.ownerId ||
       profile.policyRevision !== job.profileRevision ||
@@ -212,6 +216,34 @@ export const getProcessingContext = internalQuery({
               .take(100)
       )
     )
+    const legacyExisting =
+      !args.useLegacy && args.includeLegacyExistingKeys
+        ? await Promise.all(
+            allowedScopeKeys.map(async (scopeKey) =>
+              await ctx.db
+                .query("memories")
+                .withIndex("by_owner_id_and_scope_key_and_key", (q) =>
+                  q.eq("ownerId", job.ownerId).eq("scopeKey", scopeKey)
+                )
+                .take(100)
+            )
+          )
+        : []
+    const existingKeys = existing
+      .flat()
+      .concat(legacyExisting.flat())
+      .filter(
+        (item) =>
+          "key" in item ||
+          ("confirmation" in item && item.confirmation === "confirmed")
+      )
+      .map((item) => ({
+        key: "key" in item ? item.key : item.canonicalKey,
+        scope: item.scope,
+      }))
+    const uniqueExistingKeys = Array.from(
+      new Map(existingKeys.map((item) => [`${item.scope}:${item.key}`, item])).values()
+    ).slice(0, 100)
     return {
       ciphertext: credential.ciphertext,
       iv: credential.iv,
@@ -230,18 +262,7 @@ export const getProcessingContext = internalQuery({
       memoryRevision: source.owner.memoryRevision ?? 0,
       ...(project ? { projectId: project._id } : {}),
       sourceMessageCreatedAt: source.message._creationTime,
-      existingKeys: existing
-        .flat()
-        .filter(
-          (item) =>
-            args.useLegacy ||
-            ("confirmation" in item && item.confirmation === "confirmed")
-        )
-        .slice(0, 100)
-        .map((item) => ({
-          key: "key" in item ? item.key : item.canonicalKey,
-          scope: item.scope,
-        })),
+      existingKeys: uniqueExistingKeys,
     }
   },
 })

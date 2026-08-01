@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "convex/react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
 
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type Props = {
@@ -85,6 +86,7 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
   const connections = useQuery(api.providerConnections.listMine)
   const saved = useQuery(api.users.getPreferences)
   const updatePreferences = useMutation(api.users.updatePreferences)
+  const setMemoryEnabled = useMutation(api.memories.setEnabled)
   const setHistoryEnabled = useMutation(api.memories.setHistoryEnabled)
   const create = useMutation(api.memories.create)
   const update = useMutation(api.memories.update)
@@ -99,6 +101,10 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
   const [query, setQuery] = useState("")
   const [draft, setDraft] = useState({ content: "", key: "" })
   const [editing, setEditing] = useState<string | null>(null)
+  const [editingLegacy, setEditingLegacy] = useState<Id<"memories"> | null>(
+    null
+  )
+  const legacyEditCancelled = useRef(false)
   const [notice, setNotice] = useState("")
   const [busy, setBusy] = useState(false)
   const [removedId, setRemovedId] = useState<Id<"memoryItems"> | null>(null)
@@ -116,6 +122,16 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
           .includes(query.toLowerCase())
       ),
     [personalization?.items, query]
+  )
+
+  const legacyMemories = useMemo(
+    () =>
+      (personalization?.legacyMemories ?? []).filter((memory) =>
+        `${memory.key} ${memory.content} ${memory.scope}`
+          .toLowerCase()
+          .includes(query.toLowerCase())
+      ),
+    [personalization?.legacyMemories, query]
   )
 
   function report(text: string) {
@@ -150,6 +166,18 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
       report("Memory saved")
     } catch {
       report("Could not save memory")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setSavedMemoryEnabled(enabled: boolean) {
+    setBusy(true)
+    try {
+      await setMemoryEnabled({ enabled })
+      report(enabled ? "Saved memory enabled" : "Saved memory disabled")
+    } catch {
+      report("Could not update saved memory")
     } finally {
       setBusy(false)
     }
@@ -340,6 +368,39 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                   value={query}
                 />
               </div>
+              <div className="mt-4 flex items-center justify-between gap-6 rounded-lg border p-3">
+                <div className="min-w-0">
+                  <span
+                    className="text-sm font-medium"
+                    id="saved-memory-enabled-label"
+                  >
+                    Save and use memories
+                  </span>
+                  <p
+                    className="mt-1 text-xs text-muted-foreground"
+                    id="saved-memory-enabled-description"
+                  >
+                    Allow durable details from chats to be saved and used in
+                    future responses.
+                  </p>
+                </div>
+                <Switch
+                  aria-describedby="saved-memory-enabled-description"
+                  aria-labelledby="saved-memory-enabled-label"
+                  checked={personalization?.savedMemoryEnabled ?? false}
+                  disabled={!personalization || busy}
+                  id="saved-memory-enabled"
+                  onCheckedChange={(checked) =>
+                    void setSavedMemoryEnabled(checked)
+                  }
+                />
+              </div>
+              {!personalization?.savedMemoryEnabled ? (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Saved memory is off. You can still review or remove legacy
+                  memories while migration is in progress.
+                </p>
+              ) : null}
               <div className="mt-4 grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_2fr_auto]">
                 <Input
                   aria-label="Memory key"
@@ -375,7 +436,12 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                   personal information.
                 </label>
                 <Button
-                  disabled={busy || !draft.key || !draft.content}
+                  disabled={
+                    busy ||
+                    !personalization?.savedMemoryEnabled ||
+                    !draft.key ||
+                    !draft.content
+                  }
                   onClick={() => void addMemory()}
                 >
                   Add
@@ -487,6 +553,106 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                   </li>
                 ))}
               </ul>
+              {legacyMemories.length > 0 ? (
+                <section
+                  aria-labelledby="legacy-memories-heading"
+                  className="mt-6 border-t pt-4"
+                >
+                  <h3
+                    className="text-sm font-medium"
+                    id="legacy-memories-heading"
+                  >
+                    Legacy memories
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    These existing memories can still affect responses during
+                    the migration. Edit or delete them here.
+                  </p>
+                  <ul aria-label="Legacy memories" className="mt-3 space-y-2">
+                    {legacyMemories.map((memory) => (
+                      <li className="rounded-lg border p-3" key={memory._id}>
+                        <div className="flex gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium">{memory.key}</p>
+                            {editingLegacy === memory._id ? (
+                              <Input
+                                aria-label={`Edit legacy memory ${memory.key}`}
+                                autoFocus
+                                defaultValue={memory.content}
+                                onBlur={(event) => {
+                                  if (legacyEditCancelled.current) {
+                                    legacyEditCancelled.current = false
+                                    return
+                                  }
+                                  const content = event.target.value.trim()
+                                  setEditingLegacy(null)
+                                  if (!content) {
+                                    report("Memory content cannot be empty")
+                                    return
+                                  }
+                                  if (content === memory.content) return
+                                  void update({
+                                    content,
+                                    memoryId: memory._id,
+                                  })
+                                    .then(() => report("Legacy memory updated"))
+                                    .catch(() =>
+                                      report("Could not update legacy memory")
+                                    )
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") {
+                                    legacyEditCancelled.current = true
+                                    setEditingLegacy(null)
+                                    event.currentTarget.blur()
+                                  }
+                                  if (event.key === "Enter")
+                                    event.currentTarget.blur()
+                                }}
+                              />
+                            ) : (
+                              <p className="mt-1 text-sm">{memory.content}</p>
+                            )}
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {memory.scope} · Last changed{" "}
+                              {formatMemoryDate(memory.updatedAt)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              aria-label={`Edit legacy memory ${memory.key}`}
+                              disabled={busy}
+                              onClick={() => {
+                                legacyEditCancelled.current = false
+                                setEditingLegacy(memory._id)
+                              }}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              aria-label={`Delete legacy memory ${memory.key}`}
+                              disabled={busy}
+                              onClick={() =>
+                                void remove({ memoryId: memory._id })
+                                  .then(() => report("Legacy memory removed"))
+                                  .catch(() =>
+                                    report("Could not remove legacy memory")
+                                  )
+                              }
+                              size="sm"
+                              variant="destructive"
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
               {removedId ? (
                 <Button
                   className="mt-3"

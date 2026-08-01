@@ -28,7 +28,7 @@ export const enqueueBackfill = internalMutation({
     for (const conversation of conversations) {
       if (
         conversation.updatedAt < args.now - HISTORY_WINDOW_MS ||
-        conversation.memoryMode === "off"
+        (conversation.memoryMode ?? "standard") !== "standard"
       ) {
         continue
       }
@@ -106,7 +106,7 @@ export const getHistoryProcessingContext = internalQuery({
       job.historyRevision !== (owner.memoryHistoryRevision ?? 0) ||
       !conversation ||
       conversation.ownerId !== job.ownerId ||
-      conversation.memoryMode === "off" ||
+      (conversation.memoryMode ?? "standard") !== "standard" ||
       !profile ||
       profile.ownerId !== job.ownerId ||
       profile.status !== "active" ||
@@ -165,7 +165,7 @@ export const applySummary = internalMutation({
       !owner?.memoryHistoryEnabled ||
       !conversation ||
       conversation.ownerId !== args.ownerId ||
-      conversation.memoryMode === "off"
+      (conversation.memoryMode ?? "standard") !== "standard"
     ) {
       return false
     }

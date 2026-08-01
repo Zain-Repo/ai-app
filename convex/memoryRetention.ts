@@ -128,7 +128,6 @@ export const run = internalMutation({
       .unique()
     const ownerPage = await ctx.db
       .query("users")
-      .withIndex("by_last_seen_at", (q) => q)
       .paginate({
         cursor: sweep?.cursor ?? null,
         numItems: OWNER_SWEEP_BATCH,
@@ -309,6 +308,12 @@ export const eraseConversationMemoryArtifacts = internalMutation({
     if (summary?.ownerId === args.ownerId) await ctx.db.delete(summary._id)
     for (const reference of references)
       if (reference.ownerId === args.ownerId) await ctx.db.delete(reference._id)
+    if (references.length === MAX_RETENTION_BATCH)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.memoryRetention.eraseConversationMemoryArtifacts,
+        args
+      )
     return null
   },
 })

@@ -13,6 +13,7 @@ const calls = vi.hoisted(() => ({
   create: vi.fn(),
   remove: vi.fn(),
   retryProcessing: vi.fn(),
+  setEnabled: vi.fn(),
   setHistory: vi.fn(),
   setPinned: vi.fn(),
   setProfile: vi.fn(),
@@ -22,6 +23,7 @@ const calls = vi.hoisted(() => ({
 }))
 
 const memoryId = "memory-1" as never
+const legacyMemoryId = "legacy-memory-1" as never
 const connectionId = "connection-1" as never
 const preferencesFixture = {
   defaultModel: "gpt-5",
@@ -61,7 +63,15 @@ const personalizationFixture = {
       status: "needs_review" as const,
     },
   ],
-  legacyMemories: [],
+  legacyMemories: [
+    {
+      _id: legacyMemoryId,
+      content: "Keep project examples concise",
+      key: "preferences.examples",
+      scope: "user" as const,
+      updatedAt: Date.UTC(2026, 0, 6),
+    },
+  ],
   pendingJobs: 2,
   processing: null,
   savedMemoryEnabled: true,
@@ -80,6 +90,8 @@ vi.mock("convex/react", () => ({
         return calls.remove
       case "memories:retryProcessing":
         return calls.retryProcessing
+      case "memories:setEnabled":
+        return calls.setEnabled
       case "memories:setHistoryEnabled":
         return calls.setHistory
       case "memories:setPinned":
@@ -117,6 +129,7 @@ vi.mock("convex/react", () => ({
 beforeEach(() => {
   for (const call of Object.values(calls))
     if (typeof call === "function") call.mockReset().mockResolvedValue(null)
+  personalizationFixture.savedMemoryEnabled = true
   vi.spyOn(window, "confirm").mockReturnValue(true)
 })
 
@@ -140,6 +153,9 @@ describe("PersonalizationCenter", () => {
     )
 
     fireEvent.click(screen.getByRole("tab", { name: "Saved memory" }))
+    expect(
+      screen.getByRole("switch", { name: "Save and use memories" })
+    ).toHaveProperty("ariaChecked", "true")
     const provenance = screen.getByLabelText(
       "Memory provenance for preferences.style"
     ).textContent
@@ -194,6 +210,35 @@ describe("PersonalizationCenter", () => {
     await waitFor(() =>
       expect(calls.undo).toHaveBeenCalledWith({ memoryItemId: memoryId })
     )
+    expect(
+      screen.getByRole("heading", { name: "Legacy memories" })
+    ).toBeTruthy()
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Edit legacy memory preferences.examples",
+      })
+    )
+    const legacyEditor = screen.getByRole("textbox", {
+      name: "Edit legacy memory preferences.examples",
+    })
+    fireEvent.change(legacyEditor, {
+      target: { value: "Keep examples short" },
+    })
+    fireEvent.blur(legacyEditor)
+    await waitFor(() =>
+      expect(calls.update).toHaveBeenCalledWith({
+        content: "Keep examples short",
+        memoryId: legacyMemoryId,
+      })
+    )
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Delete legacy memory preferences.examples",
+      })
+    )
+    await waitFor(() =>
+      expect(calls.remove).toHaveBeenCalledWith({ memoryId: legacyMemoryId })
+    )
 
     fireEvent.click(screen.getByRole("tab", { name: "History" }))
     fireEvent.click(screen.getByRole("checkbox", { name: /Use chat history/ }))
@@ -219,5 +264,33 @@ describe("PersonalizationCenter", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }))
     await waitFor(() => expect(calls.retryProcessing).toHaveBeenCalledWith({}))
+  })
+
+  it("lets an opted-out user enable saved memory while keeping legacy rows manageable", async () => {
+    personalizationFixture.savedMemoryEnabled = false
+    render(
+      <PersonalizationCenter
+        models={[{ label: "GPT 5", value: "gpt-5" }]}
+        onOpenChange={vi.fn()}
+        open
+      />
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "Saved memory" }))
+    const savedMemorySwitch = screen.getByRole("switch", {
+      name: "Save and use memories",
+    })
+    expect(savedMemorySwitch).toHaveProperty("ariaChecked", "false")
+    expect(
+      screen.getByText(/Saved memory is off\. You can still review/i)
+    ).toBeTruthy()
+    expect(
+      screen.getByText("Keep project examples concise")
+    ).toBeTruthy()
+
+    fireEvent.click(savedMemorySwitch)
+    await waitFor(() =>
+      expect(calls.setEnabled).toHaveBeenCalledWith({ enabled: true })
+    )
   })
 })
