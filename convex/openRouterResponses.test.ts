@@ -395,7 +395,7 @@ describe("AI SDK provider bridge", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: [{ b64_json: "aW1hZ2U=", media_type: "image/png" }],
+          data: [{ b64_json: "aW1hZ2U=" }],
         })
       )
     )
