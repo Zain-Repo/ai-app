@@ -18,6 +18,8 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      windows_release_ready: ${{ steps.windows-release.outputs.ready }}
 
     steps:
       - name: Check out repository
@@ -46,10 +48,34 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Check whether Windows release is ready
+        id: windows-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $packageVersion = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $tag = "v$packageVersion"
+          $isDraft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq '.isDraft' 2>$null
+
+          if ($LASTEXITCODE -eq 0) {
+            $ready = $isDraft.Trim() -eq "true"
+          } else {
+            gh repo view $env:GITHUB_REPOSITORY --json nameWithOwner | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not verify the target GitHub repository."
+            }
+            $ready = $true
+          }
+
+          "Windows release $tag ready: $ready"
+          "ready=$($ready.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
   release-windows:
     name: Release Windows desktop app
     needs: validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.validate.outputs.windows_release_ready == 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
