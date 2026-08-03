@@ -173,6 +173,14 @@ function getProviderRouting(model: string, routingProvider?: string) {
   return model.startsWith("deepseek/") ? DEEPSEEK_PROVIDER_ROUTING : undefined
 }
 
+function getImageProviderRouting(routingProvider?: string) {
+  if (routingProvider === "auto")
+    return { sort: "price", allow_fallbacks: true } as const
+  if (routingProvider)
+    return { order: [routingProvider], allow_fallbacks: false } as const
+  return undefined
+}
+
 class OpenRouterImageError extends Error {
   constructor(readonly statusCode: number) {
     super("OpenRouter image generation failed")
@@ -231,7 +239,7 @@ export async function generateOpenRouterImage(
           ]
         : []
   )
-  const provider = getProviderRouting(options.model, options.routingProvider)
+  const provider = getImageProviderRouting(options.routingProvider)
   const response = await fetch(OPENROUTER_IMAGES_URL, {
     method: "POST",
     headers: {
