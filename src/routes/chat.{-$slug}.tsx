@@ -1914,7 +1914,7 @@ function ChatWorkspace() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="chat-workspace-stage">
-        <header className="chat-workspace-header flex items-center gap-3 border-b px-3 sm:px-4">
+        <header className="chat-workspace-header flex shrink-0 items-center gap-3 border-b px-3 sm:px-4">
           <SidebarTrigger />
           <div className="min-w-0">
             {selectedProject && search.mode !== "project" ? (
@@ -2783,7 +2783,7 @@ function MessageArea({
   if (messages.length === 0)
     return (
       <Empty className="chat-empty-state border-0">
-        <EmptyHeader>
+        <EmptyHeader className="gap-3">
           <EmptyMedia
             className="bg-primary/10 text-primary ring-1 ring-primary/15"
             variant="icon"
@@ -2794,10 +2794,10 @@ function MessageArea({
               strokeWidth={1.8}
             />
           </EmptyMedia>
-          <EmptyTitle>
+          <EmptyTitle className="text-wrap-balance">
             {name ? `Welcome back, ${name}.` : "Welcome back."}
           </EmptyTitle>
-          <EmptyDescription>
+          <EmptyDescription className="max-w-xs text-wrap-pretty">
             Choose a model, then describe the outcome you want. You can attach
             files from the composer when context matters.
           </EmptyDescription>
@@ -2808,7 +2808,7 @@ function MessageArea({
     <MessageScrollerProvider>
       <MessageScroller>
         <MessageScrollerViewport>
-          <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+          <MessageScrollerContent className="chat-message-stream mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
             <MessageGroup className="gap-6 sm:gap-8">
               {messages.map((message) => {
                 const isUser = message.role === "user"
@@ -2828,10 +2828,7 @@ function MessageArea({
                     )
                   : message.attachments
                 return (
-                  <MessageScrollerItem
-                    className="chat-message-enter"
-                    key={message._id}
-                  >
+                  <MessageScrollerItem key={message._id}>
                     <Message align={isUser ? "end" : "start"}>
                       <MessageContent>
                         <Bubble
@@ -2844,7 +2841,7 @@ function MessageArea({
                                 ? getUserMessageBubbleColorClassName(
                                     userMessageBubbleColor
                                   )
-                                : "w-full"
+                                : "w-full max-w-2xl"
                             }
                           >
                             {!isUser && message.terminalRuns?.length ? (
@@ -2911,7 +2908,7 @@ function MessageArea({
                                   >
                                     <img
                                       alt="AI-generated image"
-                                      className="max-h-[32rem] w-full object-contain"
+                                      className="max-h-[32rem] w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
                                       loading="lazy"
                                       src={generatedImage.url}
                                     />
