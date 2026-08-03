@@ -27,7 +27,7 @@ import {
   Plug,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { Component, lazy, Suspense, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import {
   Authenticated,
@@ -77,6 +77,13 @@ import {
 } from "@/components/ui/attachment"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -531,6 +538,23 @@ function ChatErrorState() {
       </div>
     </main>
   )
+}
+
+export class OptionalChatFeatureBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    return this.state.failed
+      ? (this.props.fallback ?? null)
+      : this.props.children
+  }
 }
 
 function ChatPage() {
@@ -1931,11 +1955,29 @@ function ChatWorkspace() {
             onOpenArchivedChats={() => setArchivedOpen(true)}
             onOpenPersonalization={() => setPersonalizationOpen(true)}
           />
-          <PersonalizationCenter
-            models={currentCatalog}
-            onOpenChange={setPersonalizationOpen}
-            open={personalizationOpen}
-          />
+          {personalizationOpen ? (
+            <OptionalChatFeatureBoundary
+              fallback={
+                <Dialog open onOpenChange={setPersonalizationOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Personalization unavailable</DialogTitle>
+                      <DialogDescription>
+                        Close this window and try again after the app finishes
+                        updating.
+                      </DialogDescription>
+                    </DialogHeader>
+                  </DialogContent>
+                </Dialog>
+              }
+            >
+              <PersonalizationCenter
+                models={currentCatalog}
+                onOpenChange={setPersonalizationOpen}
+                open
+              />
+            </OptionalChatFeatureBoundary>
+          ) : null}
           <ArchivedChatsDialog
             onOpenChange={setArchivedOpen}
             onOpenChat={(conversation) =>
@@ -3065,12 +3107,14 @@ function MessageArea({
                               </div>
                             )}
                             {!isUser && message.status === "complete" ? (
-                              <MemoryUsed
-                                onManageMemory={onManageMemory}
-                                sources={responseSourcesByMessageId.get(
-                                  message._id
-                                )}
-                              />
+                              <OptionalChatFeatureBoundary>
+                                <MemoryUsed
+                                  onManageMemory={onManageMemory}
+                                  sources={responseSourcesByMessageId.get(
+                                    message._id
+                                  )}
+                                />
+                              </OptionalChatFeatureBoundary>
                             ) : null}
                             {remainingAttachments.length ? (
                               <AttachmentGroup className="mt-2 max-w-full">

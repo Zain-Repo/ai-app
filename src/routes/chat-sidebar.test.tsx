@@ -12,6 +12,7 @@ import {
   getExecutionProviderOptions,
   getPreferredProvider,
   isActiveProvider,
+  OptionalChatFeatureBoundary,
   ProjectConversationDisclosure,
   resolveActiveProjectId,
   toggleExpandedProject,
@@ -30,6 +31,28 @@ beforeEach(() => {
 })
 
 afterEach(cleanup)
+
+describe("optional chat features", () => {
+  it("contains a failed optional feature without replacing chat", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const FailedFeature = () => {
+      throw new Error("Backend function unavailable")
+    }
+
+    try {
+      const view = render(
+        <OptionalChatFeatureBoundary
+          fallback={<span>Feature unavailable</span>}
+        >
+          <FailedFeature />
+        </OptionalChatFeatureBoundary>
+      )
+      expect(view.getByText("Feature unavailable")).toBeTruthy()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+})
 
 describe("project sidebar disclosure", () => {
   it("collapses the open project and expands a different project", () => {
