@@ -2477,7 +2477,7 @@ function ChatWorkspace() {
                   catalogState !== "ready" ||
                   providerModels.length === 0
                 }
-                conversationId={conversationId as Id<"conversations"> | undefined}
+                conversationId={selected?._id}
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
                 onManageMemory={() => setPersonalizationOpen(true)}
