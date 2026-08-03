@@ -301,6 +301,37 @@ export function ProjectConversationDisclosure({
   )
 }
 
+const SIDEBAR_CONVERSATION_LIMIT = 10
+
+export function CappedConversationList({
+  conversations,
+  renderConversation,
+}: {
+  conversations: Doc<"conversations">[]
+  renderConversation: (conversation: Doc<"conversations">) => ReactNode
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visibleConversations = expanded
+    ? conversations
+    : conversations.slice(0, SIDEBAR_CONVERSATION_LIMIT)
+
+  return (
+    <>
+      {visibleConversations.map(renderConversation)}
+      {!expanded && conversations.length > SIDEBAR_CONVERSATION_LIMIT ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="justify-center rounded-xl text-xs font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground"
+            render={<button onClick={() => setExpanded(true)} type="button" />}
+          >
+            Show more
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
+    </>
+  )
+}
+
 function SidebarVoiceButton({ onActivate }: { onActivate: () => void }) {
   const { setOpenMobile } = useSidebar()
 
@@ -1788,9 +1819,10 @@ function ChatWorkspace() {
                                     : "No chats in this project yet"}
                                 </p>
                               ) : (
-                                filteredProjectConversations.map(
-                                  renderConversation
-                                )
+                                <CappedConversationList
+                                  conversations={filteredProjectConversations}
+                                  renderConversation={renderConversation}
+                                />
                               )}
                             </SidebarMenu>
                           ) : null}
@@ -1825,7 +1857,10 @@ function ChatWorkspace() {
                       : "No chats outside projects yet"}
                   </p>
                 ) : (
-                  filteredRecentConversations.map(renderConversation)
+                  <CappedConversationList
+                    conversations={filteredRecentConversations}
+                    renderConversation={renderConversation}
+                  />
                 )}
               </SidebarMenu>
             </SidebarGroupContent>

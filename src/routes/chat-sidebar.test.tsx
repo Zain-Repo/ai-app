@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react"
+import { cleanup, fireEvent, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { Doc } from "../../convex/_generated/dataModel"
+import { SidebarProvider } from "@/components/ui/sidebar"
 
 import {
+  CappedConversationList,
   getConnectedProviderOptions,
   getCurrentCatalogModels,
   getExecutionProviderOptions,
@@ -50,6 +53,33 @@ describe("project sidebar disclosure", () => {
     )
 
     expect(view.getByText("Design system chat")).toBe(title)
+  })
+})
+
+describe("sidebar conversation list", () => {
+  it("shows ten chats before revealing the rest", () => {
+    const conversations = Array.from({ length: 11 }, (_, index) => ({
+      _id: `chat-${index}`,
+      title: `Chat ${index + 1}`,
+    })) as unknown as Doc<"conversations">[]
+    const view = render(
+      <SidebarProvider>
+        <CappedConversationList
+          conversations={conversations}
+          renderConversation={(conversation) => (
+            <span key={conversation._id}>{conversation.title}</span>
+          )}
+        />
+      </SidebarProvider>
+    )
+
+    expect(view.getByText("Chat 10")).toBeTruthy()
+    expect(view.queryByText("Chat 11")).toBeNull()
+
+    fireEvent.click(view.getByRole("button", { name: "Show more" }))
+
+    expect(view.getByText("Chat 11")).toBeTruthy()
+    expect(view.queryByRole("button", { name: "Show more" })).toBeNull()
   })
 })
 
