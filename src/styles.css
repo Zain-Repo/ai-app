@@ -208,17 +208,6 @@
       }
     }
 
-    @keyframes chat-message-enter {
-      from {
-        opacity: 0;
-        transform: translateY(6px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
     @keyframes attachment-shimmer {
       from { background-position: 200% 0; }
       to { background-position: -200% 0; }
@@ -298,10 +287,6 @@
     animation: app-surface-enter 480ms var(--ease-interface) 60ms both;
   }
 
-  .chat-message-enter {
-    animation: chat-message-enter 320ms var(--ease-interface) both;
-  }
-
   .chat-workspace-shell {
     background:
       radial-gradient(
@@ -325,6 +310,8 @@
     min-height: 3.5rem;
     background: color-mix(in oklch, var(--background) 86%, transparent);
     backdrop-filter: blur(16px) saturate(145%);
+    border-color: color-mix(in oklch, var(--border) 82%, transparent);
+    box-shadow: 0 1px 0 color-mix(in oklch, var(--foreground) 3%, transparent);
   }
 
   .chat-workspace-sidebar [data-sidebar="menu-button"] {
@@ -355,6 +342,7 @@
 
   .chat-composer-dock {
     border-top: 1px solid color-mix(in oklch, var(--border) 75%, transparent);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     background: linear-gradient(
       to top,
       var(--background) 62%,
@@ -372,10 +360,20 @@
   .chat-empty-state {
     min-height: min(28rem, 60vh);
     padding-inline: 1.5rem;
+    background: radial-gradient(
+      circle at 50% 42%,
+      color-mix(in oklch, var(--primary) 6%, transparent),
+      transparent 16rem
+    );
   }
 
   .chat-status {
     min-height: min(18rem, 45vh);
+    padding-inline: 1.5rem;
+  }
+
+  .chat-message-stream {
+    padding-bottom: 0.5rem;
   }
 
   @media (max-width: 40rem) {
@@ -830,8 +828,7 @@
 @media (prefers-reduced-motion: reduce) {
   .app-view,
   .app-auth-surface,
-  .app-callback-surface,
-  .chat-message-enter {
+  .app-callback-surface {
     animation: none;
   }
 

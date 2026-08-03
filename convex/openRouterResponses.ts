@@ -190,7 +190,7 @@ export function parseOpenRouterImageResponse(value: unknown) {
       : null
   const base64 = image?.b64_json
   const contentType =
-    typeof image?.media_type === "string" ? image.media_type : "image/webp"
+    typeof image?.media_type === "string" ? image.media_type : "image/png"
   const extension = GENERATED_IMAGE_EXTENSIONS.get(contentType)
   if (
     typeof base64 !== "string" ||
@@ -208,7 +208,7 @@ export function parseOpenRouterImageResponse(value: unknown) {
   return { bytes, contentType, extension }
 }
 
-async function generateOpenRouterImage(
+export async function generateOpenRouterImage(
   token: string,
   options: {
     messages: ProviderMessage[]
@@ -241,9 +241,6 @@ async function generateOpenRouterImage(
     body: JSON.stringify({
       model: options.model,
       prompt: options.prompt,
-      n: 1,
-      size: "1K",
-      output_format: "webp",
       ...(inputReferences.length ? { input_references: inputReferences } : {}),
       ...(provider ? { provider } : {}),
     }),
