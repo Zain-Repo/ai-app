@@ -2477,6 +2477,7 @@ function ChatWorkspace() {
                   catalogState !== "ready" ||
                   providerModels.length === 0
                 }
+                conversationId={conversationId as Id<"conversations"> | undefined}
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
                 onManageMemory={() => setPersonalizationOpen(true)}
@@ -2765,6 +2766,7 @@ function ProjectWorkspace({
 
 function MessageArea({
   actionsDisabled,
+  conversationId,
   messages,
   name,
   onAction,
@@ -2772,12 +2774,27 @@ function MessageArea({
   userMessageBubbleColor,
 }: {
   actionsDisabled: boolean
+  conversationId: Id<"conversations"> | undefined
   messages: ChatMessage[] | undefined
   name: string | null | undefined
   onAction: (value: string) => void
   onManageMemory: () => void
   userMessageBubbleColor: UserMessageBubbleColor | undefined
 }) {
+  const conversationResponseSources = useQuery(
+    api.memories.listConversationResponseSources,
+    conversationId ? { conversationId } : "skip"
+  )
+  const responseSourcesByMessageId = useMemo(
+    () =>
+      new Map(
+        (conversationResponseSources ?? []).map(
+          ({ responseMessageId, sources }) => [responseMessageId, sources]
+        )
+      ),
+    [conversationResponseSources]
+  )
+
   if (messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
   if (messages.length === 0)
@@ -3015,7 +3032,9 @@ function MessageArea({
                             {!isUser && message.status === "complete" ? (
                               <MemoryUsed
                                 onManageMemory={onManageMemory}
-                                responseMessageId={message._id}
+                                sources={responseSourcesByMessageId.get(
+                                  message._id
+                                )}
                               />
                             ) : null}
                             {remainingAttachments.length ? (
@@ -3078,14 +3097,16 @@ function MessageArea({
 
 function MemoryUsed({
   onManageMemory,
-  responseMessageId,
+  sources,
 }: {
   onManageMemory: () => void
-  responseMessageId: Id<"messages">
+  sources:
+    | Array<{
+        memoryItemId?: Id<"memoryItems">
+        referenceId: Id<"responseMemoryReferences">
+      }>
+    | undefined
 }) {
-  const sources = useQuery(api.memories.listResponseSources, {
-    responseMessageId,
-  })
   const feedback = useMutation(api.memories.submitFeedback)
   const [open, setOpen] = useState(false)
   if (!sources?.length) return null
