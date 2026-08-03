@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest"
 
 import {
   desktopEntryUrl,
-  isDesktopAuthCallback,
   isAllowedDesktopAuthNavigation,
   isAllowedDesktopNavigation,
 } from "./desktop-navigation"
@@ -71,20 +70,23 @@ describe("desktop navigation", () => {
     expect(isAllowedDesktopAuthNavigation("not a url")).toBe(false)
   })
 
-  it("recognizes the Clerk callback page as the desktop auth handoff", () => {
+  it("keeps Clerk callbacks inside the auth window until Clerk returns to the app", () => {
     expect(
-      isDesktopAuthCallback(
+      isAllowedDesktopAuthNavigation(
         "https://clerk.a2zsoftware.ca/v1/oauth_callback?status=complete"
       )
     ).toBe(true)
     expect(
-      isDesktopAuthCallback("https://accounts.a2zsoftware.ca/oauth_callback")
+      isAllowedDesktopNavigation(
+        "https://clerk.a2zsoftware.ca/v1/oauth_callback?status=complete",
+        "https://app.a2zsoftware.ca"
+      )
+    ).toBe(false)
+    expect(
+      isAllowedDesktopNavigation(
+        "https://app.a2zsoftware.ca/chat",
+        "https://app.a2zsoftware.ca"
+      )
     ).toBe(true)
-    expect(isDesktopAuthCallback("https://clerk.a2zsoftware.ca/sign-in")).toBe(
-      false
-    )
-    expect(isDesktopAuthCallback("https://github.com/oauth_callback")).toBe(
-      false
-    )
   })
 })

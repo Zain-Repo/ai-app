@@ -11,7 +11,6 @@ import {
 import { CursorCli } from "./cursor-cli"
 import {
   desktopEntryUrl,
-  isDesktopAuthCallback,
   isAllowedDesktopAuthNavigation,
   isAllowedDesktopNavigation,
 } from "./desktop-navigation"
@@ -156,9 +155,7 @@ function openDesktopAuthWindow(
   authWindow = window
   let authenticationCompleted = false
 
-  const completeAuthentication = (
-    callbackUrl = desktopEntryUrl(new URL(rendererOrigin)).toString()
-  ) => {
+  const completeAuthentication = (callbackUrl: string) => {
     if (authenticationCompleted) return
     authenticationCompleted = true
     void parent.loadURL(callbackUrl)
@@ -172,11 +169,6 @@ function openDesktopAuthWindow(
     if (isAllowedDesktopNavigation(navigationTarget, rendererOrigin)) {
       event.preventDefault()
       completeAuthentication(navigationTarget)
-      return
-    }
-    if (isDesktopAuthCallback(navigationTarget)) {
-      event.preventDefault()
-      completeAuthentication()
       return
     }
     if (isAllowedDesktopAuthNavigation(navigationTarget)) return
@@ -196,7 +188,6 @@ function openDesktopAuthWindow(
   window.webContents.on("did-navigate", (_event, navigationTarget) => {
     if (isAllowedDesktopNavigation(navigationTarget, rendererOrigin))
       completeAuthentication(navigationTarget)
-    else if (isDesktopAuthCallback(navigationTarget)) completeAuthentication()
   })
   window.webContents.setWindowOpenHandler(({ url: navigationTarget }) => {
     if (
