@@ -2794,10 +2794,10 @@ function MessageArea({
               strokeWidth={1.8}
             />
           </EmptyMedia>
-          <EmptyTitle className="text-wrap-balance">
+          <EmptyTitle className="text-balance">
             {name ? `Welcome back, ${name}.` : "Welcome back."}
           </EmptyTitle>
-          <EmptyDescription className="max-w-xs text-wrap-pretty">
+          <EmptyDescription className="max-w-xs text-pretty">
             Choose a model, then describe the outcome you want. You can attach
             files from the composer when context matters.
           </EmptyDescription>
