@@ -27,7 +27,7 @@ import {
   Plug,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
-import { lazy, Suspense, useEffect, useMemo, useState } from "react"
+import { Component, lazy, Suspense, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import {
   Authenticated,
@@ -77,6 +77,13 @@ import {
 } from "@/components/ui/attachment"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -531,6 +538,23 @@ function ChatErrorState() {
       </div>
     </main>
   )
+}
+
+export class OptionalChatFeatureBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    return this.state.failed
+      ? (this.props.fallback ?? null)
+      : this.props.children
+  }
 }
 
 function ChatPage() {
@@ -1931,11 +1955,29 @@ function ChatWorkspace() {
             onOpenArchivedChats={() => setArchivedOpen(true)}
             onOpenPersonalization={() => setPersonalizationOpen(true)}
           />
-          <PersonalizationCenter
-            models={currentCatalog}
-            onOpenChange={setPersonalizationOpen}
-            open={personalizationOpen}
-          />
+          {personalizationOpen ? (
+            <OptionalChatFeatureBoundary
+              fallback={
+                <Dialog open onOpenChange={setPersonalizationOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Personalization unavailable</DialogTitle>
+                      <DialogDescription>
+                        Close this window and try again after the app finishes
+                        updating.
+                      </DialogDescription>
+                    </DialogHeader>
+                  </DialogContent>
+                </Dialog>
+              }
+            >
+              <PersonalizationCenter
+                models={currentCatalog}
+                onOpenChange={setPersonalizationOpen}
+                open
+              />
+            </OptionalChatFeatureBoundary>
+          ) : null}
           <ArchivedChatsDialog
             onOpenChange={setArchivedOpen}
             onOpenChat={(conversation) =>
@@ -2799,15 +2841,7 @@ function ProjectWorkspace({
   )
 }
 
-function MessageArea({
-  actionsDisabled,
-  conversationId,
-  messages,
-  name,
-  onAction,
-  onManageMemory,
-  userMessageBubbleColor,
-}: {
+type MessageAreaProps = {
   actionsDisabled: boolean
   conversationId: Id<"conversations"> | undefined
   messages: ChatMessage[] | undefined
@@ -2815,24 +2849,21 @@ function MessageArea({
   onAction: (value: string) => void
   onManageMemory: () => void
   userMessageBubbleColor: UserMessageBubbleColor | undefined
-}) {
-  const conversationResponseSources = useQuery(
-    api.memories.listConversationResponseSources,
-    conversationId ? { conversationId } : "skip"
-  )
-  const responseSourcesByMessageId = useMemo(
-    () =>
-      new Map(
-        (conversationResponseSources ?? []).map(
-          ({ responseMessageId, sources }) => [responseMessageId, sources]
-        )
-      ),
-    [conversationResponseSources]
-  )
+}
 
-  if (messages === undefined)
+type LoadedMessageAreaProps = Omit<MessageAreaProps, "messages"> & {
+  messages: ChatMessage[]
+}
+
+type ResponseMemorySource = {
+  memoryItemId?: Id<"memoryItems">
+  referenceId: Id<"responseMemoryReferences">
+}
+
+export function MessageArea(props: MessageAreaProps) {
+  if (props.messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
-  if (messages.length === 0)
+  if (props.messages.length === 0)
     return (
       <Empty className="chat-empty-state border-0">
         <EmptyHeader className="gap-3">
@@ -2847,7 +2878,7 @@ function MessageArea({
             />
           </EmptyMedia>
           <EmptyTitle className="text-balance">
-            {name ? `Welcome back, ${name}.` : "Welcome back."}
+            {props.name ? `Welcome back, ${props.name}.` : "Welcome back."}
           </EmptyTitle>
           <EmptyDescription className="max-w-xs text-pretty">
             Choose a model, then describe the outcome you want. You can attach
@@ -2856,6 +2887,54 @@ function MessageArea({
         </EmptyHeader>
       </Empty>
     )
+
+  const loadedProps = { ...props, messages: props.messages }
+  return (
+    <OptionalChatFeatureBoundary
+      fallback={<MessageAreaContent {...loadedProps} />}
+      key={props.conversationId}
+    >
+      <MessageAreaWithResponseSources {...loadedProps} />
+    </OptionalChatFeatureBoundary>
+  )
+}
+
+function MessageAreaWithResponseSources(props: LoadedMessageAreaProps) {
+  const conversationResponseSources = useQuery(
+    api.memories.listConversationResponseSources,
+    props.conversationId ? { conversationId: props.conversationId } : "skip"
+  )
+  const responseSourcesByMessageId = useMemo(
+    () =>
+      new Map(
+        (conversationResponseSources ?? []).map(
+          ({ responseMessageId, sources }) => [responseMessageId, sources]
+        )
+      ),
+    [conversationResponseSources]
+  )
+
+  return (
+    <MessageAreaContent
+      {...props}
+      responseSourcesByMessageId={responseSourcesByMessageId}
+    />
+  )
+}
+
+function MessageAreaContent({
+  actionsDisabled,
+  messages,
+  onAction,
+  onManageMemory,
+  responseSourcesByMessageId,
+  userMessageBubbleColor,
+}: LoadedMessageAreaProps & {
+  responseSourcesByMessageId?: ReadonlyMap<
+    Id<"messages">,
+    ResponseMemorySource[]
+  >
+}) {
   return (
     <MessageScrollerProvider>
       <MessageScroller>
@@ -3065,12 +3144,14 @@ function MessageArea({
                               </div>
                             )}
                             {!isUser && message.status === "complete" ? (
-                              <MemoryUsed
-                                onManageMemory={onManageMemory}
-                                sources={responseSourcesByMessageId.get(
-                                  message._id
-                                )}
-                              />
+                              <OptionalChatFeatureBoundary>
+                                <MemoryUsed
+                                  onManageMemory={onManageMemory}
+                                  sources={responseSourcesByMessageId?.get(
+                                    message._id
+                                  )}
+                                />
+                              </OptionalChatFeatureBoundary>
                             ) : null}
                             {remainingAttachments.length ? (
                               <AttachmentGroup className="mt-2 max-w-full">
@@ -3135,12 +3216,7 @@ function MemoryUsed({
   sources,
 }: {
   onManageMemory: () => void
-  sources:
-    | Array<{
-        memoryItemId?: Id<"memoryItems">
-        referenceId: Id<"responseMemoryReferences">
-      }>
-    | undefined
+  sources: ResponseMemorySource[] | undefined
 }) {
   const feedback = useMutation(api.memories.submitFeedback)
   const [open, setOpen] = useState(false)
