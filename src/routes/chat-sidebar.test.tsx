@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render } from "@testing-library/react"
+import type * as ConvexReact from "convex/react"
+import type { ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { Doc } from "../../convex/_generated/dataModel"
+import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { SidebarProvider } from "@/components/ui/sidebar"
-
 import {
   CappedConversationList,
   getConnectedProviderOptions,
@@ -12,13 +13,23 @@ import {
   getExecutionProviderOptions,
   getPreferredProvider,
   isActiveProvider,
+  MessageArea,
   OptionalChatFeatureBoundary,
   ProjectConversationDisclosure,
   resolveActiveProjectId,
   toggleExpandedProject,
 } from "./chat.{-$slug}"
 
+const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }))
+
+vi.mock("convex/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof ConvexReact>()),
+  useQuery: useQueryMock,
+}))
+
 beforeEach(() => {
+  useQueryMock.mockReset()
+  useQueryMock.mockReturnValue(undefined)
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -48,6 +59,40 @@ describe("optional chat features", () => {
         </OptionalChatFeatureBoundary>
       )
       expect(view.getByText("Feature unavailable")).toBeTruthy()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it("keeps messages visible when the response-source query fails", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const messages = [
+      {
+        _id: "message-1",
+        attachments: [],
+        content: "Chat remains available",
+        role: "user",
+        status: "complete",
+      },
+    ] as unknown as NonNullable<ComponentProps<typeof MessageArea>["messages"]>
+    useQueryMock.mockImplementationOnce(() => {
+      throw new Error("Backend function unavailable")
+    })
+
+    try {
+      const view = render(
+        <MessageArea
+          actionsDisabled={false}
+          conversationId={"conversation-1" as Id<"conversations">}
+          messages={messages}
+          name={null}
+          onAction={vi.fn()}
+          onManageMemory={vi.fn()}
+          userMessageBubbleColor={undefined}
+        />,
+        { onRecoverableError: () => {} }
+      )
+      expect(view.getByText("Chat remains available")).toBeTruthy()
     } finally {
       consoleError.mockRestore()
     }

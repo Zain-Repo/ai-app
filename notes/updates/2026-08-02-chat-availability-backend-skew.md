@@ -14,7 +14,9 @@ while its dialog was closed. That immediately called the newly added
 `memories.getPersonalization` Convex query. A frontend/backend deployment mismatch
 or backend failure escaped to the route error boundary and replaced the entire
 chat workspace. Completed assistant messages had the same risk through
-`memories.listResponseSources`.
+`memories.listConversationResponseSources`. The batched response-source query
+now runs beneath a local boundary whose fallback renders the same message stream
+without the optional memory badges.
 
 Convex history confirmed the mismatch: the authenticated renderer first
 received `Could not find public function for 'memories:getPersonalization'`.
@@ -29,8 +31,8 @@ successfully.
 
 ## Validation
 
-- Focused chat route tests: 10 passed.
-- Full Vitest suite: 47 files and 223 tests passed.
+- Focused chat route tests: 12 passed, including response-source query failure.
+- Full Vitest suite: 48 files and 227 tests passed.
 - TypeScript, scoped ESLint, scoped Prettier, production client/SSR build, and
   `git diff --check` passed.
 - Convex functions reached ready state on the existing cloud development

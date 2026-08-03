@@ -2841,15 +2841,7 @@ function ProjectWorkspace({
   )
 }
 
-function MessageArea({
-  actionsDisabled,
-  conversationId,
-  messages,
-  name,
-  onAction,
-  onManageMemory,
-  userMessageBubbleColor,
-}: {
+type MessageAreaProps = {
   actionsDisabled: boolean
   conversationId: Id<"conversations"> | undefined
   messages: ChatMessage[] | undefined
@@ -2857,24 +2849,21 @@ function MessageArea({
   onAction: (value: string) => void
   onManageMemory: () => void
   userMessageBubbleColor: UserMessageBubbleColor | undefined
-}) {
-  const conversationResponseSources = useQuery(
-    api.memories.listConversationResponseSources,
-    conversationId ? { conversationId } : "skip"
-  )
-  const responseSourcesByMessageId = useMemo(
-    () =>
-      new Map(
-        (conversationResponseSources ?? []).map(
-          ({ responseMessageId, sources }) => [responseMessageId, sources]
-        )
-      ),
-    [conversationResponseSources]
-  )
+}
 
-  if (messages === undefined)
+type LoadedMessageAreaProps = Omit<MessageAreaProps, "messages"> & {
+  messages: ChatMessage[]
+}
+
+type ResponseMemorySource = {
+  memoryItemId?: Id<"memoryItems">
+  referenceId: Id<"responseMemoryReferences">
+}
+
+export function MessageArea(props: MessageAreaProps) {
+  if (props.messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
-  if (messages.length === 0)
+  if (props.messages.length === 0)
     return (
       <Empty className="chat-empty-state border-0">
         <EmptyHeader className="gap-3">
@@ -2889,7 +2878,7 @@ function MessageArea({
             />
           </EmptyMedia>
           <EmptyTitle className="text-balance">
-            {name ? `Welcome back, ${name}.` : "Welcome back."}
+            {props.name ? `Welcome back, ${props.name}.` : "Welcome back."}
           </EmptyTitle>
           <EmptyDescription className="max-w-xs text-pretty">
             Choose a model, then describe the outcome you want. You can attach
@@ -2898,6 +2887,54 @@ function MessageArea({
         </EmptyHeader>
       </Empty>
     )
+
+  const loadedProps = { ...props, messages: props.messages }
+  return (
+    <OptionalChatFeatureBoundary
+      fallback={<MessageAreaContent {...loadedProps} />}
+      key={props.conversationId}
+    >
+      <MessageAreaWithResponseSources {...loadedProps} />
+    </OptionalChatFeatureBoundary>
+  )
+}
+
+function MessageAreaWithResponseSources(props: LoadedMessageAreaProps) {
+  const conversationResponseSources = useQuery(
+    api.memories.listConversationResponseSources,
+    props.conversationId ? { conversationId: props.conversationId } : "skip"
+  )
+  const responseSourcesByMessageId = useMemo(
+    () =>
+      new Map(
+        (conversationResponseSources ?? []).map(
+          ({ responseMessageId, sources }) => [responseMessageId, sources]
+        )
+      ),
+    [conversationResponseSources]
+  )
+
+  return (
+    <MessageAreaContent
+      {...props}
+      responseSourcesByMessageId={responseSourcesByMessageId}
+    />
+  )
+}
+
+function MessageAreaContent({
+  actionsDisabled,
+  messages,
+  onAction,
+  onManageMemory,
+  responseSourcesByMessageId,
+  userMessageBubbleColor,
+}: LoadedMessageAreaProps & {
+  responseSourcesByMessageId?: ReadonlyMap<
+    Id<"messages">,
+    ResponseMemorySource[]
+  >
+}) {
   return (
     <MessageScrollerProvider>
       <MessageScroller>
@@ -3110,7 +3147,7 @@ function MessageArea({
                               <OptionalChatFeatureBoundary>
                                 <MemoryUsed
                                   onManageMemory={onManageMemory}
-                                  sources={responseSourcesByMessageId.get(
+                                  sources={responseSourcesByMessageId?.get(
                                     message._id
                                   )}
                                 />
@@ -3179,12 +3216,7 @@ function MemoryUsed({
   sources,
 }: {
   onManageMemory: () => void
-  sources:
-    | Array<{
-        memoryItemId?: Id<"memoryItems">
-        referenceId: Id<"responseMemoryReferences">
-      }>
-    | undefined
+  sources: ResponseMemorySource[] | undefined
 }) {
   const feedback = useMutation(api.memories.submitFeedback)
   const [open, setOpen] = useState(false)
