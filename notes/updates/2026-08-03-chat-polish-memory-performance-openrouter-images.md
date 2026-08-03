@@ -74,3 +74,29 @@ minimal payload and persist omitted-media-type raster responses as PNG.
   when it does not.
 - Authenticated visual QA was not performed; the existing production-key Clerk
   setup does not provide a safe local development account for this worktree.
+
+## Follow-up: Image API provider routing
+
+OpenRouter image generation still failed when the default `Cheapest available`
+routing option was selected. The image request reused the chat provider-routing
+object, which added `data_collection` and `require_parameters`. OpenRouter's
+dedicated Image API does not accept those fields; it supports `only`, `order`,
+`ignore`, `sort`, `allow_fallbacks`, and provider-specific `options`.
+
+`convex/openRouterResponses.ts` now builds the Image API provider object
+separately. Automatic routing sends only `sort: "price"` and
+`allow_fallbacks: true`; a pinned provider sends only `order` and
+`allow_fallbacks: false`. Chat routing and its privacy/parameter requirements are
+unchanged.
+
+Validation for this follow-up:
+
+- The focused OpenRouter response test passed: 14 tests.
+- The full Vitest suite passed: 48 files and 227 tests.
+- TypeScript, targeted ESLint, the production client/SSR build, and
+  `git diff --check` passed. The build retained the existing
+  `chat-sidebar.test.tsx` route-file warning.
+- Targeted Prettier still reports the existing formatting backlog in the two
+  touched Convex files; no broad formatting rewrite was made.
+- No paid OpenRouter generation request, schema change, dependency change, or
+  deployment was performed.

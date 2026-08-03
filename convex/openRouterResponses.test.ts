@@ -406,6 +406,7 @@ describe("AI SDK provider bridge", () => {
         messages: [{ content: "A lighthouse", role: "user" }],
         model: "openai/gpt-image-2",
         prompt: "A lighthouse",
+        routingProvider: "auto",
       })
     ).resolves.toMatchObject({ contentType: "image/png", extension: "png" })
 
@@ -413,6 +414,7 @@ describe("AI SDK provider bridge", () => {
     expect(JSON.parse(String(request.body))).toEqual({
       model: "openai/gpt-image-2",
       prompt: "A lighthouse",
+      provider: { allow_fallbacks: true, sort: "price" },
     })
   })
 })
