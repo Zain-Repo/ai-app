@@ -29,8 +29,30 @@ const MAX_MEMORIES_PER_USER = 100
 const MAX_RETRIEVED_MEMORIES = 8
 const MAX_PERSONALIZATION_LIST = 100
 const MAX_REFERENCE_CLEANUP_BATCH = 100
+// ponytail: 2,000 sources mirror the 200-message cap; paginate if chats grow.
+const MAX_CONVERSATION_RESPONSE_SOURCES = 200 * (MAX_RETRIEVED_MEMORIES + 2)
 
 type MemoryDatabaseContext = Parameters<typeof getCurrentUser>[0]
+
+const responseMemorySourceValidator = v.object({
+  referenceId: v.id("responseMemoryReferences"),
+  memoryItemId: v.optional(v.id("memoryItems")),
+  summaryId: v.optional(v.id("conversationMemorySummaries")),
+  feedback: v.optional(
+    v.union(v.literal("helpful"), v.literal("incorrect"), v.literal("dont_use"))
+  ),
+  createdAt: v.number(),
+})
+
+function toResponseMemorySource(reference: Doc<"responseMemoryReferences">) {
+  return {
+    referenceId: reference._id,
+    ...(reference.memoryItemId ? { memoryItemId: reference.memoryItemId } : {}),
+    ...(reference.summaryId ? { summaryId: reference.summaryId } : {}),
+    ...(reference.feedback ? { feedback: reference.feedback } : {}),
+    createdAt: reference.createdAt,
+  }
+}
 
 const v2MemoryForUiValidator = v.object({
   _id: v.id("memoryItems"),
@@ -1452,17 +1474,7 @@ export const retryProcessing = mutation({
 
 export const listResponseSources = query({
   args: { responseMessageId: v.id("messages") },
-  returns: v.array(
-    v.object({
-      referenceId: v.id("responseMemoryReferences"),
-      memoryItemId: v.optional(v.id("memoryItems")),
-      summaryId: v.optional(v.id("conversationMemorySummaries")),
-      feedback: v.optional(
-        v.union(v.literal("helpful"), v.literal("incorrect"), v.literal("dont_use"))
-      ),
-      createdAt: v.number(),
-    })
-  ),
+  returns: v.array(responseMemorySourceValidator),
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx)
     const response = await ctx.db.get(args.responseMessageId)
@@ -1476,12 +1488,41 @@ export const listResponseSources = query({
         q.eq("responseMessageId", response._id)
       )
       .take(MAX_RETRIEVED_MEMORIES + 2)
-    return references.map((reference) => ({
-      referenceId: reference._id,
-      ...(reference.memoryItemId ? { memoryItemId: reference.memoryItemId } : {}),
-      ...(reference.summaryId ? { summaryId: reference.summaryId } : {}),
-      ...(reference.feedback ? { feedback: reference.feedback } : {}),
-      createdAt: reference.createdAt,
+    return references.map(toResponseMemorySource)
+  },
+})
+
+export const listConversationResponseSources = query({
+  args: { conversationId: v.id("conversations") },
+  returns: v.array(
+    v.object({
+      responseMessageId: v.id("messages"),
+      sources: v.array(responseMemorySourceValidator),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await ctx.db.get(args.conversationId)
+    if (!conversation || conversation.ownerId !== user._id)
+      throw new Error("Conversation unavailable")
+    const references = await ctx.db
+      .query("responseMemoryReferences")
+      .withIndex("by_conversation_id", (q) =>
+        q.eq("conversationId", conversation._id)
+      )
+      .take(MAX_CONVERSATION_RESPONSE_SOURCES)
+    const sourcesByResponse = new Map<
+      Id<"messages">,
+      ReturnType<typeof toResponseMemorySource>[]
+    >()
+    for (const reference of references) {
+      const sources = sourcesByResponse.get(reference.responseMessageId) ?? []
+      sources.push(toResponseMemorySource(reference))
+      sourcesByResponse.set(reference.responseMessageId, sources)
+    }
+    return [...sourcesByResponse].map(([responseMessageId, sources]) => ({
+      responseMessageId,
+      sources,
     }))
   },
 })
