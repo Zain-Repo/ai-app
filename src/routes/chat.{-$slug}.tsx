@@ -62,6 +62,7 @@ import type {
   ProjectSourceItem,
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
+import { TextShimmer } from "@/components/text-shimmer"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
@@ -130,7 +131,6 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
 import { Spinner } from "@/components/ui/spinner"
-import { ThinkingIndicator } from "@/components/ui/thinking-indicator"
 import {
   Sidebar,
   SidebarContent,
@@ -3090,10 +3090,20 @@ function MessageAreaContent({
                                 !hasReasoning &&
                                 !hasTerminalRuns &&
                                 !hasUi) ? (
-                              <ThinkingIndicator
-                                className="text-sm"
-                                words={["Thinking"]}
-                              />
+                              <div
+                                aria-label="Thinking"
+                                className="text-sm text-muted-foreground"
+                                role="status"
+                              >
+                                <TextShimmer
+                                  as="span"
+                                  baseColor="var(--muted-foreground)"
+                                  duration={2}
+                                  shimmerColor="var(--foreground)"
+                                >
+                                  Thinking
+                                </TextShimmer>
+                              </div>
                             ) : message.status === "failed" ? (
                               message.errorCode === "insufficient_credits" ? (
                                 <span className="block space-y-2">
