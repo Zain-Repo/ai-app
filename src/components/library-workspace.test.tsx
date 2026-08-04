@@ -120,7 +120,9 @@ describe("LibraryWorkspace", () => {
     await downloadLibraryAsset("https://example.test/signed-file", "brief.pdf")
 
     expect(fetchMock).toHaveBeenCalledWith("https://example.test/signed-file")
-    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    const downloadBlob = vi.mocked(URL.createObjectURL).mock.calls[0]?.[0]
+    expect(downloadBlob).toHaveProperty("size", 4)
+    expect(downloadBlob).toHaveProperty("type", "text/plain;charset=utf-8")
     expect(click).toHaveBeenCalledOnce()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:library-download")
   })
