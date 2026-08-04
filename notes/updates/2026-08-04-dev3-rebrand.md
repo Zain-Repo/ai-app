@@ -39,15 +39,19 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
   build command applies both legacy and Dev3 tags to the same image.
 - OpenRouter callbacks consume and remove either PKCE storage key so an OAuth
   redirect started before a renderer deployment can finish afterward.
+- GitHub releases upload an identical `ai-harness-setup.exe` compatibility
+  asset so existing `/releases/latest/download/ai-harness-setup.exe` links
+  remain valid while sites and external references transition to Dev3.
 - Historical implementation and release notes retain their original names so
   they continue to describe the state that existed when they were written.
 
 ## Validation
 
 - TypeScript type checking passed.
-- All 250 Vitest tests across 55 files passed, including regression coverage for
+- All 256 Vitest tests across 58 files passed, including regression coverage for
   the legacy desktop bridge, packaged user-data path, and terminal worker state
-  directory and image, plus in-flight OpenRouter PKCE redirects.
+  directory and image, in-flight OpenRouter PKCE redirects, and the legacy
+  installer download alias.
 - Scoped ESLint and Prettier checks passed for every changed source file.
 - The production client and SSR build passed. It emitted the existing warning
   that `src/routes/chat-sidebar.test.tsx` is not a route.
