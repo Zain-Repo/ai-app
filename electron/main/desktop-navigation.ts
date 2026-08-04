@@ -2,6 +2,8 @@ export const DESKTOP_ENTRY_PATH = "/desktop"
 
 const DESKTOP_AUTH_ORIGINS = new Set([
   "https://accounts.a2zsoftware.ca",
+  // Clerk's shared development OAuth client returns through this exact origin.
+  "https://clerk.shared.lcl.dev",
   "https://clerk.a2zsoftware.ca",
   "https://github.com",
 ])

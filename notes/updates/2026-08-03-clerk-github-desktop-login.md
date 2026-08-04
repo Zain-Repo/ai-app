@@ -6,10 +6,23 @@ Fixed GitHub sign-in in the Electron client. The desktop authentication window
 now lets Clerk finish its OAuth callback and closes only after Clerk redirects
 back to an allowed AI Harness route.
 
-The linked Clerk application is named `AI Harness` instead of the default
-`My Application`. Clerk's standard development-mode warning remains enabled on
-the development instance; it is intentionally absent from the production
-instance.
+The linked Clerk application is named `Dev3`. Clerk's standard development-mode
+warning remains enabled on the development instance; it is intentionally absent
+from the production instance.
+
+## 2026-08-04 follow-up
+
+The Dev3 rebrand left two desktop-specific authentication settings behind. The
+Electron navigation policy allowed the production Clerk callback hosts but
+blocked Clerk's exact shared development callback origin,
+`https://clerk.shared.lcl.dev`. GitHub could open in the desktop authentication
+window, but the development OAuth return could not finish. The exact callback
+origin is now allowed while lookalike hosts remain blocked.
+
+The Clerk application identity also still reported `AI Harness` to both Clerk
+instances. The linked application was renamed to `Dev3`; the development and
+production Frontend APIs now both report the current name with GitHub enabled
+and authenticatable.
 
 ## Affected areas
 
@@ -40,6 +53,15 @@ instance.
   `src/routes/chat-sidebar.test.tsx`.
 - The local renderer returned HTTP 200 and the Electron window launched and
   remained responsive.
+- The 2026-08-04 follow-up passed all 256 Vitest tests across 58 files,
+  TypeScript, scoped ESLint and Prettier, `git diff --check`, and the production
+  client/SSR build. A clean Electron development session reproduced the GitHub
+  callback through `clerk.shared.lcl.dev`; a clean session against the deployed
+  renderer reached GitHub with the production callback at
+  `clerk.a2zsoftware.ca`.
+- Repository-wide ESLint and Prettier remain blocked by pre-existing generated,
+  skill-template, and unrelated UI findings; the changed files pass both
+  scoped checks.
 
 ## Known limitation
 

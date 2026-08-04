@@ -56,12 +56,22 @@ describe("desktop navigation", () => {
     ).toBe(true)
     expect(
       isAllowedDesktopAuthNavigation(
+        "https://clerk.shared.lcl.dev/v1/oauth_callback"
+      )
+    ).toBe(true)
+    expect(
+      isAllowedDesktopAuthNavigation(
         "https://github.com/login/oauth/authorize?client_id=test"
       )
     ).toBe(true)
     expect(
       isAllowedDesktopAuthNavigation(
         "https://github.com.evil.example/login/oauth/authorize"
+      )
+    ).toBe(false)
+    expect(
+      isAllowedDesktopAuthNavigation(
+        "https://clerk.shared.lcl.dev.evil.example/v1/oauth_callback"
       )
     ).toBe(false)
     expect(
