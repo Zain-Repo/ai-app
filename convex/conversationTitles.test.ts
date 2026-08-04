@@ -131,6 +131,50 @@ describe("chat title generation", () => {
     }
   })
 
+  it("routes Fal only for image conversations", async () => {
+    vi.useFakeTimers()
+    try {
+      const t = convexTest(schema, modules)
+      const authenticated = t.withIdentity({ subject: "fal_image_user" })
+      const ownerId = await authenticated.mutation(api.users.syncCurrent)
+      const connectionId = await t.run(async (ctx) => {
+        return await ctx.db.insert("providerConnections", {
+          authMethod: "api_key",
+          ownerId,
+          provider: "fal",
+          scopes: ["images"],
+          status: "connected",
+          updatedAt: Date.now(),
+        })
+      })
+
+      await authenticated.mutation(api.conversations.start, {
+        content: "Create a product photograph",
+        model: "fal-ai/flux-2/klein/4b",
+        outputMode: "image",
+        providerConnectionId: connectionId,
+      })
+      await expect(
+        authenticated.mutation(api.conversations.start, {
+          content: "Explain the result",
+          model: "fal-ai/flux-2/klein/4b",
+          outputMode: "text",
+          providerConnectionId: connectionId,
+        })
+      ).rejects.toThrow("image generation only")
+
+      const scheduled = await t.run(async (ctx) => {
+        return await ctx.db.system.query("_scheduled_functions").take(10)
+      })
+      expect(scheduled.map((job) => job.name).sort()).toEqual([
+        "memoryCapture:enqueueForMessage",
+        "openRouterResponses:generate",
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it.each([
     {
       assistantStatus: "complete" as const,

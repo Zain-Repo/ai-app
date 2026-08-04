@@ -2,6 +2,7 @@ import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
 import { action, env } from "./_generated/server"
+import { FalApiError, loadFalImageModels } from "./fal"
 import { decryptProviderToken, encryptProviderToken } from "./providerCrypto"
 import {
   RENDER_UI_TOOL_NAME,
@@ -597,6 +598,48 @@ export const connectOpenAI = action({
   },
 })
 
+export const connectFal = action({
+  args: { apiKey: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!(await ctx.auth.getUserIdentity()))
+      throw new Error("Not authenticated")
+    const key = args.apiKey.trim()
+    if (
+      key.length < 16 ||
+      key.length > 2048 ||
+      /\s/.test(key) ||
+      [...key].some((character) => {
+        const code = character.charCodeAt(0)
+        return code < 32 || code === 127
+      })
+    )
+      throw new Error("Enter a valid Fal API key")
+
+    try {
+      await loadFalImageModels(key)
+    } catch (cause) {
+      if (
+        cause instanceof FalApiError &&
+        (cause.statusCode === 401 || cause.statusCode === 403)
+      )
+        throw new Error("Fal rejected this API key")
+      throw new Error("Fal could not verify this API key")
+    }
+
+    const encrypted = await encryptProviderToken(
+      key,
+      env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+      "fal"
+    )
+    await ctx.runMutation(internal.providerConnections.completeApiKey, {
+      ...encrypted,
+      provider: "fal",
+    })
+    return null
+  },
+})
+
 export const createRealtimeSession = action({
   args: {
     conversationId: v.optional(v.string()),
@@ -708,9 +751,43 @@ export const createRealtimeSession = action({
 })
 
 export const listModels = action({
-  args: { provider: v.union(v.literal("openrouter"), v.literal("openai")) },
+  args: {
+    provider: v.union(
+      v.literal("openrouter"),
+      v.literal("openai"),
+      v.literal("fal")
+    ),
+  },
   returns: v.array(modelValidator),
   handler: async (ctx, args) => {
+    if (args.provider === "fal") {
+      const credential = await ctx.runQuery(
+        internal.providerConnections.getProviderCredential,
+        { provider: "fal" }
+      )
+      if (!credential) throw new Error("Provider not connected")
+      const token = await decryptProviderToken(
+        credential.ciphertext,
+        credential.iv,
+        env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+        "fal"
+      )
+      try {
+        return await loadFalImageModels(token)
+      } catch (cause) {
+        if (
+          cause instanceof FalApiError &&
+          (cause.statusCode === 401 || cause.statusCode === 403)
+        ) {
+          await ctx.runMutation(
+            internal.providerConnections.markProviderNeedsAuthentication,
+            { connectionId: credential.connectionId }
+          )
+          throw new Error("Provider authorization expired")
+        }
+        throw cause
+      }
+    }
     if (args.provider === "openai") {
       const credential = await ctx.runQuery(
         internal.providerConnections.getProviderCredential,

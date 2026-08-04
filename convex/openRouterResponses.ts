@@ -16,6 +16,7 @@ import type { Id } from "./_generated/dataModel"
 import { action, env, internalAction } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
+import { FalApiError, generateFalImage } from "./fal"
 import {
   createProviderEmbeddings,
   getPrivateOpenRouterEmbeddingSettings,
@@ -861,7 +862,7 @@ export const generate = internalAction({
   handler: async (ctx, args) => {
     let connectionId: Id<"providerConnections"> | undefined
     let content = ""
-    let provider: "openrouter" | "openai" | undefined
+    let provider: "openrouter" | "openai" | "fal" | undefined
     let reasoning = ""
     let terminalRuns: StoredTerminalRun[] = []
     let uiPayload: string | undefined
@@ -888,18 +889,34 @@ export const generate = internalAction({
         context.provider
       )
       if (context.outputMode === "image") {
-        if (context.provider !== "openrouter")
-          throw new Error("Image generation requires OpenRouter")
-        const image = await generateOpenRouterImage(token, {
-          messages: addGenerationContexts(
-            context.messages,
-            agentMemoryContext.referenceText,
-            ""
-          ),
-          model: context.model,
-          prompt: context.lastUserMessage,
-          routingProvider: context.routingProvider,
-        })
+        const messages = addGenerationContexts(
+          context.messages,
+          agentMemoryContext.referenceText,
+          ""
+        )
+        let image: Awaited<ReturnType<typeof generateFalImage>>
+        if (context.provider === "openrouter") {
+          image = await generateOpenRouterImage(token, {
+            messages,
+            model: context.model,
+            prompt: context.lastUserMessage,
+            routingProvider: context.routingProvider,
+          })
+        } else if (context.provider === "fal") {
+          const referenceUrls = (
+            messages.findLast((message) => message.role === "user")
+              ?.attachments ?? []
+          ).flatMap((attachment) =>
+            IMAGE_TYPES.has(attachment.contentType) ? [attachment.url] : []
+          )
+          image = await generateFalImage(token, {
+            model: context.model,
+            prompt: context.lastUserMessage,
+            referenceUrls,
+          })
+        } else {
+          throw new Error("Image generation requires OpenRouter or Fal")
+        }
         const storageId = await ctx.storage.store(
           new Blob([image.bytes], { type: image.contentType })
         )
@@ -1177,15 +1194,16 @@ export const generate = internalAction({
       const apiError = APICallError.isInstance(cause) ? cause : undefined
       const status =
         apiError?.statusCode ??
-        (cause instanceof OpenRouterImageError ? cause.statusCode : undefined)
+        (cause instanceof OpenRouterImageError || cause instanceof FalApiError
+          ? cause.statusCode
+          : undefined)
       if (connectionId && (status === 401 || status === 403)) {
         await ctx.runMutation(
           internal.providerConnections.markProviderNeedsAuthentication,
           { connectionId }
         )
       }
-      if (provider === "openrouter" && status === 402)
-        errorCode = "insufficient_credits"
+      if (status === 402) errorCode = "insufficient_credits"
       if (status) console.error("Provider request failed", { provider, status })
       terminalRuns = terminalRuns.map((run) =>
         run.status === "running"

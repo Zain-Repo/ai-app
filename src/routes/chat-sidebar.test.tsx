@@ -172,6 +172,7 @@ describe("connected provider selector", () => {
   const connections = [
     { provider: "openrouter", status: "connected" },
     { provider: "openai", status: "connected" },
+    { provider: "fal", status: "connected" },
     { provider: "codex", status: "connected" },
     { provider: "cursor", status: "connected" },
     { provider: "anthropic", status: "connected" },
@@ -196,6 +197,7 @@ describe("connected provider selector", () => {
         provider: "openrouter",
         requiresDesktop: false,
       },
+      { label: "fal", provider: "fal", requiresDesktop: false },
     ])
   })
 
@@ -273,11 +275,14 @@ describe("connected provider selector", () => {
     ])
     expect(getExecutionProviderOptions(options, "image")).toEqual([
       { label: "OpenRouter", value: "openrouter" },
+      { label: "fal", value: "fal" },
     ])
+    expect(getPreferredProvider(options, "image")).toBe("openrouter")
   })
 
   it("guards provider changes before updating the active provider", () => {
     expect(isActiveProvider("openrouter")).toBe(true)
+    expect(isActiveProvider("fal")).toBe(true)
     expect(isActiveProvider("anthropic")).toBe(false)
     expect(isActiveProvider("unknown")).toBe(false)
   })

@@ -16,6 +16,7 @@ const status = v.union(
 const provider = v.union(
   v.literal("openrouter"),
   v.literal("openai"),
+  v.literal("fal"),
   v.literal("codex"),
   v.literal("cursor")
 )
@@ -42,7 +43,7 @@ export const listMine = query({
     return connections.map((connection) => ({
       connectionId: connection._id,
       provider: connection.provider as
-        "openrouter" | "openai" | "codex" | "cursor",
+        "openrouter" | "openai" | "fal" | "codex" | "cursor",
       authMethod: connection.authMethod,
       status: connection.status,
       ...(connection.displayName
@@ -192,8 +193,16 @@ export const completeApiKey = internalMutation({
       .unique()
     const metadata = {
       authMethod: "api_key" as const,
-      displayName: args.provider === "openai" ? "OpenAI" : args.provider,
-      scopes: ["models", "responses"],
+      displayName:
+        args.provider === "openai"
+          ? "OpenAI"
+          : args.provider === "fal"
+            ? "fal"
+            : args.provider,
+      scopes:
+        args.provider === "fal"
+          ? ["models", "images"]
+          : ["models", "responses"],
       status: "connected" as const,
       updatedAt: Date.now(),
     }
@@ -224,7 +233,11 @@ export const completeApiKey = internalMutation({
 export const getProviderCredential = internalQuery({
   args: { provider },
   returns: v.union(
-    v.object({ ciphertext: v.string(), iv: v.string() }),
+    v.object({
+      ciphertext: v.string(),
+      connectionId: v.id("providerConnections"),
+      iv: v.string(),
+    }),
     v.null()
   ),
   handler: async (ctx, args) => {
@@ -246,7 +259,11 @@ export const getProviderCredential = internalQuery({
       .unique()
 
     return credential
-      ? { ciphertext: credential.ciphertext, iv: credential.iv }
+      ? {
+          ciphertext: credential.ciphertext,
+          connectionId: connection._id,
+          iv: credential.iv,
+        }
       : null
   },
 })
