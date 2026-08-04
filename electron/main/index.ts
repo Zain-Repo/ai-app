@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 
 import type { DesktopCodexGenerateInput } from "../types"
+import { preserveLegacyUserDataDirectory } from "./application-paths"
 import {
   CodexAppServer,
   isDesktopCodexReasoningEffort,
@@ -17,6 +18,8 @@ import {
 import { DesktopUpdater } from "./updater"
 
 type DesktopConfig = { rendererUrl?: unknown }
+
+preserveLegacyUserDataDirectory(app)
 
 const codex = new CodexAppServer()
 const cursor = new CursorCli()

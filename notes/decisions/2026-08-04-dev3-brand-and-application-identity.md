@@ -22,9 +22,13 @@ can account for installed clients and external infrastructure:
 - Microsoft Store application ID: `AIHarness`
 - Cloudflare worker name: `ai-harness`
 - Electron updater cache directory: `ai-app-updater`
+- Packaged user-data directory: `ai-harness`
+- Terminal worker state directory: `ai-harness-terminal-worker`
 
 Treat `DEV3_*` as the primary packaging and runtime environment-variable prefix,
 while accepting the corresponding `AI_HARNESS_*` variables as legacy fallbacks.
+The deployed renderer resolves both the Dev3 preload bridge and the legacy
+`window.aiHarnessDesktop` bridge until older clients have upgraded.
 
 ## Consequences
 
@@ -33,6 +37,8 @@ while accepting the corresponding `AI_HARNESS_*` variables as legacy fallbacks.
   of being orphaned by a new application identity.
 - Existing deployment and CI configuration can migrate incrementally to
   `DEV3_*` without blocking this release.
+- Existing browser sessions, Codex credentials, updater state, and terminal
+  cleanup metadata remain available across the visible rename.
 - Renaming the GitHub repository, Cloudflare worker, Store registration, or
   Electron application ID remains out of scope and requires its own migration
   and rollback plan.
@@ -41,5 +47,5 @@ while accepting the corresponding `AI_HARNESS_*` variables as legacy fallbacks.
 
 - The release workflow, builder configuration, and publisher agree on the
   `dev3-setup.exe` artifact and Dev3 release title.
-- The application type-check, focused lint and formatting checks, full test
+- The application type-check, focused lint and formatting checks, full 244-test
   suite, and production build pass with the compatibility identifiers retained.

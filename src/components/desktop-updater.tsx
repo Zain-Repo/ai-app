@@ -25,6 +25,7 @@ import {
   ProgressValue,
 } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
+import { getDesktopApi } from "@/lib/desktop-api"
 
 const OPEN_APP_UPDATES_EVENT = "dev3:open-app-updates"
 const UPDATE_TOAST_ID = "desktop-updater"
@@ -152,7 +153,7 @@ export function DesktopUpdater() {
     const openDialog = () => setOpen(true)
     window.addEventListener(OPEN_APP_UPDATES_EVENT, openDialog)
 
-    const updater = window.dev3Desktop?.updater
+    const updater = getDesktopApi()?.updater
     if (!updater)
       return () =>
         window.removeEventListener(OPEN_APP_UPDATES_EVENT, openDialog)
@@ -222,7 +223,7 @@ export function DesktopUpdater() {
   }, [])
 
   async function runAction(action: Exclude<UpdaterAction, null>) {
-    const updater = window.dev3Desktop?.updater
+    const updater = getDesktopApi()?.updater
     if (!updater) return
     setActionError(null)
     try {

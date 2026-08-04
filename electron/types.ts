@@ -84,6 +84,8 @@ export type Dev3DesktopApi = {
 
 declare global {
   interface Window {
+    /** Compatibility bridge for desktop clients released before Dev3 0.1.12. */
+    aiHarnessDesktop?: Dev3DesktopApi
     dev3Desktop?: Dev3DesktopApi
   }
 }

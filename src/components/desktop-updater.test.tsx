@@ -61,10 +61,27 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  Reflect.deleteProperty(window, "aiHarnessDesktop")
   Reflect.deleteProperty(window, "dev3Desktop")
 })
 
 describe("desktop updater dialog", () => {
+  it("uses the legacy desktop bridge while older clients upgrade", async () => {
+    const legacyUpdater = window.dev3Desktop?.updater
+    Reflect.deleteProperty(window, "dev3Desktop")
+    Object.defineProperty(window, "aiHarnessDesktop", {
+      configurable: true,
+      value: { isDesktop: true, updater: legacyUpdater },
+    })
+
+    render(<DesktopUpdater />)
+    act(openDesktopUpdaterDialog)
+
+    expect(
+      await screen.findByRole("button", { name: "Check for updates" })
+    ).toBeTruthy()
+  })
+
   it("keeps receiving background state after the dialog closes", async () => {
     render(<DesktopUpdater />)
 

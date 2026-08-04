@@ -22,12 +22,12 @@ import { useTheme } from "next-themes"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
+import { getDesktopApi } from "@/lib/desktop-api"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    if (typeof window !== "undefined" && window.dev3Desktop)
-      throw redirect({ href: "/desktop" })
+    if (getDesktopApi()) throw redirect({ href: "/desktop" })
   },
   component: App,
 })

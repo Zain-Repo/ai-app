@@ -91,7 +91,9 @@ export class TerminalRuntime {
       )
     this.runtime = options.runtime ?? "runsc"
     this.stateDirectory =
-      options.stateDirectory ?? path.join(os.tmpdir(), "dev3-terminal-worker")
+      options.stateDirectory ??
+      // Preserve the directory so pre-rebrand resources remain janitor-managed.
+      path.join(os.tmpdir(), "ai-harness-terminal-worker")
     this.token = options.token
   }
 

@@ -27,13 +27,21 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
   installed clients can update in place.
 - Existing Cloudflare worker, updater cache, and legacy `AI_HARNESS_*`
   environment names remain supported while new configuration uses `DEV3_*`.
+- The deployed renderer accepts both `window.dev3Desktop` and the legacy
+  `window.aiHarnessDesktop` bridge while pre-0.1.12 clients upgrade.
+- Packaged releases continue using the existing `ai-harness` user-data
+  directory so browser sessions, Codex credentials, and updater state persist.
+- The terminal worker keeps its legacy default state directory so pre-rebrand
+  containers and volumes remain covered by idle cleanup.
 - Historical implementation and release notes retain their original names so
   they continue to describe the state that existed when they were written.
 
 ## Validation
 
 - TypeScript type checking passed.
-- All 239 Vitest tests across 51 files passed.
+- All 244 Vitest tests across 53 files passed, including regression coverage for
+  the legacy desktop bridge, packaged user-data path, and terminal worker state
+  directory.
 - Scoped ESLint and Prettier checks passed for every changed source file.
 - The production client and SSR build passed. It emitted the existing warning
   that `src/routes/chat-sidebar.test.tsx` is not a route.

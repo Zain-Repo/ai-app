@@ -72,6 +72,7 @@ import type {
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { TextShimmer } from "@/components/text-shimmer"
+import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
@@ -780,7 +781,7 @@ function ChatWorkspace() {
   }, [search.projectId])
 
   useEffect(() => {
-    setDesktopAvailable(Boolean(window.dev3Desktop))
+    setDesktopAvailable(Boolean(getDesktopApi()))
   }, [])
 
   const connectedProviderOptions = useMemo(
@@ -874,27 +875,31 @@ function ChatWorkspace() {
     setCatalogState("loading")
     const modelsPromise =
       activeProvider === "codex"
-        ? window.dev3Desktop?.codex.listModels().then((models) =>
-            models.map((model): CatalogModel => ({
-              provider: "openai",
-              value: model.value,
-              label: model.label,
-              outputMode: "text",
-              ...(model.description ? { description: model.description } : {}),
-              ...(model.reasoningEfforts
-                ? {
-                    reasoningEfforts:
-                      model.reasoningEfforts.filter(isReasoningEffort),
-                  }
-                : {}),
-              ...(model.defaultReasoningEffort &&
-              isReasoningEffort(model.defaultReasoningEffort)
-                ? {
-                    defaultReasoningEffort: model.defaultReasoningEffort,
-                  }
-                : {}),
-            }))
-          )
+        ? getDesktopApi()
+            ?.codex.listModels()
+            .then((models) =>
+              models.map((model): CatalogModel => ({
+                provider: "openai",
+                value: model.value,
+                label: model.label,
+                outputMode: "text",
+                ...(model.description
+                  ? { description: model.description }
+                  : {}),
+                ...(model.reasoningEfforts
+                  ? {
+                      reasoningEfforts:
+                        model.reasoningEfforts.filter(isReasoningEffort),
+                    }
+                  : {}),
+                ...(model.defaultReasoningEffort &&
+                isReasoningEffort(model.defaultReasoningEffort)
+                  ? {
+                      defaultReasoningEffort: model.defaultReasoningEffort,
+                    }
+                  : {}),
+              }))
+            )
         : activeProvider === "cursor"
           ? Promise.resolve([])
           : listModels({ provider: activeProvider })
@@ -1568,7 +1573,7 @@ function ChatWorkspace() {
         await open({ slug, projectId: search.projectId })
       }
       if (provider === "codex" && targetConversationId) {
-        const desktop = window.dev3Desktop
+        const desktop = getDesktopApi()
         if (!desktop)
           throw new Error("Codex is only available in the desktop app")
         if (!conversationId)
