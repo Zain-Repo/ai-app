@@ -1,4 +1,4 @@
-import migrations from "@convex-dev/migrations/convex.config.js"
+import migrations from "@convex-dev/migrations/convex.config"
 import { defineApp } from "convex/server"
 import { v } from "convex/values"
 

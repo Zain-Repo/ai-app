@@ -7,7 +7,9 @@ import {
   Search,
 } from "lucide-react"
 import { useDeferredValue, useMemo, useState } from "react"
+import type { FunctionReturnType } from "convex/server"
 import { usePaginatedQuery } from "convex/react"
+import { toast } from "sonner"
 
 import { api } from "../../convex/_generated/api"
 import { Button } from "@/components/ui/button"
@@ -41,21 +43,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type LibraryFilter = "all" | "upload" | "generated_image"
 
-export type LibraryAsset = {
-  _id: string
-  category: "upload" | "generated_image"
-  kind: "chat_upload" | "project_upload" | "generated_image"
-  name: string
-  contentType: string
-  size: number
-  createdAt: number
-  url: string | null
-  conversationId?: string
-  messageId?: string
-  projectId?: string
-  provider?: string
-  model?: string
-}
+export type LibraryAsset = FunctionReturnType<
+  typeof api.library.list
+>["page"][number]
 
 type LibraryDay = {
   key: string
@@ -138,6 +128,24 @@ function AssetPreview({ asset }: { asset: LibraryAsset }) {
   )
 }
 
+export async function downloadLibraryAsset(url: string, name: string) {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`Download failed with ${response.status}`)
+
+  const objectUrl = URL.createObjectURL(await response.blob())
+  try {
+    const anchor = document.createElement("a")
+    anchor.download = name
+    anchor.href = objectUrl
+    anchor.hidden = true
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function LibraryAssetItem({
   asset,
   onOpenConversation,
@@ -147,18 +155,26 @@ function LibraryAssetItem({
   onOpenConversation: (conversationId: string, messageId: string) => void
   onOpenProject: (projectId: string) => void
 }) {
+  const [isDownloading, setIsDownloading] = useState(false)
   const isGenerated = asset.kind === "generated_image"
   const isImage = asset.contentType.startsWith("image/")
   const openContext = () => {
-    if (asset.kind === "project_upload" && asset.projectId)
-      onOpenProject(asset.projectId)
-    else if (asset.conversationId && asset.messageId)
-      onOpenConversation(asset.conversationId, asset.messageId)
+    if (asset.kind === "project_upload") onOpenProject(asset.projectId)
+    else onOpenConversation(asset.conversationId, asset.messageId)
   }
-  const hasContext = Boolean(
-    (asset.kind === "project_upload" && asset.projectId) ||
-    (asset.conversationId && asset.messageId)
-  )
+  const download = async () => {
+    if (!asset.url) return
+    setIsDownloading(true)
+    try {
+      await downloadLibraryAsset(asset.url, asset.name)
+    } catch {
+      toast.error("Download failed", {
+        description: "The file could not be downloaded. Please try again.",
+      })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   return (
     <li className={isGenerated ? "min-w-0" : "min-w-0 md:col-span-2"}>
@@ -204,28 +220,14 @@ function LibraryAssetItem({
           </DialogHeader>
           <AssetPreview asset={asset} />
           <DialogFooter>
-            <Button
-              disabled={!hasContext}
-              onClick={openContext}
-              variant="outline"
-            >
+            <Button onClick={openContext} variant="outline">
               <ExternalLink aria-hidden="true" />
               Open original context
             </Button>
             {asset.url ? (
-              <Button
-                nativeButton={false}
-                render={
-                  <a
-                    download={asset.name}
-                    href={asset.url}
-                    rel="noreferrer"
-                    target="_blank"
-                  />
-                }
-              >
+              <Button disabled={isDownloading} onClick={() => void download()}>
                 <Download aria-hidden="true" />
-                Download
+                {isDownloading ? "Downloading…" : "Download"}
               </Button>
             ) : (
               <Button disabled>
@@ -278,10 +280,7 @@ export function LibraryWorkspace({
     },
     { initialNumItems: 24 }
   )
-  const days = useMemo(
-    () => groupLibraryAssetsByDay(results as LibraryAsset[]),
-    [results]
-  )
+  const days = useMemo(() => groupLibraryAssetsByDay(results), [results])
   const loadingFirstPage = status === "LoadingFirstPage"
 
   return (

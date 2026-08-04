@@ -10,9 +10,14 @@ export const backfillLibraryFromMessages = migrations.define({
   table: "messages",
   migrateOne: async (ctx, message) => {
     if (!message.attachments?.length) return
+    const hasImageAttachment = message.attachments.some((attachment) =>
+      attachment.contentType.startsWith("image/")
+    )
+    const outputMode =
+      message.outputMode ??
+      (message.role === "assistant" && hasImageAttachment ? "image" : undefined)
     if (message.role === "assistant") {
-      if (message.status !== "complete" || message.outputMode !== "image")
-        return
+      if (message.status !== "complete" || outputMode !== "image") return
     } else if (message.role !== "user") {
       return
     }
@@ -26,7 +31,7 @@ export const backfillLibraryFromMessages = migrations.define({
       role: message.role,
       attachments: message.attachments,
       createdAt: message._creationTime,
-      outputMode: message.outputMode,
+      outputMode,
       provider: message.provider,
       model: message.model,
     })

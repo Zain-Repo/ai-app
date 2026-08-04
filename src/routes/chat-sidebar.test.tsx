@@ -100,6 +100,8 @@ describe("optional chat features", () => {
   })
 
   it("focuses the message opened from Library", () => {
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
     const messages = [
       {
         _id: "message-1",
@@ -126,6 +128,21 @@ describe("optional chat features", () => {
     expect(document.activeElement).toBe(
       view.container.querySelector("#message-message-1")
     )
+
+    view.rerender(
+      <MessageArea
+        actionsDisabled={false}
+        conversationId={"conversation-1" as Id<"conversations">}
+        messages={[...messages]}
+        name={null}
+        onAction={vi.fn()}
+        onManageMemory={vi.fn()}
+        targetMessageId="message-1"
+        userMessageBubbleColor={undefined}
+      />
+    )
+
+    expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 })
 

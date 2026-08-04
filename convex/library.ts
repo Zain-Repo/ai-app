@@ -1,18 +1,22 @@
+import type { PaginationOptions } from "convex/server"
 import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server"
+import type { Infer } from "convex/values"
 import { v } from "convex/values"
 
 import type { Id } from "./_generated/dataModel"
 import { query } from "./_generated/server"
-import type { MutationCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 
 const categoryValidator = v.union(
   v.literal("upload"),
   v.literal("generated_image")
 )
+
+type LibraryCategory = Infer<typeof categoryValidator>
 
 const storedAssetFields = {
   _id: v.id("libraryAssets"),
@@ -169,6 +173,46 @@ export async function removeProjectSourceAsset(
   if (asset) await ctx.db.delete(asset._id)
 }
 
+async function paginateLibraryAssets(
+  ctx: QueryCtx,
+  args: {
+    ownerId: Id<"users">
+    category?: LibraryCategory
+    search?: string
+    paginationOpts: PaginationOptions
+  }
+) {
+  const search = args.search
+  if (search)
+    return await ctx.db
+      .query("libraryAssets")
+      .withSearchIndex("search_name", (q) => {
+        const ownedAssets = q.search("name", search).eq("ownerId", args.ownerId)
+        return args.category
+          ? ownedAssets.eq("category", args.category)
+          : ownedAssets
+      })
+      .paginate(args.paginationOpts)
+
+  const category = args.category
+  if (category)
+    return await ctx.db
+      .query("libraryAssets")
+      .withIndex("by_owner_id_and_category_and_created_at", (q) =>
+        q.eq("ownerId", args.ownerId).eq("category", category)
+      )
+      .order("desc")
+      .paginate(args.paginationOpts)
+
+  return await ctx.db
+    .query("libraryAssets")
+    .withIndex("by_owner_id_and_created_at", (q) =>
+      q.eq("ownerId", args.ownerId)
+    )
+    .order("desc")
+    .paginate(args.paginationOpts)
+}
+
 export const list = query({
   args: {
     paginationOpts: paginationOptsValidator,
@@ -182,38 +226,12 @@ export const list = query({
     const category = args.category
     if (search && search.length > 200) throw new Error("Search is too long")
 
-    const result = search
-      ? await (category
-          ? ctx.db
-              .query("libraryAssets")
-              .withSearchIndex("search_name", (q) =>
-                q
-                  .search("name", search)
-                  .eq("ownerId", user._id)
-                  .eq("category", category)
-              )
-              .paginate(args.paginationOpts)
-          : ctx.db
-              .query("libraryAssets")
-              .withSearchIndex("search_name", (q) =>
-                q.search("name", search).eq("ownerId", user._id)
-              )
-              .paginate(args.paginationOpts))
-      : await (category
-          ? ctx.db
-              .query("libraryAssets")
-              .withIndex("by_owner_id_and_category_and_created_at", (q) =>
-                q.eq("ownerId", user._id).eq("category", category)
-              )
-              .order("desc")
-              .paginate(args.paginationOpts)
-          : ctx.db
-              .query("libraryAssets")
-              .withIndex("by_owner_id_and_created_at", (q) =>
-                q.eq("ownerId", user._id)
-              )
-              .order("desc")
-              .paginate(args.paginationOpts))
+    const result = await paginateLibraryAssets(ctx, {
+      ownerId: user._id,
+      category,
+      search,
+      paginationOpts: args.paginationOpts,
+    })
 
     return {
       ...result,

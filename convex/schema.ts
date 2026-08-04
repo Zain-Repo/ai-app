@@ -27,6 +27,15 @@ const messageStatus = v.union(
 
 const outputMode = v.union(v.literal("image"), v.literal("text"))
 
+const storedLibraryAssetValidator = v.object({
+  ownerId: v.id("users"),
+  storageId: v.id("_storage"),
+  name: v.string(),
+  contentType: v.string(),
+  size: v.number(),
+  createdAt: v.number(),
+})
+
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
@@ -227,39 +236,21 @@ export default defineSchema({
 
   libraryAssets: defineTable(
     v.union(
-      v.object({
-        ownerId: v.id("users"),
+      storedLibraryAssetValidator.extend({
         category: v.literal("upload"),
         kind: v.literal("chat_upload"),
-        storageId: v.id("_storage"),
-        name: v.string(),
-        contentType: v.string(),
-        size: v.number(),
-        createdAt: v.number(),
         conversationId: v.id("conversations"),
         messageId: v.id("messages"),
       }),
-      v.object({
-        ownerId: v.id("users"),
+      storedLibraryAssetValidator.extend({
         category: v.literal("upload"),
         kind: v.literal("project_upload"),
-        storageId: v.id("_storage"),
-        name: v.string(),
-        contentType: v.string(),
-        size: v.number(),
-        createdAt: v.number(),
         projectId: v.id("projects"),
         projectSourceId: v.id("projectSources"),
       }),
-      v.object({
-        ownerId: v.id("users"),
+      storedLibraryAssetValidator.extend({
         category: v.literal("generated_image"),
         kind: v.literal("generated_image"),
-        storageId: v.id("_storage"),
-        name: v.string(),
-        contentType: v.string(),
-        size: v.number(),
-        createdAt: v.number(),
         conversationId: v.id("conversations"),
         messageId: v.id("messages"),
         provider: v.optional(v.string()),

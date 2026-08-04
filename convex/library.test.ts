@@ -180,6 +180,25 @@ it("backfills historical messages and project files idempotently", async () => {
       ],
       status: "complete",
     })
+    const generatedStorageId = await ctx.storage.store(
+      new Blob(["historical image"])
+    )
+    await ctx.db.insert("messages", {
+      conversationId,
+      role: "assistant",
+      content: "",
+      attachments: [
+        {
+          storageId: generatedStorageId,
+          name: "historical-image.webp",
+          contentType: "image/webp",
+          size: 16,
+        },
+      ],
+      status: "complete",
+      provider: "openrouter",
+      model: "openai/gpt-image-1",
+    })
     const projectId = await ctx.db.insert("projects", {
       ownerId,
       name: "Historical project",
@@ -213,8 +232,8 @@ it("backfills historical messages and project files idempotently", async () => {
   const result = await owner.query(anyApi.library.list, {
     paginationOpts: { cursor: null, numItems: 10 },
   })
-  expect(result.page).toHaveLength(2)
+  expect(result.page).toHaveLength(3)
   expect(
     result.page.map((asset: { kind: string }) => asset.kind).sort()
-  ).toEqual(["chat_upload", "project_upload"])
+  ).toEqual(["chat_upload", "generated_image", "project_upload"])
 })

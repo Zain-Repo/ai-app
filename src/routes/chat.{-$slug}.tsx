@@ -28,7 +28,15 @@ import {
   Plug,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
-import { Component, lazy, Suspense, useEffect, useMemo, useState } from "react"
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { ReactNode } from "react"
 import {
   Authenticated,
@@ -3053,10 +3061,17 @@ function MessageAreaContent({
     ResponseMemorySource[]
   >
 }) {
+  const consumedTargetMessageId = useRef<string | undefined>(undefined)
+
   useEffect(() => {
-    if (!targetMessageId) return
+    if (!targetMessageId) {
+      consumedTargetMessageId.current = undefined
+      return
+    }
+    if (consumedTargetMessageId.current === targetMessageId) return
     const target = document.getElementById(`message-${targetMessageId}`)
     if (!target) return
+    consumedTargetMessageId.current = targetMessageId
     target.scrollIntoView({ behavior: "smooth", block: "center" })
     target.focus({ preventScroll: true })
   }, [messages, targetMessageId])
