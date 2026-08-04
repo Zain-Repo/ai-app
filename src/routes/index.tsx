@@ -22,6 +22,7 @@ import { useTheme } from "next-themes"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
+import { Dev3Mark } from "@/components/dev3-logo"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { cn } from "@/lib/utils"
 
@@ -175,13 +176,7 @@ function LandingHeader() {
           className="group flex shrink-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-cinema-ivory transition-opacity duration-300 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-cinema-accent/70 focus-visible:outline-none"
         >
           <span className="grid size-8 place-items-center overflow-hidden rounded-xl border border-cinema-line bg-cinema-surface/80">
-            <img
-              src="/icons/icon-192.png"
-              alt=""
-              width={28}
-              height={28}
-              className="size-7 object-cover"
-            />
+            <Dev3Mark className="size-7" />
           </span>
           <span>Dev3</span>
         </a>

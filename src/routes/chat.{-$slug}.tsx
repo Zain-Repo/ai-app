@@ -55,6 +55,7 @@ import {
   ContextContentHeader,
   ContextTrigger,
 } from "@/components/ai-elements/context"
+import { Dev3Mark } from "@/components/dev3-logo"
 import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { PersonalizationCenter } from "@/components/personalization-center"
@@ -1728,14 +1729,8 @@ function ChatWorkspace() {
             className="flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/chat"
           >
-            <span className="inline-flex size-10 shrink-0 overflow-hidden rounded-xl bg-background shadow-sm ring-1 ring-sidebar-border/70">
-              <img
-                alt=""
-                className="size-full"
-                height={96}
-                src="/media/dev3-logo.png"
-                width={96}
-              />
+            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#0B0D12] p-1.5 shadow-sm ring-1 ring-sidebar-border/70">
+              <Dev3Mark className="size-full" mode="dark" />
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
