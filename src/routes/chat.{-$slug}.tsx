@@ -41,6 +41,12 @@ import {
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import {
+  Context,
+  ContextContent,
+  ContextContentHeader,
+  ContextTrigger,
+} from "@/components/ai-elements/context"
 import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { PersonalizationCenter } from "@/components/personalization-center"
@@ -364,6 +370,7 @@ type CatalogModel = {
   value: string
   label: string
   description?: string
+  contextLength?: number
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
@@ -892,6 +899,15 @@ function ChatWorkspace() {
 
   const selectedModel = providerModels.find(
     (model) => model.value === selectedModelId
+  )
+  const contextMessage = messages?.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      message.status === "complete" &&
+      message.contextTokens !== undefined
+  )
+  const contextModel = providerModels.find(
+    (model) => model.value === contextMessage?.model
   )
   useEffect(() => {
     if (
@@ -2593,6 +2609,23 @@ function ChatWorkspace() {
                       !activeConnectionId ||
                       catalogState !== "ready" ||
                       providerModels.length === 0
+                    }
+                    footerAccessory={
+                      contextMessage?.contextTokens !== undefined &&
+                      contextModel?.contextLength ? (
+                        <Context
+                          maxTokens={contextModel.contextLength}
+                          usedTokens={contextMessage.contextTokens}
+                        >
+                          <ContextTrigger
+                            aria-label="View session context usage"
+                            className="px-2 text-xs"
+                          />
+                          <ContextContent align="end" side="top">
+                            <ContextContentHeader />
+                          </ContextContent>
+                        </Context>
+                      ) : null
                     }
                     onProviderChange={(value) => {
                       if (isActiveProvider(value)) setActiveProvider(value)

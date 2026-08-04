@@ -84,6 +84,7 @@ const messageValidator = v.object({
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
   reasoningSteps: v.optional(v.array(v.string())),
+  contextTokens: v.optional(v.number()),
   terminalRuns: v.optional(v.array(terminalRunValidator)),
   uiPayload: v.optional(v.string()),
   errorCode: v.optional(v.literal("insufficient_credits")),
@@ -1161,6 +1162,7 @@ export const finishOpenRouterResponse = internalMutation({
     errorCode: v.optional(v.literal("insufficient_credits")),
     failed: v.boolean(),
     attachments: v.optional(v.array(messageAttachmentValidator)),
+    contextTokens: v.optional(v.number()),
     reasoningSteps: v.optional(v.array(v.string())),
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
@@ -1169,6 +1171,11 @@ export const finishOpenRouterResponse = internalMutation({
   handler: async (ctx, args) => {
     if (args.content.length > MAX_MESSAGE_LENGTH)
       throw new Error("Response is too long")
+    if (
+      args.contextTokens !== undefined &&
+      (!Number.isSafeInteger(args.contextTokens) || args.contextTokens < 0)
+    )
+      throw new Error("Response context usage is invalid")
     if (
       args.uiPayload &&
       args.uiPayload.length > MAX_GENERATIVE_UI_PAYLOAD_LENGTH
@@ -1183,6 +1190,9 @@ export const finishOpenRouterResponse = internalMutation({
       await ctx.db.patch(message._id, {
         content: args.content,
         ...(args.attachments ? { attachments: args.attachments } : {}),
+        ...(args.contextTokens === undefined
+          ? {}
+          : { contextTokens: args.contextTokens }),
         errorCode: args.errorCode,
         ...(args.reasoningSteps ? { reasoningSteps: args.reasoningSteps } : {}),
         ...(args.terminalRuns ? { terminalRuns: args.terminalRuns } : {}),
