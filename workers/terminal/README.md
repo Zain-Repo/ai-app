@@ -29,7 +29,7 @@ of inactivity. Deleting a chat or project also schedules best-effort cleanup.
 ## Build and run
 
 ```sh
-docker build -t ai-harness-terminal:local workers/terminal/image
+docker build -t dev3-terminal:local workers/terminal/image
 export TERMINAL_WORKER_TOKEN='replace-with-at-least-32-random-characters'
 bun run terminal:worker
 curl http://127.0.0.1:8788/health

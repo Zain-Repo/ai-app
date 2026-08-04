@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    if (typeof window !== "undefined" && window.aiHarnessDesktop)
+    if (typeof window !== "undefined" && window.dev3Desktop)
       throw redirect({ href: "/desktop" })
   },
   component: App,
@@ -78,7 +78,7 @@ const beats = [
 const controlPoints = [
   {
     title: "One identity across the workspace",
-    copy: "Clerk signs you in once. The harness carries that session into protected Convex data.",
+    copy: "Clerk signs you in once. Dev3 carries that session into protected Convex data.",
   },
   {
     title: "Provider connections as adapters",
@@ -183,7 +183,7 @@ function LandingHeader() {
               className="size-7 object-cover"
             />
           </span>
-          <span>AI Harness</span>
+          <span>Dev3</span>
         </a>
 
         <div className="hidden items-center gap-1 md:flex">
@@ -447,9 +447,9 @@ function App() {
               initial={false}
               className="cinema-body mt-6 max-w-[34rem]"
             >
-              AI Harness is the control layer between your identity, your
-              provider access, and the work itself. Connect adapters, route
-              runs, and keep the thread intact when the model changes.
+              Dev3 is the control layer between your identity, your provider
+              access, and the work itself. Connect adapters, route runs, and
+              keep the thread intact when the model changes.
             </motion.p>
 
             <motion.div
@@ -497,7 +497,7 @@ function App() {
 
           <div className="relative min-w-0">
             <ParallaxMedia
-              src="/media/ai-harness-hero.webp"
+              src="/media/dev3-hero.webp"
               alt="Optical routing plate with converging signal paths"
               className="aspect-[16/11] shadow-[0_30px_80px_oklch(0_0_0/0.18)]"
               priority
@@ -542,7 +542,7 @@ function App() {
           </Reveal>
           <Reveal delay={0.08} className="md:col-span-6 md:col-start-7">
             <p className="cinema-body max-w-[38rem]">
-              AI Harness exists for people who switch models often and refuse to
+              Dev3 exists for people who switch models often and refuse to
               rebuild their room every time a better endpoint appears. Identity,
               provider adapters, project context, and conversation history stay
               in one place. The only thing that should feel optional is the
@@ -660,7 +660,7 @@ function App() {
         <div className="cinema-shell grid gap-12 py-20 md:grid-cols-12 md:items-center md:py-28">
           <Reveal className="min-w-0 md:col-span-6">
             <ParallaxMedia
-              src="/media/ai-harness-routing-detail.webp"
+              src="/media/dev3-routing-detail.webp"
               alt="Precision optical paths converging through a routing plate"
               className="aspect-[4/3]"
             />
@@ -677,8 +677,8 @@ function App() {
               </h2>
               <p className="cinema-body mt-5 max-w-[36rem]">
                 The landing page is not selling a prompt box. It is explaining
-                the harness: a signed-in workspace that keeps provider choice
-                and run history under control while models come and go.
+                Dev3: a signed-in workspace that keeps provider choice and run
+                history under control while models come and go.
               </p>
             </Reveal>
 
@@ -721,14 +721,14 @@ function App() {
               Meet the new desktop version.
             </h2>
             <p className="cinema-body mt-5 max-w-[37rem]">
-              AI Harness is coming to Windows as a dedicated desktop app. Keep
-              the same signed-in workspace, use your ChatGPT subscription
-              through Codex, and receive updates without rebuilding your setup.
+              Dev3 is coming to Windows as a dedicated desktop app. Keep the
+              same signed-in workspace, use your ChatGPT subscription through
+              Codex, and receive updates without rebuilding your setup.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
                 className="cinema-cta group/button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm"
-                href="https://github.com/Zain-Repo/ai-app/releases/latest/download/ai-harness-setup.exe"
+                href="https://github.com/Zain-Repo/ai-app/releases/latest/download/dev3-setup.exe"
               >
                 Download for Windows
                 <HugeiconsIcon
@@ -763,7 +763,7 @@ function App() {
                 [
                   "02",
                   "Codex access",
-                  "Bring your existing ChatGPT plan into the harness.",
+                  "Bring your existing ChatGPT plan into Dev3.",
                 ],
                 [
                   "03",
@@ -850,7 +850,7 @@ function App() {
 
       <footer className="border-t border-cinema-line/70">
         <div className="cinema-shell flex flex-col gap-3 py-8 text-sm text-cinema-muted sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-cinema-ivory">AI Harness</p>
+          <p className="text-cinema-ivory">Dev3</p>
           <p>Built for model choice without workflow churn.</p>
         </div>
       </footer>

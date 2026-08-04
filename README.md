@@ -1,9 +1,11 @@
-# AI Harness
+# Dev3
 
-AI Harness is a TanStack Start application with a Convex backend and an optional
+Dev3 is a TanStack Start application with a Convex backend and an optional
 Electron desktop client. The desktop client loads the deployed web application in
 a hardened Electron window and adds a local Codex bridge so users can sign in with
 their ChatGPT account without sending OpenAI credentials to Convex.
+
+![Dev3 visual identity](public/branding/dev3-brand-board.png)
 
 ## Web development
 
@@ -40,7 +42,7 @@ The production desktop client is a thin wrapper around the deployed HTTPS web
 application. Set its trusted renderer URL before packaging:
 
 ```powershell
-$env:AI_HARNESS_DESKTOP_URL = "https://app.a2zsoftware.ca/"
+$env:DEV3_DESKTOP_URL = "https://app.a2zsoftware.ca/"
 bun run installer:windows
 ```
 
@@ -48,7 +50,7 @@ bun run installer:windows
 assisted NSIS installer. Outputs are written to:
 
 - `out/packages/` for unpacked Electron packages
-- `out/nsis/ai-harness-setup.exe` for the installer
+- `out/nsis/dev3-setup.exe` for the installer
 - `out/nsis/latest.yml` and the installer blockmap for updates
 
 Packaging rejects missing or non-HTTPS renderer URLs. It also rejects stale
@@ -94,7 +96,10 @@ Configure these GitHub repository settings before the first release:
 
 Required variables:
 
-- `AI_HARNESS_DESKTOP_URL`: the absolute HTTPS URL loaded by the desktop client.
+- `DEV3_DESKTOP_URL`: the absolute HTTPS URL loaded by the desktop client.
+
+Legacy `AI_HARNESS_*` packaging variables remain supported as fallbacks so
+existing release environments can migrate without interrupting updates.
 
 The release workflow uses its scoped GitHub Actions token to create and upload
 the Git tag and GitHub release; no personal access token is required. Keep the

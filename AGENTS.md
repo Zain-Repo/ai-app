@@ -18,8 +18,8 @@ Convex agent skills for common tasks can be installed by running
 - Record proposed features in `notes/features/`.
 - Record lasting technical decisions in `notes/decisions/`.
 - Use one dated Markdown file per topic and follow `notes/README.md`.
-- Mirror completed changes and decisions to the [AI-APP Engineering Notes](https://app.notion.com/p/3a65615a45578113b272cfb82c0ff235) page.
-- Create or update planned features in the [AI-APP tasks](https://app.notion.com/p/3a55615a455780f385c6f7388200365e) database.
+- Mirror completed changes and decisions to the [Dev3 Engineering Notes](https://app.notion.com/p/3a65615a45578113b272cfb82c0ff235) page.
+- Create or update planned features in the [Dev3 tasks](https://app.notion.com/p/3a55615a455780f385c6f7388200365e) database.
 - Search local notes and Notion before creating a new record to avoid duplicates.
 
 ## Feature Branch and Review Workflow

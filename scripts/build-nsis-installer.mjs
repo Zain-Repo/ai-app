@@ -99,7 +99,7 @@ fs.writeFileSync(
       ...builderConfig,
       ...(localOnly
         ? {
-            artifactName: "ai-harness-local-setup.${ext}",
+            artifactName: "dev3-local-setup.${ext}",
             directories: {
               ...builderConfig.directories,
               output: "out/local-nsis",
@@ -151,7 +151,7 @@ const installerDirectory = path.join(
 )
 const installerPath = path.join(
   installerDirectory,
-  localOnly ? "ai-harness-local-setup.exe" : "ai-harness-setup.exe"
+  localOnly ? "dev3-local-setup.exe" : "dev3-setup.exe"
 )
 const expectedArtifacts = localOnly
   ? [installerPath]

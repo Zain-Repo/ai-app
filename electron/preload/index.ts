@@ -1,12 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron"
 
 import type {
-  AiHarnessDesktopApi,
+  Dev3DesktopApi,
   DesktopCodexGenerateInput,
   DesktopUpdaterState,
 } from "../types"
 
-const api: AiHarnessDesktopApi = {
+const api: Dev3DesktopApi = {
   isDesktop: true,
   version: () => ipcRenderer.invoke("desktop:version"),
   codex: {
@@ -38,4 +38,4 @@ const api: AiHarnessDesktopApi = {
   },
 }
 
-contextBridge.exposeInMainWorld("aiHarnessDesktop", api)
+contextBridge.exposeInMainWorld("dev3Desktop", api)

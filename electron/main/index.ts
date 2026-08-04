@@ -34,7 +34,9 @@ function readPackagedRendererUrl() {
 }
 
 function rendererUrl() {
-  const configured = process.env.AI_HARNESS_DESKTOP_URL?.trim()
+  const configured =
+    process.env.DEV3_DESKTOP_URL?.trim() ||
+    process.env.AI_HARNESS_DESKTOP_URL?.trim()
   const value =
     configured || (app.isPackaged ? readPackagedRendererUrl() : null)
   return value || "http://127.0.0.1:3000"
@@ -43,7 +45,7 @@ function rendererUrl() {
 function parsedRendererUrl() {
   const url = new URL(rendererUrl())
   if (!["http:", "https:"].includes(url.protocol))
-    throw new Error("AI_HARNESS_DESKTOP_URL must use http or https")
+    throw new Error("DEV3_DESKTOP_URL must use http or https")
   if (app.isPackaged && url.protocol !== "https:")
     throw new Error("Packaged desktop builds require an https renderer URL")
   return url
@@ -142,7 +144,7 @@ function openDesktopAuthWindow(
     height: 760,
     minWidth: 420,
     minHeight: 600,
-    title: "Sign in to AI Harness",
+    title: "Sign in to Dev3",
     autoHideMenuBar: true,
     backgroundColor: "#070807",
     webPreferences: {
@@ -225,7 +227,7 @@ async function createWindow() {
     height: 860,
     minWidth: 960,
     minHeight: 640,
-    title: "AI Harness",
+    title: "Dev3",
     autoHideMenuBar: true,
     backgroundColor: "#070807",
     ...(!app.isPackaged

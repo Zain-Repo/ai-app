@@ -63,9 +63,9 @@ export function MemorySettingsDialog({
         <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
           <DialogTitle>Memory</DialogTitle>
           <DialogDescription>
-            Control what AI Harness remembers across conversations. Recalled
-            memories are sent with your prompts through the selected model and
-            follow your OpenRouter/provider privacy settings.
+            Control what Dev3 remembers across conversations. Recalled memories
+            are sent with your prompts through the selected model and follow
+            your OpenRouter/provider privacy settings.
           </DialogDescription>
         </DialogHeader>
 

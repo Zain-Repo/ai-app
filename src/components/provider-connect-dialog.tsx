@@ -176,7 +176,7 @@ export function ProviderConnectDialog({
   }
 
   useEffect(() => {
-    const desktop = window.aiHarnessDesktop
+    const desktop = window.dev3Desktop
     setDesktopCodexAvailable(Boolean(desktop))
     if (!desktop) return
     let cancelled = false
@@ -279,7 +279,7 @@ export function ProviderConnectDialog({
   }
 
   async function connectCodex() {
-    const desktop = window.aiHarnessDesktop
+    const desktop = window.dev3Desktop
     if (!desktop) return
     setPending(true)
     setError("")
@@ -302,7 +302,7 @@ export function ProviderConnectDialog({
   }
 
   async function connectCursor() {
-    const desktop = window.aiHarnessDesktop
+    const desktop = window.dev3Desktop
     if (!desktop) return
     setPending(true)
     setError("")

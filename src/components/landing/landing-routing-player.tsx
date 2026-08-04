@@ -2,9 +2,9 @@ import { Player } from "@remotion/player"
 import { useReducedMotion } from "motion/react"
 
 import {
-  HarnessRoutingReel,
-  harnessRoutingReelMeta,
-} from "@/remotion/HarnessRoutingReel"
+  Dev3RoutingReel,
+  dev3RoutingReelMeta,
+} from "@/remotion/Dev3RoutingReel"
 import { cn } from "@/lib/utils"
 
 type LandingRoutingPlayerProps = {
@@ -22,11 +22,11 @@ export function LandingRoutingPlayer({ className }: LandingRoutingPlayerProps) {
       )}
     >
       <Player
-        component={HarnessRoutingReel}
-        compositionWidth={harnessRoutingReelMeta.width}
-        compositionHeight={harnessRoutingReelMeta.height}
-        durationInFrames={harnessRoutingReelMeta.durationInFrames}
-        fps={harnessRoutingReelMeta.fps}
+        component={Dev3RoutingReel}
+        compositionWidth={dev3RoutingReelMeta.width}
+        compositionHeight={dev3RoutingReelMeta.height}
+        durationInFrames={dev3RoutingReelMeta.durationInFrames}
+        fps={dev3RoutingReelMeta.fps}
         style={{ width: "100%", aspectRatio: "16 / 9", display: "block" }}
         controls={false}
         loop

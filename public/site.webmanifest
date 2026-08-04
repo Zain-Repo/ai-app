@@ -1,7 +1,7 @@
 {
   "id": "/chat",
-  "name": "AI Harness",
-  "short_name": "AI Harness",
+  "name": "Dev3",
+  "short_name": "Dev3",
   "description": "Connect your AI providers, route work to the right model, and keep every run in one focused workspace.",
   "start_url": "/chat",
   "scope": "/",

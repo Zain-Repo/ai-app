@@ -10,7 +10,7 @@ import { TerminalRuntime } from "./runtime"
 
 const MAX_REQUEST_BYTES = 32 * 1_024
 const token = process.env.TERMINAL_WORKER_TOKEN
-const image = process.env.TERMINAL_SANDBOX_IMAGE ?? "ai-harness-terminal:local"
+const image = process.env.TERMINAL_SANDBOX_IMAGE ?? "dev3-terminal:local"
 const host = process.env.TERMINAL_WORKER_HOST ?? "127.0.0.1"
 const port = Number(process.env.TERMINAL_WORKER_PORT ?? 8788)
 

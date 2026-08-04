@@ -31,7 +31,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "AI Harness | One workspace for every model",
+        title: "Dev3 | One workspace for every model",
       },
       {
         name: "description",

@@ -1,4 +1,4 @@
-import type { AiHarnessDesktopApi } from "../../electron/types"
+import type { Dev3DesktopApi } from "../../electron/types"
 import {
   CHAT_TITLE_INSTRUCTIONS,
   normalizeGeneratedChatTitle,
@@ -14,7 +14,7 @@ type SetDesktopGeneratedTitle = (args: {
 
 export async function generateDesktopChatTitle(args: {
   conversationId: string
-  desktop: AiHarnessDesktopApi
+  desktop: Dev3DesktopApi
   initialQuestion: string
   model: string
   setGeneratedTitle: SetDesktopGeneratedTitle

@@ -1,4 +1,4 @@
-export const OPENROUTER_PKCE_STORAGE_KEY = "ai-harness:openrouter-pkce"
+export const OPENROUTER_PKCE_STORAGE_KEY = "dev3:openrouter-pkce"
 
 function encodeBase64Url(value: ArrayBuffer | Uint8Array) {
   const bytes = value instanceof Uint8Array ? value : new Uint8Array(value)

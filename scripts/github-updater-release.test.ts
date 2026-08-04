@@ -58,7 +58,7 @@ describe("GitHub updater release publishing", () => {
       runGh,
       tag: "v1.2.3",
       target,
-      title: "AI Harness 1.2.3",
+      title: "Dev3 1.2.3",
       notes: "Release notes",
       assets: [
         "out/setup.exe",
@@ -112,7 +112,7 @@ describe("GitHub updater release publishing", () => {
       runGh,
       tag: "v1.2.3",
       target,
-      title: "AI Harness 1.2.3",
+      title: "Dev3 1.2.3",
       notes: "Release notes",
       assets: ["out/latest.yml"],
     })
@@ -140,7 +140,7 @@ describe("GitHub updater release publishing", () => {
         runGh,
         tag: "v1.2.3",
         target,
-        title: "AI Harness 1.2.3",
+        title: "Dev3 1.2.3",
         notes: "Release notes",
         assets: ["out/setup.exe", "out/latest.yml"],
       })
@@ -168,7 +168,7 @@ describe("GitHub updater release publishing", () => {
         runGh,
         tag: "v1.2.3",
         target,
-        title: "AI Harness 1.2.3",
+        title: "Dev3 1.2.3",
         notes: "Release notes",
         assets: ["out/latest.yml"],
       })
@@ -188,7 +188,7 @@ describe("GitHub updater release publishing", () => {
         runGh,
         tag: "v1.2.3",
         target,
-        title: "AI Harness 1.2.3",
+        title: "Dev3 1.2.3",
         notes: "Release notes",
         assets: ["out/latest.yml"],
       })
@@ -211,7 +211,7 @@ describe("GitHub updater release publishing", () => {
         runGh,
         tag: "v1.2.3",
         target,
-        title: "AI Harness 1.2.3",
+        title: "Dev3 1.2.3",
         notes: "Release notes",
         assets: ["out/latest.yml"],
       })
@@ -231,7 +231,7 @@ describe("GitHub updater release publishing", () => {
         runGh,
         tag: "v1.2.3",
         target,
-        title: "AI Harness 1.2.3",
+        title: "Dev3 1.2.3",
         notes: "Release notes",
         assets: ["out/latest.yml"],
       })

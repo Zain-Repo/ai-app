@@ -47,11 +47,11 @@ const forgeCli = path.join(
 const version = readReleaseVersion(path.join(root, "package.json"))
 const env = unsignedWindowsEnvironment({
   ...process.env,
-  AI_HARNESS_PACKAGE_OUT_DIR: outputRoot,
-  AI_HARNESS_PACKAGE_METADATA_PATH: metadataPath,
-  AI_HARNESS_PACKAGE_PLATFORM: platform,
-  AI_HARNESS_PACKAGE_ARCH: arch,
-  AI_HARNESS_RELEASE_VERSION: version,
+  DEV3_PACKAGE_OUT_DIR: outputRoot,
+  DEV3_PACKAGE_METADATA_PATH: metadataPath,
+  DEV3_PACKAGE_PLATFORM: platform,
+  DEV3_PACKAGE_ARCH: arch,
+  DEV3_RELEASE_VERSION: version,
 })
 
 fs.mkdirSync(path.dirname(outputRoot), { recursive: true })
@@ -68,7 +68,8 @@ function nodeVersion(executable: string) {
 
 function forgeNode() {
   const candidates = [
-    process.env.AI_HARNESS_FORGE_NODE?.trim(),
+    process.env.DEV3_FORGE_NODE?.trim() ||
+      process.env.AI_HARNESS_FORGE_NODE?.trim(),
     path.join(
       os.homedir(),
       ".cache",

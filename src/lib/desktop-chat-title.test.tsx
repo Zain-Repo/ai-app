@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest"
 
-import type { AiHarnessDesktopApi } from "../../electron/types"
+import type { Dev3DesktopApi } from "../../electron/types"
 import {
   DESKTOP_CHAT_TITLE_INSTRUCTIONS,
   generateDesktopChatTitle,
 } from "./desktop-chat-title"
 
 function createDesktop(
-  generate: AiHarnessDesktopApi["codex"]["generate"]
-): AiHarnessDesktopApi {
+  generate: Dev3DesktopApi["codex"]["generate"]
+): Dev3DesktopApi {
   return {
     isDesktop: true,
     version: vi.fn(),

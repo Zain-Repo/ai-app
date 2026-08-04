@@ -44,7 +44,7 @@ describe("Cursor CLI command resolution", () => {
     expect(
       resolveCursorCommand({
         environment: {
-          AI_HARNESS_CURSOR_PATH: "D:\\Cursor Agent\\cursor-agent.cmd",
+          DEV3_CURSOR_PATH: "D:\\Cursor Agent\\cursor-agent.cmd",
           LOCALAPPDATA: localAppData,
         },
         exists: () => false,

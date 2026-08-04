@@ -23,7 +23,7 @@ const executable = path.resolve(
 if (!fs.existsSync(executable))
   throw new Error(`Codex binary missing: ${executable}`)
 
-const codexHome = path.join(os.tmpdir(), `ai-harness-codex-${randomUUID()}`)
+const codexHome = path.join(os.tmpdir(), `dev3-codex-${randomUUID()}`)
 fs.mkdirSync(codexHome, { recursive: true })
 let stderr = ""
 const child = spawn(executable, ["app-server", "--stdio"], {
@@ -79,8 +79,8 @@ function request(id, method, params) {
 try {
   await request(1, "initialize", {
     clientInfo: {
-      name: "ai_harness_smoke",
-      title: "AI Harness",
+      name: "dev3_smoke",
+      title: "Dev3",
       version: "0.1.0",
     },
     capabilities: { experimentalApi: false, requestAttestation: false },

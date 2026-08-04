@@ -780,7 +780,7 @@ function ChatWorkspace() {
   }, [search.projectId])
 
   useEffect(() => {
-    setDesktopAvailable(Boolean(window.aiHarnessDesktop))
+    setDesktopAvailable(Boolean(window.dev3Desktop))
   }, [])
 
   const connectedProviderOptions = useMemo(
@@ -874,7 +874,7 @@ function ChatWorkspace() {
     setCatalogState("loading")
     const modelsPromise =
       activeProvider === "codex"
-        ? window.aiHarnessDesktop?.codex.listModels().then((models) =>
+        ? window.dev3Desktop?.codex.listModels().then((models) =>
             models.map((model): CatalogModel => ({
               provider: "openai",
               value: model.value,
@@ -1568,7 +1568,7 @@ function ChatWorkspace() {
         await open({ slug, projectId: search.projectId })
       }
       if (provider === "codex" && targetConversationId) {
-        const desktop = window.aiHarnessDesktop
+        const desktop = window.dev3Desktop
         if (!desktop)
           throw new Error("Codex is only available in the desktop app")
         if (!conversationId)
@@ -1601,7 +1601,7 @@ function ChatWorkspace() {
             model: meta.settings.model,
             ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
             developerInstructions: [
-              "Answer as a general-purpose assistant inside AI Harness. Do not inspect files, run commands, or modify the filesystem.",
+              "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
               selectedProject?.instructions,
               preferences?.responseDetail
                 ? `Response detail: ${preferences.responseDetail}.`
@@ -1740,7 +1740,7 @@ function ChatWorkspace() {
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
         <SidebarHeader className="gap-3 border-b border-sidebar-border/50 p-3.5">
           <a
-            aria-label="AI Harness home"
+            aria-label="Dev3 home"
             className="flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/chat"
           >
@@ -1749,13 +1749,13 @@ function ChatWorkspace() {
                 alt=""
                 className="size-full"
                 height={96}
-                src="/media/ai-harness-logo.png"
+                src="/media/dev3-logo.png"
                 width={96}
               />
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
-                AI Harness
+                Dev3
               </span>
               <span className="mt-0.5 block truncate text-[10px] font-medium tracking-[0.14em] text-sidebar-foreground/45 uppercase">
                 Workspace

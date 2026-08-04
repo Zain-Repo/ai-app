@@ -25,6 +25,7 @@ export function storeIdentity(env = process.env) {
       "MICROSOFT_STORE_IDENTITY_NAME is not a valid package identity"
     )
 
+  // Preserve the registered Store application identity across the product rename.
   const applicationId =
     env.MICROSOFT_STORE_APPLICATION_ID?.trim() || "AIHarness"
   if (
@@ -53,7 +54,7 @@ export function storeBuilderEnvironment(env = process.env) {
 export function storeBuilderConfig(builderConfig, version, identity) {
   return {
     ...builderConfig,
-    artifactName: "ai-harness-store-${version}-${arch}.${ext}",
+    artifactName: "dev3-store-${version}-${arch}.${ext}",
     directories: {
       ...builderConfig.directories,
       output: "out/store",
@@ -70,7 +71,7 @@ export function storeBuilderConfig(builderConfig, version, identity) {
     },
     appx: {
       ...identity,
-      displayName: "AI Harness",
+      displayName: "Dev3",
       languages: ["en-US"],
     },
   }
@@ -134,7 +135,7 @@ function run() {
     root,
     "out",
     "store",
-    `ai-harness-store-${packageJson.version}-x64.appx`
+    `dev3-store-${packageJson.version}-x64.appx`
   )
   const startedAt = Date.now()
   const result = spawnSync(

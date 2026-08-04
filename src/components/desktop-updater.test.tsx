@@ -53,7 +53,7 @@ beforeEach(() => {
       return vi.fn()
     }),
   }
-  Object.defineProperty(window, "aiHarnessDesktop", {
+  Object.defineProperty(window, "dev3Desktop", {
     configurable: true,
     value: { isDesktop: true, updater },
   })
@@ -61,7 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  Reflect.deleteProperty(window, "aiHarnessDesktop")
+  Reflect.deleteProperty(window, "dev3Desktop")
 })
 
 describe("desktop updater dialog", () => {

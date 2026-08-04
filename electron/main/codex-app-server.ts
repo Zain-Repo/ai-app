@@ -113,7 +113,9 @@ function targetTriple() {
 }
 
 function resolveCodexExecutable() {
-  const override = process.env.AI_HARNESS_CODEX_PATH?.trim()
+  const override =
+    process.env.DEV3_CODEX_PATH?.trim() ||
+    process.env.AI_HARNESS_CODEX_PATH?.trim()
   if (override) return override
 
   const executableName = process.platform === "win32" ? "codex.exe" : "codex"
@@ -264,7 +266,7 @@ export class CodexAppServer {
       ephemeral: true,
       developerInstructions:
         input.developerInstructions?.slice(0, 16_000) ||
-        "You are a general-purpose assistant in AI Harness. Answer directly. Do not inspect files, run commands, or modify the filesystem.",
+        "You are a general-purpose assistant in Dev3. Answer directly. Do not inspect files, run commands, or modify the filesystem.",
     })
     const thread = isRecord(threadResult) ? threadResult.thread : null
     if (!isRecord(thread) || typeof thread.id !== "string")
@@ -371,8 +373,8 @@ export class CodexAppServer {
     })
     await this.requestWithoutStart("initialize", {
       clientInfo: {
-        name: "ai_harness",
-        title: "AI Harness",
+        name: "dev3",
+        title: "Dev3",
         version: app.getVersion(),
       },
       capabilities: {

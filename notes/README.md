@@ -1,12 +1,12 @@
-# AI-APP Notes
+# Dev3 Notes
 
 This directory is the repository-local record of implemented changes, planned
 features, and lasting engineering decisions.
 
 Notion companions:
 
-- [AI-APP Engineering Notes](https://app.notion.com/p/3a65615a45578113b272cfb82c0ff235)
-- [AI-APP tasks](https://app.notion.com/p/3a55615a455780f385c6f7388200365e)
+- [Dev3 Engineering Notes](https://app.notion.com/p/3a65615a45578113b272cfb82c0ff235)
+- [Dev3 tasks](https://app.notion.com/p/3a55615a455780f385c6f7388200365e)
 
 ## Structure
 
@@ -22,6 +22,6 @@ Notion companions:
    limitations.
 4. Feature notes must include implementation steps, acceptance criteria,
    security or reliability constraints, validation, and out-of-scope boundaries.
-5. Mirror updates and decisions to AI-APP Engineering Notes. Create or update
-   feature work in AI-APP tasks.
+5. Mirror updates and decisions to Dev3 Engineering Notes. Create or update
+   feature work in Dev3 tasks.
 6. Never include credentials, tokens, private customer data, or secret values.
