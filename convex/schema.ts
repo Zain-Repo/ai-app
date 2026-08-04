@@ -27,6 +27,15 @@ const messageStatus = v.union(
 
 const outputMode = v.union(v.literal("image"), v.literal("text"))
 
+const storedLibraryAssetValidator = v.object({
+  ownerId: v.id("users"),
+  storageId: v.id("_storage"),
+  name: v.string(),
+  contentType: v.string(),
+  size: v.number(),
+  createdAt: v.number(),
+})
+
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
@@ -224,6 +233,43 @@ export default defineSchema({
   })
     .index("by_owner_id_and_created_at", ["ownerId", "createdAt"])
     .index("by_storage_id", ["storageId"]),
+
+  libraryAssets: defineTable(
+    v.union(
+      storedLibraryAssetValidator.extend({
+        category: v.literal("upload"),
+        kind: v.literal("chat_upload"),
+        conversationId: v.id("conversations"),
+        messageId: v.id("messages"),
+      }),
+      storedLibraryAssetValidator.extend({
+        category: v.literal("upload"),
+        kind: v.literal("project_upload"),
+        projectId: v.id("projects"),
+        projectSourceId: v.id("projectSources"),
+      }),
+      storedLibraryAssetValidator.extend({
+        category: v.literal("generated_image"),
+        kind: v.literal("generated_image"),
+        conversationId: v.id("conversations"),
+        messageId: v.id("messages"),
+        provider: v.optional(v.string()),
+        model: v.optional(v.string()),
+      })
+    )
+  )
+    .index("by_owner_id_and_created_at", ["ownerId", "createdAt"])
+    .index("by_owner_id_and_category_and_created_at", [
+      "ownerId",
+      "category",
+      "createdAt",
+    ])
+    .index("by_message_id_and_storage_id", ["messageId", "storageId"])
+    .index("by_project_source_id", ["projectSourceId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["ownerId", "category"],
+    }),
 
   conversations: defineTable({
     ownerId: v.id("users"),

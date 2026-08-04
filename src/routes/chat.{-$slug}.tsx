@@ -23,11 +23,20 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  LibraryBig,
   Paperclip,
   Plug,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
-import { Component, lazy, Suspense, useEffect, useMemo, useState } from "react"
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { ReactNode } from "react"
 import {
   Authenticated,
@@ -170,6 +179,11 @@ const GenerativeUi = lazy(async () => {
 const RealtimeVoice = lazy(async () => {
   const module = await import("@/components/realtime-voice")
   return { default: module.RealtimeVoice }
+})
+
+const LibraryWorkspace = lazy(async () => {
+  const module = await import("@/components/library-workspace")
+  return { default: module.LibraryWorkspace }
 })
 
 const requireAuth = createServerFn().handler(async () => {
@@ -507,12 +521,16 @@ export const Route = createFileRoute("/chat/{-$slug}")({
   validateSearch: (search: Record<string, unknown>) => ({
     mode:
       search.mode === "chat-new" ||
+      search.mode === "library" ||
       search.mode === "project" ||
       search.mode === "project-new"
         ? search.mode
         : undefined,
     projectId:
       typeof search.projectId === "string" ? search.projectId : undefined,
+    ...(typeof search.messageId === "string"
+      ? { messageId: search.messageId }
+      : {}),
   }),
   component: ChatPage,
 })
@@ -532,6 +550,7 @@ function ChatErrorState() {
       search: {
         mode: undefined,
         projectId: undefined,
+        messageId: undefined,
       },
     })
   }
@@ -1114,7 +1133,8 @@ function ChatWorkspace() {
       conversation.title.toLowerCase().includes(normalizedSearch)
   )
   const open = (next: {
-    mode?: "chat-new" | "project" | "project-new"
+    mode?: "chat-new" | "library" | "project" | "project-new"
+    messageId?: string
     projectId?: string
     slug?: string
   }) =>
@@ -1124,6 +1144,7 @@ function ChatWorkspace() {
       search: {
         mode: next.mode,
         projectId: next.projectId,
+        messageId: next.messageId,
       },
     })
 
@@ -1774,6 +1795,18 @@ function ChatWorkspace() {
               value={searchQuery}
             />
           </div>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="rounded-xl px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
+                isActive={search.mode === "library"}
+                onClick={() => void open({ mode: "library" })}
+              >
+                <LibraryBig aria-hidden="true" />
+                <span>Library</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarHeader>
         <SidebarContent className="gap-0 px-2 py-3">
           <SidebarGroup className="p-1.5">
@@ -2058,12 +2091,16 @@ function ChatWorkspace() {
                 </span>
               </p>
             ) : (
-              <p className="chat-workspace-kicker">AI workspace</p>
+              <p className="chat-workspace-kicker">
+                {search.mode === "library" ? "Your content" : "AI workspace"}
+              </p>
             )}
             <p className="truncate text-sm font-semibold tracking-tight">
-              {search.mode === "project"
-                ? (selectedProject?.name ?? "Project")
-                : (selected?.title ?? "New chat")}
+              {search.mode === "library"
+                ? "Library"
+                : search.mode === "project"
+                  ? (selectedProject?.name ?? "Project")
+                  : (selected?.title ?? "New chat")}
             </p>
           </div>
         </header>
@@ -2071,7 +2108,26 @@ function ChatWorkspace() {
           className="flex min-h-0 flex-1 flex-col"
           aria-label="Chat workspace"
         >
-          {search.mode === "project" ? (
+          {search.mode === "library" ? (
+            <Suspense
+              fallback={<ChatStatus loading message="Loading Library…" />}
+            >
+              <OptionalChatFeatureBoundary
+                fallback={
+                  <ChatStatus message="Library is temporarily unavailable." />
+                }
+              >
+                <LibraryWorkspace
+                  onOpenConversation={(nextConversationId, messageId) =>
+                    void open({ slug: nextConversationId, messageId })
+                  }
+                  onOpenProject={(projectId) =>
+                    void open({ mode: "project", projectId })
+                  }
+                />
+              </OptionalChatFeatureBoundary>
+            </Suspense>
+          ) : search.mode === "project" ? (
             selectedProject ? (
               <ProjectWorkspace
                 embeddingActionError={projectEmbeddingActionError}
@@ -2616,6 +2672,7 @@ function ChatWorkspace() {
                   ).catch(() => undefined)
                 }}
                 userMessageBubbleColor={preferences?.userMessageBubbleColor}
+                targetMessageId={search.messageId}
               />
               <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-8 pb-4 sm:px-6">
                 <div className="mx-auto w-full max-w-3xl">
@@ -2915,6 +2972,7 @@ type MessageAreaProps = {
   name: string | null | undefined
   onAction: (value: string) => void
   onManageMemory: () => void
+  targetMessageId?: string
   userMessageBubbleColor: UserMessageBubbleColor | undefined
 }
 
@@ -2995,6 +3053,7 @@ function MessageAreaContent({
   onAction,
   onManageMemory,
   responseSourcesByMessageId,
+  targetMessageId,
   userMessageBubbleColor,
 }: LoadedMessageAreaProps & {
   responseSourcesByMessageId?: ReadonlyMap<
@@ -3002,6 +3061,21 @@ function MessageAreaContent({
     ResponseMemorySource[]
   >
 }) {
+  const consumedTargetMessageId = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (!targetMessageId) {
+      consumedTargetMessageId.current = undefined
+      return
+    }
+    if (consumedTargetMessageId.current === targetMessageId) return
+    const target = document.getElementById(`message-${targetMessageId}`)
+    if (!target) return
+    consumedTargetMessageId.current = targetMessageId
+    target.scrollIntoView({ behavior: "smooth", block: "center" })
+    target.focus({ preventScroll: true })
+  }, [messages, targetMessageId])
+
   return (
     <MessageScrollerProvider>
       <MessageScroller>
@@ -3026,7 +3100,12 @@ function MessageAreaContent({
                     )
                   : message.attachments
                 return (
-                  <MessageScrollerItem key={message._id}>
+                  <MessageScrollerItem
+                    className="focus-visible:rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                    id={`message-${message._id}`}
+                    key={message._id}
+                    tabIndex={-1}
+                  >
                     <Message align={isUser ? "end" : "start"}>
                       <MessageContent>
                         <Bubble

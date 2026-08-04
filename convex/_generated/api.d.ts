@@ -15,6 +15,7 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as fal from "../fal.js";
+import type * as library from "../library.js";
 import type * as memories from "../memories.js";
 import type * as memoryActions from "../memoryActions.js";
 import type * as memoryCapture from "../memoryCapture.js";
@@ -26,6 +27,7 @@ import type * as memoryPolicy from "../memoryPolicy.js";
 import type * as memoryRetention from "../memoryRetention.js";
 import type * as memoryRolloutPolicy from "../memoryRolloutPolicy.js";
 import type * as memoryTypes from "../memoryTypes.js";
+import type * as migrations from "../migrations.js";
 import type * as openRouterResponses from "../openRouterResponses.js";
 import type * as projectEmbeddingPolicy from "../projectEmbeddingPolicy.js";
 import type * as projectEmbeddings from "../projectEmbeddings.js";
@@ -54,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   crons: typeof crons;
   fal: typeof fal;
+  library: typeof library;
   memories: typeof memories;
   memoryActions: typeof memoryActions;
   memoryCapture: typeof memoryCapture;
@@ -65,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   memoryRetention: typeof memoryRetention;
   memoryRolloutPolicy: typeof memoryRolloutPolicy;
   memoryTypes: typeof memoryTypes;
+  migrations: typeof migrations;
   openRouterResponses: typeof openRouterResponses;
   projectEmbeddingPolicy: typeof projectEmbeddingPolicy;
   projectEmbeddings: typeof projectEmbeddings;
@@ -106,4 +110,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+};

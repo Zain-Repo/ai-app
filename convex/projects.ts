@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel"
 import { mutation, query } from "./_generated/server"
 import { consumeDraftAttachments } from "./attachments"
 import { getCurrentUser } from "./authHelpers"
+import { indexProjectSource, removeProjectSourceAsset } from "./library"
 import {
   configureEmbeddingProfile,
   embeddingProviderValidator,
@@ -112,6 +113,13 @@ export const create = mutation({
         ...file,
         createdAt: createdAt + index,
       })
+      await indexProjectSource(ctx, {
+        ownerId: user._id,
+        projectId,
+        projectSourceId: sourceId,
+        attachment: file,
+        createdAt: createdAt + index,
+      })
       sourceIds.push({
         contentType: file.contentType,
         sourceName: file.name,
@@ -184,6 +192,13 @@ export const addSources = mutation({
         projectId: project._id,
         kind: "file",
         ...file,
+        createdAt: createdAt + index,
+      })
+      await indexProjectSource(ctx, {
+        ownerId: user._id,
+        projectId: project._id,
+        projectSourceId: sourceId,
+        attachment: file,
         createdAt: createdAt + index,
       })
       await insertSourceIndexState(ctx, {
@@ -468,7 +483,10 @@ export const removeSource = mutation({
       source.projectId !== project._id
     )
       throw new Error("Project source unavailable")
-    if (source.kind === "file") await ctx.storage.delete(source.storageId)
+    if (source.kind === "file") {
+      await removeProjectSourceAsset(ctx, source._id)
+      await ctx.storage.delete(source.storageId)
+    }
     await ctx.db.delete(source._id)
     await ctx.db.patch(project._id, { updatedAt: Date.now() })
     await ctx.scheduler.runAfter(
@@ -516,7 +534,10 @@ export const remove = mutation({
         updatedAt: Date.now(),
       })
     for (const source of sources) {
-      if (source.kind === "file") await ctx.storage.delete(source.storageId)
+      if (source.kind === "file") {
+        await removeProjectSourceAsset(ctx, source._id)
+        await ctx.storage.delete(source.storageId)
+      }
       await ctx.db.delete(source._id)
     }
     for (const memory of memories) await ctx.db.delete(memory._id)
