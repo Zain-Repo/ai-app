@@ -14,7 +14,7 @@ The large logo block was removed to give the navigation a quieter top edge, and 
 ## Validation
 
 - TypeScript passed with `tsc --noEmit`.
-- All 243 Vitest tests across 53 files passed.
+- In a clean feature worktree, all 241 Vitest tests across 52 files passed.
 - The production client and SSR build passed.
 - Scoped ESLint and Prettier passed for the changed TypeScript and TSX files.
 - `git diff --check` passed.
