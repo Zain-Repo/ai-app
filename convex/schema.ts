@@ -271,6 +271,7 @@ export default defineSchema({
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
     reasoningSteps: v.optional(v.array(v.string())),
+    contextTokens: v.optional(v.number()),
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
     errorCode: v.optional(v.literal("insufficient_credits")),

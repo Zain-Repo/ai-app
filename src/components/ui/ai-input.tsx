@@ -2032,6 +2032,8 @@ export type AIInputProps = {
   onProviderChange?: (value: string) => void
   /** Fired when any setting in the settings dropdown changes. */
   onSettingsChange?: (settings: Record<string, string>) => void
+  /** Optional status content rendered beside the composer controls. */
+  footerAccessory?: ReactNode
   className?: string
 }
 
@@ -2053,6 +2055,7 @@ export function AIInput({
   onMenuToggle,
   onProviderChange,
   onSettingsChange,
+  footerAccessory,
   className,
 }: AIInputProps) {
   const [value, setValue] = useState("")
@@ -2463,6 +2466,8 @@ export function AIInput({
           ) : null}
 
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+            {footerAccessory}
+
             {settingGroups.length > 0 || menuActions.length > 0 ? (
               <SettingsDropdown
                 groups={settingGroups}

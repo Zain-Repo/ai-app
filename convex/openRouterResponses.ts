@@ -1153,9 +1153,23 @@ export const generate = internalAction({
       if (!completed || (!content && !uiPayload && !terminalRuns.length))
         throw new Error("Provider response incomplete")
 
+      let contextTokens: number | undefined
+      try {
+        const totalTokens = (await result.usage).totalTokens
+        if (
+          typeof totalTokens === "number" &&
+          Number.isSafeInteger(totalTokens) &&
+          totalTokens >= 0
+        )
+          contextTokens = totalTokens
+      } catch {
+        // Usage metadata is optional and must not discard a completed response.
+      }
+
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
+        ...(contextTokens === undefined ? {} : { contextTokens }),
         failed: false,
         ...(reasoning.trim() ? { reasoningSteps: [reasoning.trim()] } : {}),
         ...(terminalRuns.length ? { terminalRuns } : {}),

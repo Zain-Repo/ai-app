@@ -17,6 +17,8 @@ const OPENROUTER_MODEL_ENDPOINTS_URL = "https://openrouter.ai/api/v1/models"
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls"
 const MAX_SDP_BYTES = 64 * 1024
+const LONG_CONTEXT_WINDOW = 1_050_000
+const COMPACT_CONTEXT_WINDOW = 400_000
 const REALTIME_VOICES = new Set([
   "alloy",
   "ash",
@@ -63,6 +65,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-sol",
     label: "GPT-5.6 Sol",
     description: "Frontier model for complex professional work",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
@@ -71,6 +74,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-terra",
     label: "GPT-5.6 Terra",
     description: "Balances intelligence and cost",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
@@ -79,6 +83,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.6-luna",
     label: "GPT-5.6 Luna",
     description: "Optimized for cost-sensitive workloads",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["max", "xhigh", "high", "medium", "low", "none"],
   },
@@ -87,6 +92,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.5",
     label: "GPT-5.5",
     description: "Advanced coding and professional work",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
@@ -95,6 +101,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.5-pro",
     label: "GPT-5.5 Pro",
     description: "Higher-compute GPT-5.5",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
   },
   {
@@ -102,6 +109,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4",
     label: "GPT-5.4",
     description: "Coding and professional work",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
@@ -110,6 +118,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4-pro",
     label: "GPT-5.4 Pro",
     description: "Higher-compute GPT-5.4",
+    contextLength: LONG_CONTEXT_WINDOW,
     outputMode: "text",
   },
   {
@@ -117,6 +126,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4-mini",
     label: "GPT-5.4 mini",
     description: "Fast, efficient GPT-5.4",
+    contextLength: COMPACT_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
@@ -125,6 +135,7 @@ export const OPENAI_MODELS = [
     value: "gpt-5.4-nano",
     label: "GPT-5.4 nano",
     description: "Low-cost, high-volume GPT-5.4",
+    contextLength: COMPACT_CONTEXT_WINDOW,
     outputMode: "text",
     reasoningEfforts: ["xhigh", "high", "medium", "low", "none"],
   },
@@ -135,6 +146,7 @@ type CatalogModel = {
   value: string
   label: string
   description?: string
+  contextLength?: number
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
@@ -181,6 +193,7 @@ const modelValidator = v.object({
   value: v.string(),
   label: v.string(),
   description: v.optional(v.string()),
+  contextLength: v.optional(v.number()),
   outputMode: v.union(v.literal("image"), v.literal("text")),
   reasoningEfforts: v.optional(v.array(reasoningEffortValidator)),
   defaultReasoningEffort: v.optional(reasoningEffortValidator),
@@ -472,7 +485,11 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
         : {}
       const inputModalities = readModalities(architecture.input_modalities)
       const outputModalities = readModalities(architecture.output_modalities)
-      const contextLength = formatContextLength(model.context_length)
+      const contextLength =
+        isFiniteNumber(model.context_length) && model.context_length > 0
+          ? model.context_length
+          : undefined
+      const contextLengthLabel = formatContextLength(contextLength)
       const separatorIndex = model.name.indexOf(": ")
       const label =
         separatorIndex > 0 && separatorIndex < 40
@@ -490,10 +507,11 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
           value: model.id,
           label,
           outputMode,
+          ...(contextLength === undefined ? {} : { contextLength }),
           description: describeCapabilities(
             inputModalities,
             outputModalities,
-            contextLength
+            contextLengthLabel
           ),
           ...reasoningOptions,
         },

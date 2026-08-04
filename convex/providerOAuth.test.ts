@@ -97,6 +97,7 @@ describe("OpenRouter model catalog", () => {
         value: "openai/gpt-image-latest",
         label: "GPT Image Latest",
         description: "Image generation · 400K context",
+        contextLength: 400_000,
         outputMode: "image",
       },
       {
@@ -104,6 +105,7 @@ describe("OpenRouter model catalog", () => {
         value: "openai/gpt-latest",
         label: "GPT Latest",
         description: "Chat · Vision · Files · 1.1M context",
+        contextLength: 1_050_000,
         outputMode: "text",
         reasoningEfforts: ["high", "medium", "low"],
         defaultReasoningEffort: "low",
@@ -113,6 +115,7 @@ describe("OpenRouter model catalog", () => {
         value: "poolside/laguna-s-2.1",
         label: "Laguna S 2.1",
         description: "Chat · 1M context",
+        contextLength: 1_048_576,
         outputMode: "text",
       },
     ])

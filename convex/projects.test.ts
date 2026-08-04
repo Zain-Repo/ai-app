@@ -479,6 +479,7 @@ describe("projects and conversations", () => {
         },
       ],
       content: "",
+      contextTokens: 1_234,
       failed: false,
       uiPayload,
     })
@@ -496,6 +497,7 @@ describe("projects and conversations", () => {
             url: expect.any(String),
           },
         ],
+        contextTokens: 1_234,
         status: "complete",
         uiPayload,
       },
