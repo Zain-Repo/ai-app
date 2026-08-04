@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@clerk/ui/themes/shadcn.css";
-@import "@fontsource-variable/outfit";
+@import "@fontsource-variable/inter";
 @import "@fontsource-variable/raleway";
 @import "katex/dist/katex.min.css";
 @import "streamdown/styles.css";
@@ -14,19 +14,19 @@
 
 :root {
     --background: oklch(1 0 0);
-    --foreground: oklch(0.147 0.004 49.3);
+    --foreground: oklch(0.321 0 0);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.147 0.004 49.3);
+    --card-foreground: oklch(0.321 0 0);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.147 0.004 49.3);
+    --popover-foreground: oklch(0.321 0 0);
     --primary: oklch(0.457 0.24 277.023);
     --primary-foreground: oklch(0.962 0.018 272.314);
     --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --secondary-foreground: oklch(0.321 0 0);
     --muted: oklch(0.96 0.002 17.2);
-    --muted-foreground: oklch(0.547 0.021 43.1);
+    --muted-foreground: oklch(0.566 0 0);
     --accent: oklch(0.96 0.002 17.2);
-    --accent-foreground: oklch(0.214 0.009 43.1);
+    --accent-foreground: oklch(0.321 0 0);
     --destructive: oklch(0.577 0.245 27.325);
     --border: oklch(0.922 0.005 34.3);
     --input: oklch(0.922 0.005 34.3);
@@ -38,13 +38,17 @@
     --chart-5: oklch(0.398 0.195 277.366);
     --radius: 0.625rem;
     --sidebar: oklch(0.986 0.002 67.8);
-    --sidebar-foreground: oklch(0.147 0.004 49.3);
+    --sidebar-foreground: oklch(0.321 0 0);
     --sidebar-primary: oklch(0.511 0.262 276.966);
     --sidebar-primary-foreground: oklch(0.962 0.018 272.314);
     --sidebar-accent: oklch(0.96 0.002 17.2);
     --sidebar-accent-foreground: oklch(0.214 0.009 43.1);
     --sidebar-border: oklch(0.922 0.005 34.3);
     --sidebar-ring: oklch(0.714 0.014 41.2);
+    --success-fill: oklch(0.94 0.077 147.163);
+    --success-accent: oklch(0.661 0.192 146.789);
+    --success-foreground: oklch(0.49 0.136 148.078);
+    --switch-track: oklch(0.578 0.19 254.971);
 }
 .dark {
     --background: oklch(0.147 0.004 49.3);
@@ -81,8 +85,15 @@
 }
 
 @theme inline {
-    --font-sans: 'Outfit Variable', sans-serif;
-    --font-heading: 'Raleway Variable', sans-serif;
+    --font-sans: 'Inter Variable', sans-serif;
+    --font-heading: 'Inter Variable', sans-serif;
+    --font-display: 'Raleway Variable', sans-serif;
+    --text-title: 1rem;
+    --text-title--line-height: 1.25rem;
+    --text-label: 0.8125rem;
+    --text-label--line-height: 1rem;
+    --text-body: 0.875rem;
+    --text-body--line-height: 1.25rem;
     --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-interface: cubic-bezier(0.22, 1, 0.36, 1);
     --animate-cinema-enter: cinema-enter 900ms var(--ease-cinematic) forwards;
@@ -134,6 +145,10 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --color-success-fill: var(--success-fill);
+    --color-success-accent: var(--success-accent);
+    --color-success-foreground: var(--success-foreground);
+    --color-switch-track: var(--switch-track);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -245,7 +260,7 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-body font-normal text-foreground antialiased;
     }
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
@@ -549,7 +564,7 @@
   }
 
   .cinema-display {
-    font-family: var(--font-heading);
+    font-family: var(--font-display);
     font-size: clamp(2.5rem, 6vw, 4.75rem);
     font-weight: 600;
     font-style: normal;
@@ -559,7 +574,7 @@
   }
 
   .cinema-section-heading {
-    font-family: var(--font-heading);
+    font-family: var(--font-display);
     font-size: clamp(2rem, 4vw, 3.35rem);
     font-weight: 600;
     font-style: normal;
