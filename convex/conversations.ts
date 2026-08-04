@@ -39,6 +39,12 @@ const REASONING_EFFORTS = new Set([
   "none",
 ])
 const outputModeValidator = v.union(v.literal("image"), v.literal("text"))
+const responseProviderValidator = v.union(
+  v.literal("openrouter"),
+  v.literal("openai"),
+  v.literal("fal")
+)
+const IMAGE_PROVIDERS = new Set(["openrouter", "fal"])
 const memoryModeValidator = v.union(
   v.literal("standard"),
   v.literal("read_only"),
@@ -217,7 +223,7 @@ export const start = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai", "codex"].includes(connection.provider) ||
+      !["openrouter", "openai", "fal", "codex"].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -226,8 +232,10 @@ export const start = mutation({
       connection.provider
     )
     const outputMode = args.outputMode ?? "text"
-    if (outputMode === "image" && connection.provider !== "openrouter")
-      throw new Error("Image generation requires OpenRouter")
+    if (outputMode === "image" && !IMAGE_PROVIDERS.has(connection.provider))
+      throw new Error("Image generation requires OpenRouter or Fal")
+    if (outputMode === "text" && connection.provider === "fal")
+      throw new Error("Fal is available for image generation only")
 
     const projectId = args.projectId
       ? ctx.db.normalizeId("projects", args.projectId)
@@ -289,12 +297,14 @@ export const start = mutation({
       messageId: initialUserMessageId,
       ownerId: user._id,
     })
-    if (connection.provider !== "codex") {
+    if (["openrouter", "openai"].includes(connection.provider)) {
       await ctx.scheduler.runAfter(
         0,
         internal.openRouterResponses.generateTitle,
         { conversationId }
       )
+    }
+    if (connection.provider !== "codex") {
       await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
         assistantMessageId,
         conversationId,
@@ -379,7 +389,7 @@ export const send = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai", "codex"].includes(connection.provider) ||
+      !["openrouter", "openai", "fal", "codex"].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -388,8 +398,10 @@ export const send = mutation({
       connection.provider
     )
     const outputMode = conversation.outputMode ?? "text"
-    if (outputMode === "image" && connection.provider !== "openrouter")
-      throw new Error("Image generation requires OpenRouter")
+    if (outputMode === "image" && !IMAGE_PROVIDERS.has(connection.provider))
+      throw new Error("Image generation requires OpenRouter or Fal")
+    if (outputMode === "text" && connection.provider === "fal")
+      throw new Error("Fal is available for image generation only")
 
     const existingMessages = await ctx.db
       .query("messages")
@@ -595,7 +607,7 @@ const responseContextValidator = v.object({
   ownerId: v.id("users"),
   model: v.string(),
   outputMode: outputModeValidator,
-  provider: v.union(v.literal("openrouter"), v.literal("openai")),
+  provider: responseProviderValidator,
   routingProvider: v.optional(v.string()),
   projectId: v.optional(v.id("projects")),
   reasoningEffort: v.optional(v.string()),
@@ -863,7 +875,7 @@ export const getOpenRouterResponseContext = internalQuery({
     if (
       !connection ||
       connection.ownerId !== conversation.ownerId ||
-      !["openrouter", "openai"].includes(connection.provider) ||
+      !["openrouter", "openai", "fal"].includes(connection.provider) ||
       connection.status !== "connected"
     ) {
       throw new Error("Provider connection unavailable")
@@ -1105,7 +1117,7 @@ export const getOpenRouterResponseContext = internalQuery({
       model: assistantMessage.model,
       outputMode:
         assistantMessage.outputMode ?? conversation.outputMode ?? "text",
-      provider: connection.provider as "openrouter" | "openai",
+      provider: connection.provider as "openrouter" | "openai" | "fal",
       ...(assistantMessage.routingProvider
         ? { routingProvider: assistantMessage.routingProvider }
         : {}),

@@ -189,6 +189,7 @@ const providerSelectorOptions = [
   },
   { label: "OpenAI", provider: "openai", requiresDesktop: false },
   { label: "OpenRouter", provider: "openrouter", requiresDesktop: false },
+  { label: "fal", provider: "fal", requiresDesktop: false },
 ] as const
 
 type ProviderSelectorOption = (typeof providerSelectorOptions)[number]
@@ -198,6 +199,7 @@ const providerFallbackOrder: readonly ActiveProvider[] = [
   "codex",
   "openai",
   "openrouter",
+  "fal",
   "cursor",
 ]
 
@@ -226,8 +228,10 @@ export function getExecutionProviderOptions(
   outputMode: "image" | "text"
 ): AIInputOption[] {
   return options
-    .filter(
-      (option) => outputMode === "text" || option.provider === "openrouter"
+    .filter((option) =>
+      outputMode === "image"
+        ? option.provider === "openrouter" || option.provider === "fal"
+        : option.provider !== "fal"
     )
     .map(({ label, provider }) => ({ label, value: provider }))
 }
@@ -237,11 +241,13 @@ export function isActiveProvider(value: string): value is ActiveProvider {
 }
 
 export function getPreferredProvider(
-  options: readonly ProviderSelectorOption[]
+  options: readonly ProviderSelectorOption[],
+  outputMode: "image" | "text" = "text"
 ) {
-  return providerFallbackOrder.find((provider) =>
-    options.some((option) => option.provider === provider)
+  const available = new Set(
+    getExecutionProviderOptions(options, outputMode).map(({ value }) => value)
   )
+  return providerFallbackOrder.find((provider) => available.has(provider))
 }
 
 export function getCurrentCatalogModels<T>(
@@ -260,6 +266,11 @@ export function getCurrentCatalogModels<T>(
 }
 
 const IMAGE_MODEL_PRIORITY = [
+  "fal-ai/flux-2/klein/4b",
+  "fal-ai/flux-2-pro",
+  "fal-ai/nano-banana-2",
+  "fal-ai/recraft/v3/text-to-image",
+  "bytedance/seedream/v5/pro/text-to-image",
   "black-forest-labs/flux.2-klein-4b",
   "sourceful/riverflow-v2.5-pro",
 ]
@@ -753,10 +764,6 @@ function ChatWorkspace() {
     setDesktopAvailable(Boolean(window.aiHarnessDesktop))
   }, [])
 
-  const openRouter = connections?.find(
-    (connection) =>
-      connection.provider === "openrouter" && connection.status === "connected"
-  )
   const connectedProviderOptions = useMemo(
     () => getConnectedProviderOptions(connections, desktopAvailable),
     [connections, desktopAvailable]
@@ -777,6 +784,11 @@ function ChatWorkspace() {
   const executionProviderOptions = useMemo(
     () => getExecutionProviderOptions(connectedProviderOptions, outputMode),
     [connectedProviderOptions, outputMode]
+  )
+  const hasImageProvider = useMemo(
+    () =>
+      getExecutionProviderOptions(connectedProviderOptions, "image").length > 0,
+    [connectedProviderOptions]
   )
   const activeConnection = connections?.find(
     (connection) =>
@@ -801,13 +813,36 @@ function ChatWorkspace() {
       return
     }
 
-    const preferredProvider = getPreferredProvider(connectedProviderOptions)
+    const preferredProvider = getPreferredProvider(
+      connectedProviderOptions,
+      outputMode
+    )
     if (preferredProvider) setActiveProvider(preferredProvider)
-  }, [connections, connectedProviderOptions, selected?.providerConnectionId])
+  }, [
+    connections,
+    connectedProviderOptions,
+    outputMode,
+    selected?.providerConnectionId,
+  ])
 
   useEffect(() => {
     if (conversationId && selected) setOutputMode(selected.outputMode ?? "text")
   }, [conversationId, selected])
+
+  useEffect(() => {
+    if (executionProviderOptions.some(({ value }) => value === activeProvider))
+      return
+    const preferredProvider = getPreferredProvider(
+      connectedProviderOptions,
+      outputMode
+    )
+    if (preferredProvider) setActiveProvider(preferredProvider)
+  }, [
+    activeProvider,
+    connectedProviderOptions,
+    executionProviderOptions,
+    outputMode,
+  ])
 
   useEffect(() => {
     if (!activeConnectionId) {
@@ -1917,7 +1952,6 @@ function ChatWorkspace() {
               onValueChange={(mode) => {
                 if (!mode) return
                 setOutputMode(mode)
-                if (mode === "image") setActiveProvider("openrouter")
               }}
               value={outputMode}
             >
@@ -1930,7 +1964,7 @@ function ChatWorkspace() {
               </SelectTrigger>
               <SelectContent align="start" alignItemWithTrigger={false}>
                 <SelectItem value="text">Chat</SelectItem>
-                {openRouter ? (
+                {hasImageProvider ? (
                   <SelectItem value="image">Image</SelectItem>
                 ) : null}
               </SelectContent>
@@ -3108,16 +3142,23 @@ function MessageAreaContent({
                               message.errorCode === "insufficient_credits" ? (
                                 <span className="block space-y-2">
                                   <span className="block">
-                                    OpenRouter rejected this request because the
-                                    account or API key has insufficient credit.
+                                    {message.provider === "fal"
+                                      ? "Fal rejected this request because the account or API key has insufficient credit."
+                                      : "OpenRouter rejected this request because the account or API key has insufficient credit."}
                                   </span>
                                   <a
                                     className="inline-flex font-medium underline underline-offset-2"
-                                    href="https://openrouter.ai/settings/credits"
+                                    href={
+                                      message.provider === "fal"
+                                        ? "https://fal.ai/dashboard/billing"
+                                        : "https://openrouter.ai/settings/credits"
+                                    }
                                     rel="noreferrer"
                                     target="_blank"
                                   >
-                                    Add OpenRouter credits
+                                    {message.provider === "fal"
+                                      ? "Add Fal credits"
+                                      : "Add OpenRouter credits"}
                                   </a>
                                 </span>
                               ) : message.provider === "codex" ? (
@@ -3125,6 +3166,8 @@ function MessageAreaContent({
                                 "Codex could not complete this response."
                               ) : message.provider === "openai" ? (
                                 "OpenAI could not complete this response."
+                              ) : message.provider === "fal" ? (
+                                "Fal could not complete this response."
                               ) : (
                                 "OpenRouter could not complete this response."
                               )

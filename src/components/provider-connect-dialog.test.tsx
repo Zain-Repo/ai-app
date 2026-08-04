@@ -11,5 +11,6 @@ describe("provider search", () => {
       true
     )
     expect(matchesProviderSearch("gemini", ["OpenAI", "API key"])).toBe(false)
+    expect(matchesProviderSearch("image", ["Fal", "Image API key"])).toBe(true)
   })
 })

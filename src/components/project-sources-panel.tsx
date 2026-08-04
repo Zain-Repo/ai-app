@@ -63,7 +63,7 @@ export type ProjectEmbeddingStatus =
 export type ProjectEmbeddingConnection = {
   connectionId: Id<"providerConnections">
   displayName?: string
-  provider: "codex" | "cursor" | "openai" | "openrouter"
+  provider: "codex" | "cursor" | "fal" | "openai" | "openrouter"
   status: "connected" | "disconnected" | "needs_reauthentication"
 }
 

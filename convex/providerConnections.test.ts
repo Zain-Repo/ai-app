@@ -81,4 +81,37 @@ describe("providerConnections", () => {
       ).toBeNull()
     })
   })
+
+  it("stores one encrypted Fal API key", async () => {
+    const t = convexTest(schema, modules)
+    const authenticated = t.withIdentity({
+      subject: "user_fal",
+      tokenIdentifier: "https://clerk.example.test|user_fal",
+    })
+    await authenticated.mutation(api.users.syncCurrent)
+
+    const connectionId = await authenticated.mutation(
+      internal.providerConnections.completeApiKey,
+      { ciphertext: "encrypted", iv: "random-iv", provider: "fal" }
+    )
+
+    await expect(
+      authenticated.query(api.providerConnections.listMine)
+    ).resolves.toContainEqual({
+      authMethod: "api_key",
+      connectionId,
+      displayName: "fal",
+      provider: "fal",
+      status: "connected",
+    })
+    await expect(
+      authenticated.query(internal.providerConnections.getProviderCredential, {
+        provider: "fal",
+      })
+    ).resolves.toEqual({
+      ciphertext: "encrypted",
+      connectionId,
+      iv: "random-iv",
+    })
+  })
 })

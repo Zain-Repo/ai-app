@@ -90,11 +90,13 @@ export function ProviderConnectDialog({
   )
   const getCreditStatus = useAction(api.providerOAuth.getCreditStatus)
   const connectOpenAI = useAction(api.providerOAuth.connectOpenAI)
+  const connectFal = useAction(api.providerOAuth.connectFal)
   const [internalOpen, setInternalOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [openAiKey, setOpenAiKey] = useState("")
+  const [falKey, setFalKey] = useState("")
   const [desktopCodexAvailable, setDesktopCodexAvailable] = useState(false)
   const [desktopCodexAccount, setDesktopCodexAccount] = useState<{
     connected: boolean
@@ -115,6 +117,7 @@ export function ProviderConnectDialog({
   const openAi = connections?.find(
     (connection) => connection.provider === "openai"
   )
+  const fal = connections?.find((connection) => connection.provider === "fal")
   const codex = connections?.find(
     (connection) => connection.provider === "codex"
   )
@@ -147,6 +150,12 @@ export function ProviderConnectDialog({
     "API key",
     "direct",
   ])
+  const showFal = matchesProviderSearch(searchQuery, [
+    "fal",
+    "image generation",
+    "API key",
+    "direct",
+  ])
   const filteredProviders = providers.filter((provider) =>
     matchesProviderSearch(searchQuery, [
       provider.name,
@@ -159,6 +168,7 @@ export function ProviderConnectDialog({
     showCursor ||
     showOpenRouter ||
     showOpenAi ||
+    showFal ||
     filteredProviders.length > 0
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(nextOpen)
@@ -255,6 +265,19 @@ export function ProviderConnectDialog({
     }
   }
 
+  async function saveFal() {
+    setPending(true)
+    setError("")
+    try {
+      await connectFal({ apiKey: falKey })
+      setFalKey("")
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not connect Fal")
+    } finally {
+      setPending(false)
+    }
+  }
+
   async function connectCodex() {
     const desktop = window.aiHarnessDesktop
     if (!desktop) return
@@ -318,7 +341,9 @@ export function ProviderConnectDialog({
           icon={AiNetworkIcon}
           strokeWidth={1.8}
         />
-        {openRouter?.status === "connected" ? "Providers" : "Connect provider"}
+        {connections?.some((connection) => connection.status === "connected")
+          ? "Providers"
+          : "Connect provider"}
       </Button>
 
       <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] max-w-2xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
@@ -670,6 +695,67 @@ export function ProviderConnectDialog({
                           {openAi?.status === "connected"
                             ? "Update"
                             : "Connect"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {showFal ? (
+                <section
+                  aria-labelledby="fal-provider-heading"
+                  className="py-5"
+                >
+                  <div className="flex items-start gap-3 px-1">
+                    <span
+                      aria-hidden="true"
+                      className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-background font-heading text-xs font-semibold shadow-sm"
+                    >
+                      fal
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 id="fal-provider-heading" className="font-medium">
+                          Fal
+                        </h3>
+                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                          Image API key
+                        </span>
+                        {fal?.status === "connected" ? (
+                          <HugeiconsIcon
+                            aria-label="Connected"
+                            className="size-4 text-emerald-600"
+                            icon={CheckmarkCircle02Icon}
+                            strokeWidth={2}
+                          />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Use curated Fal image models through the reliable queue
+                        API. Your key is verified, encrypted, and kept on the
+                        server.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Input
+                          aria-label="Fal API key"
+                          autoComplete="off"
+                          className="h-9 rounded-xl"
+                          onChange={(event) => setFalKey(event.target.value)}
+                          placeholder={
+                            fal?.status === "connected"
+                              ? "Key saved"
+                              : "Paste Fal API key"
+                          }
+                          type="password"
+                          value={falKey}
+                        />
+                        <Button
+                          disabled={pending || !falKey.trim()}
+                          size="sm"
+                          onClick={() => void saveFal()}
+                        >
+                          {fal?.status === "connected" ? "Update" : "Connect"}
                         </Button>
                       </div>
                     </div>
