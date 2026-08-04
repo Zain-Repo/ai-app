@@ -1,5 +1,7 @@
 import { SignIn, SignUp } from "@clerk/tanstack-react-start"
 
+import { Dev3Mark } from "@/components/dev3-logo"
+
 export function AuthPage({
   desktop = false,
   mode,
@@ -18,13 +20,9 @@ export function AuthPage({
           className="mb-7 flex items-center gap-2.5 rounded-xl font-heading text-sm font-semibold tracking-tight transition-opacity outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
           href={desktop ? "/desktop" : "/"}
         >
-          <img
-            alt=""
-            className="size-9 rounded-xl ring-1 ring-border"
-            height={72}
-            src="/media/dev3-logo.png"
-            width={72}
-          />
+          <span className="grid size-9 place-items-center rounded-xl bg-[#0B0D12] p-1 ring-1 ring-border">
+            <Dev3Mark className="size-full" mode="dark" />
+          </span>
           <span>
             Dev3
             {desktop ? (
