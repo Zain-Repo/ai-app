@@ -6,6 +6,7 @@ import {
   publishUpdaterRelease,
   UPDATER_REPOSITORY,
 } from "./github-updater-release.mjs"
+import { prepareUpdaterAssets } from "./updater-assets.mjs"
 
 function arg(name) {
   const prefix = `--${name}=`
@@ -89,19 +90,7 @@ fs.writeFileSync(
   `${JSON.stringify({ appVersion: version, codexVersion }, null, 2)}\n`,
   "utf8"
 )
-const assets = [
-  installer,
-  `${installer}.blockmap`,
-  path.join(path.dirname(installer), "latest.yml"),
-  runtimeManifest,
-]
-for (const asset of assets)
-  if (
-    !fs.existsSync(asset) ||
-    !fs.statSync(asset).isFile() ||
-    fs.statSync(asset).size === 0
-  )
-    throw new Error(`Updater asset not found: ${asset}`)
+const assets = prepareUpdaterAssets({ installer, runtimeManifest })
 
 function gh(args) {
   return execFileSync("gh", args, {

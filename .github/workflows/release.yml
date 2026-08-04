@@ -160,6 +160,7 @@ jobs:
           retention-days: 14
           path: |
             out/nsis/dev3-setup.exe
+            out/nsis/ai-harness-setup.exe
             out/nsis/dev3-setup.exe.blockmap
             out/nsis/latest.yml
             out/nsis/codex-runtime.json
