@@ -18,6 +18,7 @@ type FalModelConfig = {
   editEndpoint: string
   editInput: "image_url" | "image_urls"
   id: string
+  maxReferences?: number
 }
 
 export const FAL_IMAGE_MODELS = [
@@ -28,10 +29,30 @@ export const FAL_IMAGE_MODELS = [
     description: "Fast, low-cost generation with strong prompt adherence",
   },
   {
+    id: "fal-ai/flux-2",
+    editEndpoint: "fal-ai/flux-2/edit",
+    editInput: "image_urls",
+    maxReferences: 4,
+    description: "Fast FLUX.2 generation with native multi-reference editing",
+  },
+  {
+    id: "fal-ai/flux-2-flex",
+    editEndpoint: "fal-ai/flux-2-flex/edit",
+    editInput: "image_urls",
+    description: "High-end FLUX.2 quality with adjustable generation control",
+  },
+  {
     id: "fal-ai/flux-2-pro",
     editEndpoint: "fal-ai/flux-2-pro/edit",
     editInput: "image_urls",
     description: "Professional general-purpose generation and editing",
+  },
+  {
+    id: "fal-ai/flux-pro/kontext/text-to-image",
+    editEndpoint: "fal-ai/flux-pro/kontext",
+    editInput: "image_url",
+    description:
+      "Frontier FLUX Kontext generation and precise single-image edits",
   },
   {
     id: "fal-ai/nano-banana-2",
@@ -40,16 +61,56 @@ export const FAL_IMAGE_MODELS = [
     description: "Fast, high-fidelity generation with multimodal editing",
   },
   {
+    id: "fal-ai/nano-banana-pro",
+    editEndpoint: "fal-ai/nano-banana-pro/edit",
+    editInput: "image_urls",
+    description: "Google's reasoning-powered, high-fidelity image generation",
+  },
+  {
+    id: "fal-ai/gpt-image-1.5",
+    editEndpoint: "fal-ai/gpt-image-1.5/edit",
+    editInput: "image_urls",
+    description:
+      "OpenAI's high-fidelity generation with strong prompt adherence",
+  },
+  {
+    id: "openai/gpt-image-2",
+    editEndpoint: "openai/gpt-image-2/edit",
+    editInput: "image_urls",
+    description: "OpenAI's latest quality-first model with advanced typography",
+  },
+  {
     id: "fal-ai/recraft/v3/text-to-image",
     editEndpoint: "fal-ai/recraft/v3/image-to-image",
     editInput: "image_url",
     description: "Brand, typography, illustration, and design work",
   },
   {
+    id: "fal-ai/ideogram/v3",
+    editEndpoint: "fal-ai/ideogram/v3/remix",
+    editInput: "image_url",
+    description:
+      "Exceptional typography, posters, logos, and realistic outputs",
+  },
+  {
+    id: "fal-ai/bytedance/seedream/v4.5/text-to-image",
+    editEndpoint: "fal-ai/bytedance/seedream/v4.5/edit",
+    editInput: "image_urls",
+    description: "High-resolution generation and unified image editing",
+  },
+  {
     id: "bytedance/seedream/v5/pro/text-to-image",
     editEndpoint: "bytedance/seedream/v5/pro/edit",
     editInput: "image_urls",
     description: "Flagship quality for dense layouts and multilingual text",
+  },
+  {
+    id: "xai/grok-imagine-image",
+    editEndpoint: "xai/grok-imagine-image/edit",
+    editInput: "image_urls",
+    maxReferences: 3,
+    description:
+      "Aesthetic, high-resolution generation from xAI's Aurora model",
   },
 ] as const satisfies readonly FalModelConfig[]
 
@@ -205,6 +266,11 @@ export function buildFalImageRequest(
   if (!model) throw new Error("Fal model is unavailable")
   if (referenceUrls.length > FAL_MAX_REFERENCES)
     throw new Error("Fal supports at most 10 reference images")
+  if ("maxReferences" in model && referenceUrls.length > model.maxReferences) {
+    throw new Error(
+      `This Fal model supports at most ${model.maxReferences} reference images`
+    )
+  }
   if (model.editInput === "image_url" && referenceUrls.length > 1) {
     throw new Error("This Fal model supports one reference image")
   }

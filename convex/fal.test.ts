@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 import {
+  FAL_IMAGE_MODELS,
   buildFalImageRequest,
   generateFalImage,
   parseFalImageModels,
@@ -70,6 +71,45 @@ describe("Fal image provider", () => {
         "https://two.test",
       ])
     ).toThrow("one reference image")
+  })
+
+  it("covers the curated model endpoints and per-model reference limits", () => {
+    expect(FAL_IMAGE_MODELS.map((model) => model.id)).toEqual([
+      "fal-ai/flux-2/klein/4b",
+      "fal-ai/flux-2",
+      "fal-ai/flux-2-flex",
+      "fal-ai/flux-2-pro",
+      "fal-ai/flux-pro/kontext/text-to-image",
+      "fal-ai/nano-banana-2",
+      "fal-ai/nano-banana-pro",
+      "fal-ai/gpt-image-1.5",
+      "openai/gpt-image-2",
+      "fal-ai/recraft/v3/text-to-image",
+      "fal-ai/ideogram/v3",
+      "fal-ai/bytedance/seedream/v4.5/text-to-image",
+      "bytedance/seedream/v5/pro/text-to-image",
+      "xai/grok-imagine-image",
+    ])
+    expect(
+      buildFalImageRequest("openai/gpt-image-2", "edit", [
+        "https://one.test",
+        "https://two.test",
+      ])
+    ).toEqual({
+      endpoint: "openai/gpt-image-2/edit",
+      input: {
+        image_urls: ["https://one.test", "https://two.test"],
+        prompt: "edit",
+      },
+    })
+    expect(() =>
+      buildFalImageRequest("xai/grok-imagine-image", "edit", [
+        "https://one.test",
+        "https://two.test",
+        "https://three.test",
+        "https://four.test",
+      ])
+    ).toThrow("at most 3 reference images")
   })
 
   it("submits, polls, and downloads through trusted Fal URLs", async () => {

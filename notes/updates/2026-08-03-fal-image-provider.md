@@ -24,19 +24,21 @@ asynchronous queue API.
 ## Evidence
 
 - Fal's official queue, platform authentication, model catalog, pricing, and
-  selected model endpoint documentation were checked on 2026-08-03.
-- Focused validation passed: 8 test files and 67 tests.
-- The complete Vitest suite passed: 112 suites and 232 tests.
-- TypeScript, targeted ESLint, the production client/SSR build, and
-  `git diff --check` passed. The build retained the existing
-  `chat-sidebar.test.tsx` route-file and chunk-size warnings.
+  selected model endpoint documentation were checked on 2026-08-03 and
+  refreshed for this model expansion.
+- Focused Fal validation passed: 1 test file and 4 tests.
+- The complete Vitest suite passed: 49 test files and 233 tests.
+- TypeScript, targeted ESLint, and targeted Prettier checks passed.
 
 ## Known limitations
 
-- No paid Fal generation or authenticated local visual QA was performed. Queue,
-  editing, catalog, pricing, storage, and URL-security behavior are covered with
-  deterministic HTTP mocks.
-- The catalog intentionally exposes five reviewed models rather than every Fal
-  endpoint: FLUX.2 Klein 4B, FLUX.2 Pro, Nano Banana 2, Recraft V3, and Seedream
-  V5 Pro.
+- No paid Fal generation or authenticated local visual QA was performed for
+  the original or newly added endpoints. Queue, editing, catalog, pricing,
+  storage, and URL-security behavior are covered with deterministic HTTP mocks;
+  live availability and pricing remain dependent on each user's Fal account
+  and current catalog response.
+- The catalog intentionally exposes fourteen reviewed models rather than every
+  Fal endpoint, including FLUX.2 Dev/Flex/Pro, FLUX Kontext Pro, Nano Banana
+  2/Pro, GPT Image 1.5/2, Ideogram V3, Recraft V3, Seedream 4.5/V5 Pro, and
+  Grok Imagine Image.
 - This update adds no dependency, schema migration, or deployment.
