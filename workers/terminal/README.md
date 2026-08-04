@@ -29,7 +29,7 @@ of inactivity. Deleting a chat or project also schedules best-effort cleanup.
 ## Build and run
 
 ```sh
-docker build -t dev3-terminal:local workers/terminal/image
+docker build -t dev3-terminal:local -t ai-harness-terminal:local workers/terminal/image
 export TERMINAL_WORKER_TOKEN='replace-with-at-least-32-random-characters'
 bun run terminal:worker
 curl http://127.0.0.1:8788/health
@@ -48,6 +48,8 @@ closed; there is no host-execution fallback.
 
 Optional worker settings:
 
+- `TERMINAL_SANDBOX_IMAGE` (default `ai-harness-terminal:local` for upgrade
+  compatibility; new local builds tag the same image as `dev3-terminal:local`)
 - `TERMINAL_CONTAINER_RUNTIME` (default `runsc`)
 - `TERMINAL_WORKER_HOST` and `TERMINAL_WORKER_PORT`
 - `TERMINAL_WORKER_STATE_DIR`

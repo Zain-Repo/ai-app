@@ -24,6 +24,7 @@ can account for installed clients and external infrastructure:
 - Electron updater cache directory: `ai-app-updater`
 - Packaged user-data directory: `ai-harness`
 - Terminal worker state directory: `ai-harness-terminal-worker`
+- Terminal worker default image: `ai-harness-terminal:local`
 
 Treat `DEV3_*` as the primary packaging and runtime environment-variable prefix,
 while accepting the corresponding `AI_HARNESS_*` variables as legacy fallbacks.
@@ -50,5 +51,5 @@ key so an authorization started before deployment can complete afterward.
 
 - The release workflow, builder configuration, and publisher agree on the
   `dev3-setup.exe` artifact and Dev3 release title.
-- The application type-check, focused lint and formatting checks, full 248-test
+- The application type-check, focused lint and formatting checks, full 250-test
   suite, and production build pass with the compatibility identifiers retained.

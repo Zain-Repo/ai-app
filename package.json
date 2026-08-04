@@ -21,7 +21,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\"",
     "check": "prettier --check \"**/*.{ts,tsx,js,jsx}\"",
     "typecheck": "tsc --noEmit",
-    "terminal:image:build": "docker build -t dev3-terminal:local workers/terminal/image",
+    "terminal:image:build": "docker build -t dev3-terminal:local -t ai-harness-terminal:local workers/terminal/image",
     "terminal:worker": "bun workers/terminal/index.ts",
     "package:client": "bun scripts/run-forge-package.ts --role=client --platform=win32",
     "package:client:local": "bun scripts/run-forge-package.ts --role=client --platform=win32 --local-only",

@@ -35,6 +35,8 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
   directory so browser sessions, Codex credentials, and updater state persist.
 - The terminal worker keeps its legacy default state directory so pre-rebrand
   containers and volumes remain covered by idle cleanup.
+- Workers also keep the legacy local image as their runtime default, while the
+  build command applies both legacy and Dev3 tags to the same image.
 - OpenRouter callbacks consume and remove either PKCE storage key so an OAuth
   redirect started before a renderer deployment can finish afterward.
 - Historical implementation and release notes retain their original names so
@@ -43,9 +45,9 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
 ## Validation
 
 - TypeScript type checking passed.
-- All 248 Vitest tests across 55 files passed, including regression coverage for
+- All 250 Vitest tests across 55 files passed, including regression coverage for
   the legacy desktop bridge, packaged user-data path, and terminal worker state
-  directory, plus in-flight OpenRouter PKCE redirects.
+  directory and image, plus in-flight OpenRouter PKCE redirects.
 - Scoped ESLint and Prettier checks passed for every changed source file.
 - The production client and SSR build passed. It emitted the existing warning
   that `src/routes/chat-sidebar.test.tsx` is not a route.

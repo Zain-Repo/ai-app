@@ -6,11 +6,12 @@ import {
   terminalDeleteRequestSchema,
   terminalExecuteRequestSchema,
 } from "../../shared/terminal-workspace"
+import { resolveTerminalSandboxImage } from "./config"
 import { TerminalRuntime } from "./runtime"
 
 const MAX_REQUEST_BYTES = 32 * 1_024
 const token = process.env.TERMINAL_WORKER_TOKEN
-const image = process.env.TERMINAL_SANDBOX_IMAGE ?? "dev3-terminal:local"
+const image = resolveTerminalSandboxImage(process.env.TERMINAL_SANDBOX_IMAGE)
 const host = process.env.TERMINAL_WORKER_HOST ?? "127.0.0.1"
 const port = Number(process.env.TERMINAL_WORKER_PORT ?? 8788)
 
