@@ -39,6 +39,7 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
     })),
   })
+  HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 
 afterEach(cleanup)
@@ -96,6 +97,35 @@ describe("optional chat features", () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+
+  it("focuses the message opened from Library", () => {
+    const messages = [
+      {
+        _id: "message-1",
+        attachments: [],
+        content: "Original Library context",
+        role: "user",
+        status: "complete",
+      },
+    ] as unknown as NonNullable<ComponentProps<typeof MessageArea>["messages"]>
+
+    const view = render(
+      <MessageArea
+        actionsDisabled={false}
+        conversationId={"conversation-1" as Id<"conversations">}
+        messages={messages}
+        name={null}
+        onAction={vi.fn()}
+        onManageMemory={vi.fn()}
+        targetMessageId="message-1"
+        userMessageBubbleColor={undefined}
+      />
+    )
+
+    expect(document.activeElement).toBe(
+      view.container.querySelector("#message-message-1")
+    )
   })
 })
 

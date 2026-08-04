@@ -12,6 +12,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 import { messageAttachmentValidator } from "./attachmentPolicy"
 import { consumeDraftAttachments } from "./attachments"
+import { indexMessageAttachments, removeMessageAssets } from "./library"
 import { getMemorySearchScopes } from "./memories"
 import { isIndexableProjectSource } from "./projectEmbeddingPolicy"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
@@ -159,6 +160,7 @@ async function deleteConversationMessages(
     )
     .take(MAX_MESSAGES)
   for (const message of messages) {
+    await removeMessageAssets(ctx, message._id)
     for (const attachment of message.attachments ?? [])
       await ctx.storage.delete(attachment.storageId)
     await ctx.db.delete(message._id)
@@ -277,6 +279,14 @@ export const start = mutation({
       outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
+    })
+    await indexMessageAttachments(ctx, {
+      ownerId: user._id,
+      conversationId,
+      messageId: initialUserMessageId,
+      role: "user",
+      attachments,
+      createdAt: now,
     })
     await ctx.db.patch(conversationId, {
       titleSourceMessageId: initialUserMessageId,
@@ -425,6 +435,7 @@ export const send = mutation({
       args.draftAttachmentIds ?? []
     )
 
+    const now = Date.now()
     const messageId = await ctx.db.insert("messages", {
       conversationId,
       role: "user",
@@ -436,6 +447,14 @@ export const send = mutation({
       outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
+    })
+    await indexMessageAttachments(ctx, {
+      ownerId: user._id,
+      conversationId,
+      messageId,
+      role: "user",
+      attachments,
+      createdAt: now,
     })
     const assistantMessageId = await ctx.db.insert("messages", {
       conversationId,
@@ -452,7 +471,7 @@ export const send = mutation({
       model,
       routingProvider,
       reasoningEffort,
-      updatedAt: Date.now(),
+      updatedAt: now,
     })
     await ctx.scheduler.runAfter(0, internal.memoryCapture.enqueueForMessage, {
       conversationId,
@@ -1211,6 +1230,21 @@ export const finishOpenRouterResponse = internalMutation({
         ...(args.uiPayload ? { uiPayload: args.uiPayload } : {}),
         status: args.failed ? "failed" : "complete",
       })
+      if (!args.failed && args.attachments?.length) {
+        const conversation = await ctx.db.get(message.conversationId)
+        if (!conversation) throw new Error("Conversation unavailable")
+        await indexMessageAttachments(ctx, {
+          ownerId: conversation.ownerId,
+          conversationId: conversation._id,
+          messageId: message._id,
+          role: "assistant",
+          attachments: args.attachments,
+          createdAt: Date.now(),
+          outputMode: message.outputMode,
+          provider: message.provider,
+          model: message.model,
+        })
+      }
       completed = !args.failed
     }
     if (completed)

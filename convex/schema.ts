@@ -225,6 +225,61 @@ export default defineSchema({
     .index("by_owner_id_and_created_at", ["ownerId", "createdAt"])
     .index("by_storage_id", ["storageId"]),
 
+  libraryAssets: defineTable(
+    v.union(
+      v.object({
+        ownerId: v.id("users"),
+        category: v.literal("upload"),
+        kind: v.literal("chat_upload"),
+        storageId: v.id("_storage"),
+        name: v.string(),
+        contentType: v.string(),
+        size: v.number(),
+        createdAt: v.number(),
+        conversationId: v.id("conversations"),
+        messageId: v.id("messages"),
+      }),
+      v.object({
+        ownerId: v.id("users"),
+        category: v.literal("upload"),
+        kind: v.literal("project_upload"),
+        storageId: v.id("_storage"),
+        name: v.string(),
+        contentType: v.string(),
+        size: v.number(),
+        createdAt: v.number(),
+        projectId: v.id("projects"),
+        projectSourceId: v.id("projectSources"),
+      }),
+      v.object({
+        ownerId: v.id("users"),
+        category: v.literal("generated_image"),
+        kind: v.literal("generated_image"),
+        storageId: v.id("_storage"),
+        name: v.string(),
+        contentType: v.string(),
+        size: v.number(),
+        createdAt: v.number(),
+        conversationId: v.id("conversations"),
+        messageId: v.id("messages"),
+        provider: v.optional(v.string()),
+        model: v.optional(v.string()),
+      })
+    )
+  )
+    .index("by_owner_id_and_created_at", ["ownerId", "createdAt"])
+    .index("by_owner_id_and_category_and_created_at", [
+      "ownerId",
+      "category",
+      "createdAt",
+    ])
+    .index("by_message_id_and_storage_id", ["messageId", "storageId"])
+    .index("by_project_source_id", ["projectSourceId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["ownerId", "category"],
+    }),
+
   conversations: defineTable({
     ownerId: v.id("users"),
     projectId: v.optional(v.id("projects")),
