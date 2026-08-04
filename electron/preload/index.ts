@@ -39,3 +39,5 @@ const api: Dev3DesktopApi = {
 }
 
 contextBridge.exposeInMainWorld("dev3Desktop", api)
+// Keep older remotely deployed renderers functional during the upgrade window.
+contextBridge.exposeInMainWorld("aiHarnessDesktop", api)

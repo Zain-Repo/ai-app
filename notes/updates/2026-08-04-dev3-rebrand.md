@@ -29,6 +29,8 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
   environment names remain supported while new configuration uses `DEV3_*`.
 - The deployed renderer accepts both `window.dev3Desktop` and the legacy
   `window.aiHarnessDesktop` bridge while pre-0.1.12 clients upgrade.
+- New desktop builds expose both bridge names so a previously deployed renderer
+  also remains functional during release-order skew.
 - Packaged releases continue using the existing `ai-harness` user-data
   directory so browser sessions, Codex credentials, and updater state persist.
 - The terminal worker keeps its legacy default state directory so pre-rebrand
@@ -39,7 +41,7 @@ cyan-to-cobalt gradients, a restrained amber signal accent, and a geometric
 ## Validation
 
 - TypeScript type checking passed.
-- All 244 Vitest tests across 53 files passed, including regression coverage for
+- All 245 Vitest tests across 54 files passed, including regression coverage for
   the legacy desktop bridge, packaged user-data path, and terminal worker state
   directory.
 - Scoped ESLint and Prettier checks passed for every changed source file.
