@@ -2,7 +2,7 @@
 
 ## Problem
 
-AI Harness memory is currently an opt-in, OpenRouter-only key/value feature.
+Dev3 memory is currently an opt-in, OpenRouter-only key/value feature.
 OpenAI, desktop Codex, realtime voice, image generation, and future coding
 agents do not receive the same personal context. Capture and embedding failures
 are silent, recalled memory is inserted at system priority, and users cannot

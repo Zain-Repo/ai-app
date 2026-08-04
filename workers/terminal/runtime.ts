@@ -92,6 +92,7 @@ export class TerminalRuntime {
     this.runtime = options.runtime ?? "runsc"
     this.stateDirectory =
       options.stateDirectory ??
+      // Preserve the directory so pre-rebrand resources remain janitor-managed.
       path.join(os.tmpdir(), "ai-harness-terminal-worker")
     this.token = options.token
   }
@@ -259,9 +260,9 @@ export class TerminalRuntime {
         "--env",
         "TMPDIR=/tmp",
         "--label",
-        "ai-harness.terminal=true",
+        "dev3.terminal=true",
         "--label",
-        `ai-harness.scope=${workspace.scope}`,
+        `dev3.scope=${workspace.scope}`,
         "--mount",
         `type=volume,src=${identity.volumeName},dst=/workspace`,
         "--tmpfs",

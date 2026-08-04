@@ -23,9 +23,9 @@ const tag = arg("tag") || `v${version}`
 const target = arg("target")
 if (!target || !/^[0-9a-f]{40}$/i.test(target))
   throw new Error("--target must be a full 40-character tested commit SHA")
-const notes = arg("notes") || `AI Harness ${version} desktop release.`
+const notes = arg("notes") || `Dev3 ${version} desktop release.`
 const installer = path.resolve(
-  arg("file") || path.join(root, "out", "nsis", "ai-harness-setup.exe")
+  arg("file") || path.join(root, "out", "nsis", "dev3-setup.exe")
 )
 const packageMetadata = JSON.parse(
   fs.readFileSync(
@@ -42,10 +42,7 @@ if (
   !fs.existsSync(packageMetadata.outputPath)
 )
   throw new Error("Packaged app metadata is missing")
-const packagedExecutable = path.join(
-  packageMetadata.outputPath,
-  "ai-harness.exe"
-)
+const packagedExecutable = path.join(packageMetadata.outputPath, "dev3.exe")
 if (
   !fs.existsSync(packagedExecutable) ||
   !fs.statSync(packagedExecutable).isFile()
@@ -126,7 +123,7 @@ publishUpdaterRelease({
   runGh: gh,
   tag,
   target,
-  title: `AI Harness ${version}`,
+  title: `Dev3 ${version}`,
   notes,
   assets,
 })

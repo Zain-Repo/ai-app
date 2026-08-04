@@ -14,6 +14,7 @@ import { useEffect, useState } from "react"
 import { api } from "../../convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { getDesktopApi } from "@/lib/desktop-api"
 import {
   Dialog,
   DialogContent,
@@ -176,7 +177,7 @@ export function ProviderConnectDialog({
   }
 
   useEffect(() => {
-    const desktop = window.aiHarnessDesktop
+    const desktop = getDesktopApi()
     setDesktopCodexAvailable(Boolean(desktop))
     if (!desktop) return
     let cancelled = false
@@ -279,7 +280,7 @@ export function ProviderConnectDialog({
   }
 
   async function connectCodex() {
-    const desktop = window.aiHarnessDesktop
+    const desktop = getDesktopApi()
     if (!desktop) return
     setPending(true)
     setError("")
@@ -302,7 +303,7 @@ export function ProviderConnectDialog({
   }
 
   async function connectCursor() {
-    const desktop = window.aiHarnessDesktop
+    const desktop = getDesktopApi()
     if (!desktop) return
     setPending(true)
     setError("")

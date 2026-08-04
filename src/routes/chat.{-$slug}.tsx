@@ -72,6 +72,7 @@ import type {
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { SidebarModeControls } from "@/components/sidebar-mode-controls"
 import { TextShimmer } from "@/components/text-shimmer"
+import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
@@ -759,7 +760,7 @@ function ChatWorkspace() {
   }, [search.projectId])
 
   useEffect(() => {
-    setDesktopAvailable(Boolean(window.aiHarnessDesktop))
+    setDesktopAvailable(Boolean(getDesktopApi()))
   }, [])
 
   const connectedProviderOptions = useMemo(
@@ -853,27 +854,31 @@ function ChatWorkspace() {
     setCatalogState("loading")
     const modelsPromise =
       activeProvider === "codex"
-        ? window.aiHarnessDesktop?.codex.listModels().then((models) =>
-            models.map((model): CatalogModel => ({
-              provider: "openai",
-              value: model.value,
-              label: model.label,
-              outputMode: "text",
-              ...(model.description ? { description: model.description } : {}),
-              ...(model.reasoningEfforts
-                ? {
-                    reasoningEfforts:
-                      model.reasoningEfforts.filter(isReasoningEffort),
-                  }
-                : {}),
-              ...(model.defaultReasoningEffort &&
-              isReasoningEffort(model.defaultReasoningEffort)
-                ? {
-                    defaultReasoningEffort: model.defaultReasoningEffort,
-                  }
-                : {}),
-            }))
-          )
+        ? getDesktopApi()
+            ?.codex.listModels()
+            .then((models) =>
+              models.map((model): CatalogModel => ({
+                provider: "openai",
+                value: model.value,
+                label: model.label,
+                outputMode: "text",
+                ...(model.description
+                  ? { description: model.description }
+                  : {}),
+                ...(model.reasoningEfforts
+                  ? {
+                      reasoningEfforts:
+                        model.reasoningEfforts.filter(isReasoningEffort),
+                    }
+                  : {}),
+                ...(model.defaultReasoningEffort &&
+                isReasoningEffort(model.defaultReasoningEffort)
+                  ? {
+                      defaultReasoningEffort: model.defaultReasoningEffort,
+                    }
+                  : {}),
+              }))
+            )
         : activeProvider === "cursor"
           ? Promise.resolve([])
           : listModels({ provider: activeProvider })
@@ -1547,7 +1552,7 @@ function ChatWorkspace() {
         await open({ slug, projectId: search.projectId })
       }
       if (provider === "codex" && targetConversationId) {
-        const desktop = window.aiHarnessDesktop
+        const desktop = getDesktopApi()
         if (!desktop)
           throw new Error("Codex is only available in the desktop app")
         if (!conversationId)
@@ -1580,7 +1585,7 @@ function ChatWorkspace() {
             model: meta.settings.model,
             ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
             developerInstructions: [
-              "Answer as a general-purpose assistant inside AI Harness. Do not inspect files, run commands, or modify the filesystem.",
+              "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
               selectedProject?.instructions,
               preferences?.responseDetail
                 ? `Response detail: ${preferences.responseDetail}.`
@@ -1717,7 +1722,30 @@ function ChatWorkspace() {
   return (
     <SidebarProvider className="chat-workspace-shell h-svh overflow-hidden">
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
-        <SidebarHeader className="gap-1.5 p-2.5 pb-2">
+        <SidebarHeader className="gap-3 border-b border-sidebar-border/50 p-3.5">
+          <a
+            aria-label="Dev3 home"
+            className="flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            href="/chat"
+          >
+            <span className="inline-flex size-10 shrink-0 overflow-hidden rounded-xl bg-background shadow-sm ring-1 ring-sidebar-border/70">
+              <img
+                alt=""
+                className="size-full"
+                height={96}
+                src="/media/dev3-logo.png"
+                width={96}
+              />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
+                Dev3
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] font-medium tracking-[0.14em] text-sidebar-foreground/45 uppercase">
+                Workspace
+              </span>
+            </span>
+          </a>
           <SidebarModeControls
             disabled={Boolean(conversationId) || sendState === "sending"}
             hasImageProvider={hasImageProvider}

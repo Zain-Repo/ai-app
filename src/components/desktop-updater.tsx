@@ -25,8 +25,9 @@ import {
   ProgressValue,
 } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
+import { getDesktopApi } from "@/lib/desktop-api"
 
-const OPEN_APP_UPDATES_EVENT = "ai-harness:open-app-updates"
+const OPEN_APP_UPDATES_EVENT = "dev3:open-app-updates"
 const UPDATE_TOAST_ID = "desktop-updater"
 
 type UpdaterAction = "check" | "download" | "install" | null
@@ -58,7 +59,7 @@ export function getDesktopUpdaterPresentation(
     return {
       action: null,
       actionLabel: null,
-      description: "AI Harness is checking the release feed.",
+      description: "Dev3 is checking the release feed.",
       label: "Checking",
       title: "Checking for updates",
     }
@@ -67,16 +68,16 @@ export function getDesktopUpdaterPresentation(
       action: "check",
       actionLabel: "Check again",
       description:
-        "No newer AI Harness release is available. Codex CLI updates ship with the app.",
+        "No newer Dev3 release is available. Codex CLI updates ship with the app.",
       label: "Up to date",
-      title: "AI Harness is up to date",
+      title: "Dev3 is up to date",
     }
   if (state.status === "update-available")
     return {
       action: "download",
       actionLabel: "Download update",
       description: state.codex.includedVersion
-        ? `AI Harness ${state.availableVersion} includes Codex CLI ${state.codex.includedVersion}.`
+        ? `Dev3 ${state.availableVersion} includes Codex CLI ${state.codex.includedVersion}.`
         : `Version ${state.availableVersion ?? "a newer release"} can be downloaded in the background.`,
       label: "Available",
       title: "An update is available",
@@ -94,7 +95,7 @@ export function getDesktopUpdaterPresentation(
       action: "install",
       actionLabel: "Restart and install",
       description:
-        "AI Harness will close, install the downloaded update, and reopen automatically.",
+        "Dev3 will close, install the downloaded update, and reopen automatically.",
       label: "Ready",
       title: "Ready to restart",
     }
@@ -104,14 +105,14 @@ export function getDesktopUpdaterPresentation(
       actionLabel: null,
       description: "The app will reopen after the installer finishes.",
       label: "Installing",
-      title: "Restarting AI Harness",
+      title: "Restarting Dev3",
     }
   if (state.status === "disabled")
     return {
       action: null,
       actionLabel: null,
       description:
-        "Updates are disabled in development builds. Use a packaged AI Harness installer to test updates.",
+        "Updates are disabled in development builds. Use a packaged Dev3 installer to test updates.",
       label: "Unavailable",
       title: "App updates are unavailable",
     }
@@ -120,7 +121,7 @@ export function getDesktopUpdaterPresentation(
       action: null,
       actionLabel: null,
       description:
-        "Microsoft Store installs AI Harness updates. Codex CLI updates ship inside the Store package.",
+        "Microsoft Store installs Dev3 updates. Codex CLI updates ship inside the Store package.",
       label: "Store managed",
       title: "Updates are managed by Microsoft Store",
     }
@@ -128,15 +129,14 @@ export function getDesktopUpdaterPresentation(
     return {
       action: "check",
       actionLabel: "Try again",
-      description:
-        state.error ?? "AI Harness could not complete the update request.",
+      description: state.error ?? "Dev3 could not complete the update request.",
       label: "Error",
       title: "The update request failed",
     }
   return {
     action: "check",
     actionLabel: "Check for updates",
-    description: "Check the release feed for a newer version of AI Harness.",
+    description: "Check the release feed for a newer version of Dev3.",
     label: "Ready",
     title: "Ready to check",
   }
@@ -153,7 +153,7 @@ export function DesktopUpdater() {
     const openDialog = () => setOpen(true)
     window.addEventListener(OPEN_APP_UPDATES_EVENT, openDialog)
 
-    const updater = window.aiHarnessDesktop?.updater
+    const updater = getDesktopApi()?.updater
     if (!updater)
       return () =>
         window.removeEventListener(OPEN_APP_UPDATES_EVENT, openDialog)
@@ -172,7 +172,7 @@ export function DesktopUpdater() {
       lastStateKey.current = stateKey
 
       if (nextState.status === "update-available") {
-        toast.info(`AI Harness ${nextState.availableVersion} is available`, {
+        toast.info(`Dev3 ${nextState.availableVersion} is available`, {
           id: UPDATE_TOAST_ID,
           description: "Open App updates to download it.",
           duration: Infinity,
@@ -182,7 +182,7 @@ export function DesktopUpdater() {
           },
         })
       } else if (nextState.status === "downloading") {
-        toast.loading("Downloading AI Harness update", {
+        toast.loading("Downloading Dev3 update", {
           id: UPDATE_TOAST_ID,
           description:
             nextState.progress === null
@@ -191,7 +191,7 @@ export function DesktopUpdater() {
         })
       } else if (nextState.status === "ready-to-install") {
         toast.success(
-          `AI Harness ${nextState.availableVersion ?? "update"} is ready`,
+          `Dev3 ${nextState.availableVersion ?? "update"} is ready`,
           {
             id: UPDATE_TOAST_ID,
             description: "Open App updates when you are ready to restart.",
@@ -203,7 +203,7 @@ export function DesktopUpdater() {
           }
         )
       } else if (nextState.status === "installing") {
-        toast.loading("Restarting AI Harness", { id: UPDATE_TOAST_ID })
+        toast.loading("Restarting Dev3", { id: UPDATE_TOAST_ID })
       } else if (nextState.status === "error" && nextState.error) {
         toast.error("The desktop update request failed", {
           id: UPDATE_TOAST_ID,
@@ -223,7 +223,7 @@ export function DesktopUpdater() {
   }, [])
 
   async function runAction(action: Exclude<UpdaterAction, null>) {
-    const updater = window.aiHarnessDesktop?.updater
+    const updater = getDesktopApi()?.updater
     if (!updater) return
     setActionError(null)
     try {
@@ -250,7 +250,7 @@ export function DesktopUpdater() {
         <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
           <DialogTitle>App updates</DialogTitle>
           <DialogDescription>
-            Keep AI Harness and its bundled Codex CLI current.
+            Keep Dev3 and its bundled Codex CLI current.
           </DialogDescription>
         </DialogHeader>
 
@@ -318,9 +318,7 @@ export function DesktopUpdater() {
               </thead>
               <tbody className="divide-y divide-border/60">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">
-                    AI Harness
-                  </th>
+                  <th className="px-4 py-3 text-left font-medium">Dev3</th>
                   <td className="px-2 py-3 text-right tabular-nums">
                     {state?.currentVersion ?? "—"}
                   </td>

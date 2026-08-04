@@ -14,7 +14,7 @@ export function AuthPage({
     <main className="app-view app-auth-page grid min-h-[100dvh] place-items-center px-4 py-10 text-foreground">
       <div className="app-auth-surface flex w-full max-w-md flex-col items-center">
         <a
-          aria-label={desktop ? "AI Harness desktop access" : "AI Harness home"}
+          aria-label={desktop ? "Dev3 desktop access" : "Dev3 home"}
           className="mb-7 flex items-center gap-2.5 rounded-xl font-heading text-sm font-semibold tracking-tight transition-opacity outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
           href={desktop ? "/desktop" : "/"}
         >
@@ -22,11 +22,11 @@ export function AuthPage({
             alt=""
             className="size-9 rounded-xl ring-1 ring-border"
             height={72}
-            src="/media/ai-harness-logo.png"
+            src="/media/dev3-logo.png"
             width={72}
           />
           <span>
-            AI Harness
+            Dev3
             {desktop ? (
               <span className="ml-1.5 text-xs font-medium text-muted-foreground">
                 Desktop

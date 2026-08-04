@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { api } from "../../convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { OPENROUTER_PKCE_STORAGE_KEY } from "@/lib/openrouter-oauth"
+import { takeOpenRouterPkceVerifier } from "@/lib/openrouter-oauth"
 
 export const Route = createFileRoute("/provider-callback/openrouter")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -26,8 +26,7 @@ function OpenRouterCallback() {
     if (started.current) return
     started.current = true
 
-    const verifier = sessionStorage.getItem(OPENROUTER_PKCE_STORAGE_KEY)
-    sessionStorage.removeItem(OPENROUTER_PKCE_STORAGE_KEY)
+    const verifier = takeOpenRouterPkceVerifier(sessionStorage)
 
     if (search.error || !search.code || !verifier) {
       setStatus("failed")

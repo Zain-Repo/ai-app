@@ -6,15 +6,27 @@ import fs from "node:fs"
 import path from "node:path"
 
 const projectRoot = path.resolve(process.cwd())
+// Legacy AI_HARNESS variables remain as fallbacks for existing release environments.
 const packageOutDir =
+  process.env.DEV3_PACKAGE_OUT_DIR?.trim() ||
   process.env.AI_HARNESS_PACKAGE_OUT_DIR?.trim() ||
   path.join(projectRoot, "out")
 const packageMetadataPath =
-  process.env.AI_HARNESS_PACKAGE_METADATA_PATH?.trim() || null
-const releaseVersion = process.env.AI_HARNESS_RELEASE_VERSION?.trim() || null
+  process.env.DEV3_PACKAGE_METADATA_PATH?.trim() ||
+  process.env.AI_HARNESS_PACKAGE_METADATA_PATH?.trim() ||
+  null
+const releaseVersion =
+  process.env.DEV3_RELEASE_VERSION?.trim() ||
+  process.env.AI_HARNESS_RELEASE_VERSION?.trim() ||
+  null
 const packagePlatform =
-  process.env.AI_HARNESS_PACKAGE_PLATFORM?.trim() || process.platform
-const packageArch = process.env.AI_HARNESS_PACKAGE_ARCH?.trim() || process.arch
+  process.env.DEV3_PACKAGE_PLATFORM?.trim() ||
+  process.env.AI_HARNESS_PACKAGE_PLATFORM?.trim() ||
+  process.platform
+const packageArch =
+  process.env.DEV3_PACKAGE_ARCH?.trim() ||
+  process.env.AI_HARNESS_PACKAGE_ARCH?.trim() ||
+  process.arch
 const desktopConfigPath = path.join(
   projectRoot,
   "out",
@@ -47,15 +59,17 @@ const codexRuntimePath = path.join(
 )
 
 function writeDesktopConfig() {
-  const rendererUrl = process.env.AI_HARNESS_DESKTOP_URL?.trim()
+  const rendererUrl =
+    process.env.DEV3_DESKTOP_URL?.trim() ||
+    process.env.AI_HARNESS_DESKTOP_URL?.trim()
   if (!rendererUrl) {
     throw new Error(
-      "Missing AI_HARNESS_DESKTOP_URL. Set the deployed https application URL before packaging."
+      "Missing DEV3_DESKTOP_URL. Set the deployed https application URL before packaging."
     )
   }
   const parsed = new URL(rendererUrl)
   if (parsed.protocol !== "https:")
-    throw new Error("AI_HARNESS_DESKTOP_URL must use https for packaging")
+    throw new Error("DEV3_DESKTOP_URL must use https for packaging")
   fs.mkdirSync(path.dirname(desktopConfigPath), { recursive: true })
   fs.writeFileSync(
     desktopConfigPath,
@@ -91,19 +105,20 @@ const config: ForgeConfig = {
     },
   },
   packagerConfig: {
-    name: "ai-harness",
-    executableName: "ai-harness",
+    name: "dev3",
+    executableName: "dev3",
     ...(releaseVersion
       ? { appVersion: releaseVersion, buildVersion: releaseVersion }
       : {}),
     icon: path.join(projectRoot, "public", "favicon"),
+    // Keep the existing application identity so installed clients update in place.
     appBundleId: "com.zain.ai-harness",
     appCategoryType: "public.app-category.productivity",
     win32metadata: {
-      ProductName: "AI Harness",
-      InternalName: "ai-harness",
-      FileDescription: "AI Harness desktop client",
-      OriginalFilename: "ai-harness.exe",
+      ProductName: "Dev3",
+      InternalName: "dev3",
+      FileDescription: "Dev3 desktop client",
+      OriginalFilename: "dev3.exe",
     },
     asar: true,
     extraResource: [desktopConfigPath, codexRuntimePath],

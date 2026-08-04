@@ -56,7 +56,7 @@ export type DesktopUpdaterState = {
     | "up-to-date"
 }
 
-export type AiHarnessDesktopApi = {
+export type Dev3DesktopApi = {
   codex: {
     account: () => Promise<DesktopCodexAccount>
     generate: (
@@ -84,6 +84,8 @@ export type AiHarnessDesktopApi = {
 
 declare global {
   interface Window {
-    aiHarnessDesktop?: AiHarnessDesktopApi
+    /** Compatibility bridge for desktop clients released before Dev3 0.1.12. */
+    aiHarnessDesktop?: Dev3DesktopApi
+    dev3Desktop?: Dev3DesktopApi
   }
 }

@@ -7,7 +7,7 @@ import type { DesktopCursorAccount } from "../types"
 const COMMAND_TIMEOUT_MS = 15_000
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const CURSOR_CLI_NOT_FOUND_MESSAGE =
-  "Cursor Agent CLI was not found. Install Cursor Agent or set AI_HARNESS_CURSOR_PATH to its executable."
+  "Cursor Agent CLI was not found. Install Cursor Agent or set DEV3_CURSOR_PATH to its executable."
 
 type CursorCliArgument = "login" | "logout" | "status"
 
@@ -91,7 +91,9 @@ export function resolveCursorCommand({
   exists = fs.existsSync,
   platform = process.platform,
 }: CursorCliOptions = {}): CursorCommand {
-  const override = environmentValue(environment, "AI_HARNESS_CURSOR_PATH")
+  const override =
+    environmentValue(environment, "DEV3_CURSOR_PATH") ||
+    environmentValue(environment, "AI_HARNESS_CURSOR_PATH")
   if (override) return commandForFile(override)
 
   if (platform !== "win32") return { file: "cursor-agent", kind: "direct" }

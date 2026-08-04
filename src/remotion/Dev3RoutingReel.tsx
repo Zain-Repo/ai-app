@@ -63,7 +63,7 @@ function stageWindow(frame: number, fps: number, index: number) {
   return { enter, active, start }
 }
 
-export function HarnessRoutingReel() {
+export function Dev3RoutingReel() {
   const frame = useCurrentFrame()
   const { fps, width, height } = useVideoConfig()
 
@@ -157,7 +157,7 @@ export function HarnessRoutingReel() {
               fontWeight: 600,
             }}
           >
-            AI Harness · live path
+            Dev3 · live path
           </div>
           <div
             style={{
@@ -396,16 +396,16 @@ export function HarnessRoutingReel() {
             maxWidth: 280,
           }}
         >
-          The harness holds identity, provider adapters, and run history while
-          the model stays replaceable.
+          Dev3 holds identity, provider adapters, and run history while the
+          model stays replaceable.
         </div>
       </div>
     </AbsoluteFill>
   )
 }
 
-export const harnessRoutingReelMeta = {
-  id: "HarnessRoutingReel",
+export const dev3RoutingReelMeta = {
+  id: "Dev3RoutingReel",
   durationInFrames: 210,
   fps: 30,
   width: 1280,

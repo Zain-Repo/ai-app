@@ -113,23 +113,23 @@ jobs:
         if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
-          AI_HARNESS_DESKTOP_URL: ${{ vars.AI_HARNESS_DESKTOP_URL }}
+          DEV3_DESKTOP_URL: ${{ vars.DEV3_DESKTOP_URL || vars.AI_HARNESS_DESKTOP_URL }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:AI_HARNESS_DESKTOP_URL)) {
-            throw "Missing required GitHub variable AI_HARNESS_DESKTOP_URL."
+          if ([string]::IsNullOrWhiteSpace($env:DEV3_DESKTOP_URL)) {
+            throw "Missing required GitHub variable DEV3_DESKTOP_URL."
           }
           $desktopUrl = $null
-          if (-not [Uri]::TryCreate($env:AI_HARNESS_DESKTOP_URL, [UriKind]::Absolute, [ref]$desktopUrl) -or
+          if (-not [Uri]::TryCreate($env:DEV3_DESKTOP_URL, [UriKind]::Absolute, [ref]$desktopUrl) -or
               $desktopUrl.Scheme -ne 'https' -or
               [string]::IsNullOrWhiteSpace($desktopUrl.Host)) {
-            throw "AI_HARNESS_DESKTOP_URL must be an absolute HTTPS URL."
+            throw "DEV3_DESKTOP_URL must be an absolute HTTPS URL."
           }
 
       - name: Build unsigned Windows NSIS installer
         if: env.SHOULD_PUBLISH == 'true'
         shell: pwsh
         env:
-          AI_HARNESS_DESKTOP_URL: ${{ vars.AI_HARNESS_DESKTOP_URL }}
+          DEV3_DESKTOP_URL: ${{ vars.DEV3_DESKTOP_URL || vars.AI_HARNESS_DESKTOP_URL }}
         run: |
           bun run installer:windows
 
@@ -149,18 +149,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run updater:publish -- "--tag=$env:RELEASE_TAG" "--target=$env:RELEASE_COMMIT_SHA" "--notes=AI Harness $env:PACKAGE_VERSION desktop release."
+          bun run updater:publish -- "--tag=$env:RELEASE_TAG" "--target=$env:RELEASE_COMMIT_SHA" "--notes=Dev3 $env:PACKAGE_VERSION desktop release."
 
       - name: Preserve Windows release artifacts
         if: always() && env.SHOULD_PUBLISH == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ai-harness-windows-${{ github.run_id }}
+          name: dev3-windows-${{ github.run_id }}
           if-no-files-found: warn
           retention-days: 14
           path: |
-            out/nsis/ai-harness-setup.exe
-            out/nsis/ai-harness-setup.exe.blockmap
+            out/nsis/dev3-setup.exe
+            out/nsis/dev3-setup.exe.blockmap
             out/nsis/latest.yml
             out/nsis/codex-runtime.json
             out/latest-package-client-win32-x64.json

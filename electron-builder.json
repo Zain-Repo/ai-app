@@ -1,7 +1,7 @@
 {
   "appId": "com.zain.ai-harness",
-  "productName": "AI Harness",
-  "artifactName": "ai-harness-setup.${ext}",
+  "productName": "Dev3",
+  "artifactName": "dev3-setup.${ext}",
   "directories": {
     "output": "out/nsis"
   },
@@ -12,7 +12,7 @@
       "repo": "ai-app"
     }
   ],
-  "executableName": "ai-harness",
+  "executableName": "dev3",
   "win": {
     "icon": "public/icons/icon-512.png",
     "target": [
@@ -28,7 +28,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "AI Harness",
+    "shortcutName": "Dev3",
     "runAfterFinish": true,
     "deleteAppDataOnUninstall": true
   }
