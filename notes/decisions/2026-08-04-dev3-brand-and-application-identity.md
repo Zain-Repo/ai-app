@@ -30,7 +30,8 @@ while accepting the corresponding `AI_HARNESS_*` variables as legacy fallbacks.
 The deployed renderer resolves both the Dev3 preload bridge and the legacy
 `window.aiHarnessDesktop` bridge until older clients have upgraded. New preload
 bundles expose both names as the same restricted API so either deployment order
-remains compatible.
+remains compatible. OpenRouter callback handling consumes either PKCE storage
+key so an authorization started before deployment can complete afterward.
 
 ## Consequences
 
@@ -49,5 +50,5 @@ remains compatible.
 
 - The release workflow, builder configuration, and publisher agree on the
   `dev3-setup.exe` artifact and Dev3 release title.
-- The application type-check, focused lint and formatting checks, full 245-test
+- The application type-check, focused lint and formatting checks, full 248-test
   suite, and production build pass with the compatibility identifiers retained.

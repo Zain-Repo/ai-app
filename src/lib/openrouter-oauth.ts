@@ -1,4 +1,17 @@
 export const OPENROUTER_PKCE_STORAGE_KEY = "dev3:openrouter-pkce"
+const LEGACY_OPENROUTER_PKCE_STORAGE_KEY = "ai-harness:openrouter-pkce"
+
+type PkceStorage = Pick<Storage, "getItem" | "removeItem">
+
+export function takeOpenRouterPkceVerifier(storage: PkceStorage) {
+  const verifier =
+    storage.getItem(OPENROUTER_PKCE_STORAGE_KEY) ||
+    storage.getItem(LEGACY_OPENROUTER_PKCE_STORAGE_KEY)
+
+  storage.removeItem(OPENROUTER_PKCE_STORAGE_KEY)
+  storage.removeItem(LEGACY_OPENROUTER_PKCE_STORAGE_KEY)
+  return verifier
+}
 
 function encodeBase64Url(value: ArrayBuffer | Uint8Array) {
   const bytes = value instanceof Uint8Array ? value : new Uint8Array(value)
