@@ -278,7 +278,12 @@ export function DesktopUpdater() {
                 </h2>
                 <Badge
                   variant={
-                    state?.status === "error" ? "destructive" : "outline"
+                    state?.status === "error"
+                      ? "destructive"
+                      : state?.status === "up-to-date" ||
+                          state?.status === "ready-to-install"
+                        ? "success"
+                        : "outline"
                   }
                 >
                   {presentation.label}

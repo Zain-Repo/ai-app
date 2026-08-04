@@ -18,7 +18,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { createServerFn } from "@tanstack/react-start"
 import {
-  AudioWaveform,
   Camera,
   FileText,
   Folder,
@@ -71,6 +70,7 @@ import type {
   ProjectSourceItem,
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
+import { SidebarModeControls } from "@/components/sidebar-mode-controls"
 import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
@@ -159,7 +159,6 @@ import {
   SidebarMenuSkeleton,
   SidebarProvider,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar"
 
 const MessageResponse = lazy(async () => {
@@ -368,26 +367,6 @@ export function CappedConversationList({
         </SidebarMenuItem>
       ) : null}
     </>
-  )
-}
-
-function SidebarVoiceButton({ onActivate }: { onActivate: () => void }) {
-  const { setOpenMobile } = useSidebar()
-
-  return (
-    <Button
-      aria-label="Start voice mode"
-      className="rounded-lg"
-      onClick={() => {
-        setOpenMobile(false)
-        onActivate()
-      }}
-      size="icon-sm"
-      title="Start voice mode"
-      variant="outline"
-    >
-      <AudioWaveform aria-hidden="true" />
-    </Button>
   )
 }
 
@@ -1767,12 +1746,20 @@ function ChatWorkspace() {
               </span>
             </span>
           </a>
+          <SidebarModeControls
+            disabled={Boolean(conversationId) || sendState === "sending"}
+            hasImageProvider={hasImageProvider}
+            mode={outputMode}
+            onModeChange={setOutputMode}
+            onVoiceActivate={() => void activateVoice()}
+          />
           <Button
-            className="h-9 w-full justify-start rounded-xl shadow-sm transition-[background-color,box-shadow,transform] duration-150 hover:shadow-md active:scale-[0.98]"
+            className="h-9 w-full justify-start rounded-xl px-2.5 text-sidebar-foreground shadow-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={() =>
               open({ mode: "chat-new", projectId: search.projectId })
             }
             size="sm"
+            variant="ghost"
           >
             <HugeiconsIcon
               aria-hidden="true"
@@ -1980,61 +1967,32 @@ function ChatWorkspace() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="gap-2.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2.5">
-          <div
-            aria-label="Chat controls"
-            className="flex items-center gap-2 rounded-xl border border-sidebar-border/45 bg-sidebar-accent/25 p-1.5"
-            role="group"
-          >
+          {conversationId ? (
             <Select
-              disabled={Boolean(conversationId) || sendState === "sending"}
-              onValueChange={(mode) => {
-                if (!mode) return
-                setOutputMode(mode)
+              aria-label="Chat memory mode"
+              onValueChange={(memoryMode) => {
+                if (!memoryMode) return
+                void setMemoryMode({
+                  conversationId,
+                  memoryMode,
+                })
               }}
-              value={outputMode}
+              value={selected?.memoryMode ?? "standard"}
             >
               <SelectTrigger
-                aria-label="Output mode"
-                className="min-w-0 flex-1 justify-between rounded-lg border-transparent bg-background/55 px-2.5 shadow-none hover:bg-background/75"
+                aria-label="Chat memory mode"
+                className="w-full justify-between"
                 size="sm"
               >
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent align="start" alignItemWithTrigger={false}>
-                <SelectItem value="text">Chat</SelectItem>
-                {hasImageProvider ? (
-                  <SelectItem value="image">Image</SelectItem>
-                ) : null}
+              <SelectContent>
+                <SelectItem value="standard">Memory: standard</SelectItem>
+                <SelectItem value="read_only">Memory: read only</SelectItem>
+                <SelectItem value="off">Memory: off</SelectItem>
               </SelectContent>
             </Select>
-            {conversationId ? (
-              <Select
-                aria-label="Chat memory mode"
-                onValueChange={(memoryMode) => {
-                  if (!memoryMode) return
-                  void setMemoryMode({
-                    conversationId,
-                    memoryMode,
-                  })
-                }}
-                value={selected?.memoryMode ?? "standard"}
-              >
-                <SelectTrigger
-                  aria-label="Chat memory mode"
-                  className="min-w-0 flex-1"
-                  size="sm"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">Memory: standard</SelectItem>
-                  <SelectItem value="read_only">Memory: read only</SelectItem>
-                  <SelectItem value="off">Memory: off</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : null}
-            <SidebarVoiceButton onActivate={() => void activateVoice()} />
-          </div>
+          ) : null}
           <SidebarUserMenu
             desktopAvailable={desktopAvailable}
             email={viewer?.email}

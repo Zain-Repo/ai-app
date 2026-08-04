@@ -118,7 +118,7 @@ export type ProjectSourcesPanelProps = {
 
 type StatusPresentation = {
   label: string
-  tone: "default" | "destructive" | "outline" | "secondary"
+  tone: "default" | "destructive" | "outline" | "secondary" | "success"
 }
 
 const statusPresentation: Record<ProjectEmbeddingStatus, StatusPresentation> = {
@@ -126,7 +126,7 @@ const statusPresentation: Record<ProjectEmbeddingStatus, StatusPresentation> = {
   queued: { label: "Queued", tone: "secondary" },
   extracting: { label: "Extracting text", tone: "secondary" },
   indexing: { label: "Embedding text", tone: "secondary" },
-  ready: { label: "Ready", tone: "default" },
+  ready: { label: "Ready", tone: "success" },
   partial: { label: "Partially indexed", tone: "outline" },
   failed: { label: "Failed", tone: "destructive" },
   provider_required: { label: "Provider required", tone: "outline" },
