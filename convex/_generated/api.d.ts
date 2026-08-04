@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
+import type * as fal from "../fal.js";
 import type * as memories from "../memories.js";
 import type * as memoryActions from "../memoryActions.js";
 import type * as memoryCapture from "../memoryCapture.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   authHelpers: typeof authHelpers;
   conversations: typeof conversations;
   crons: typeof crons;
+  fal: typeof fal;
   memories: typeof memories;
   memoryActions: typeof memoryActions;
   memoryCapture: typeof memoryCapture;
