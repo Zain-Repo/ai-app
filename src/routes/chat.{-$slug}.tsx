@@ -49,6 +49,8 @@ import {
 
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
+import { AiResponseActions } from "@/components/ai-response-actions"
+import { AiSuggestedActions } from "@/components/ai-suggested-actions"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { WorkspaceHistoryPartialNotice } from "@/components/workspace-history-partial-notice"
 import {
@@ -76,6 +78,7 @@ import { SidebarWorkspaceSwitcher } from "@/components/sidebar-workspace-switche
 import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
+import { getChatStarterSuggestions } from "@/lib/chat-starter-suggestions"
 import { formatProjectDate } from "@/lib/format-project-date"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
@@ -2810,6 +2813,7 @@ function ChatWorkspace() {
                     []
                   ).catch(() => undefined)
                 }}
+                workspace={workspace}
                 userMessageBubbleColor={preferences?.userMessageBubbleColor}
                 targetMessageId={search.messageId}
               />
@@ -3141,6 +3145,7 @@ type MessageAreaProps = {
   onManageMemory: () => void
   targetMessageId?: string
   userMessageBubbleColor: UserMessageBubbleColor | undefined
+  workspace: WorkspaceProduct
 }
 
 type LoadedMessageAreaProps = Omit<MessageAreaProps, "messages"> & {
@@ -3182,6 +3187,12 @@ export function MessageArea(props: MessageAreaProps) {
             {WELCOME_DESCRIPTION}
           </EmptyDescription>
         </EmptyHeader>
+        <AiSuggestedActions
+          className="mt-2 max-w-xl"
+          disabled={props.actionsDisabled}
+          onSelect={props.onAction}
+          suggestions={getChatStarterSuggestions(props.workspace)}
+        />
       </Empty>
     )
 
@@ -3534,6 +3545,16 @@ function MessageAreaContent({
                             ) : null}
                           </BubbleContent>
                         </Bubble>
+                        {!isUser &&
+                        message.status === "complete" &&
+                        message.outputMode !== "image" &&
+                        message.content.trim() ? (
+                          <AiResponseActions
+                            className="border-0 bg-transparent p-0 text-muted-foreground"
+                            compact
+                            content={message.content}
+                          />
+                        ) : null}
                       </MessageContent>
                     </Message>
                   </MessageScrollerItem>
