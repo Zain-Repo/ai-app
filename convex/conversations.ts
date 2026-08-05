@@ -509,6 +509,63 @@ export const setMemoryMode = mutation({
   },
 })
 
+async function getPendingDesktopCodexResponse(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  conversationId: string
+) {
+  const conversation = await getOwnedConversation(ctx, userId, conversationId)
+  if (!conversation.providerConnectionId)
+    throw new Error("Conversation unavailable")
+  const connection = await ctx.db.get(conversation.providerConnectionId)
+  if (
+    !connection ||
+    connection.ownerId !== userId ||
+    connection.provider !== "codex" ||
+    connection.status !== "connected"
+  )
+    throw new Error("Codex connection unavailable")
+  const pending = (
+    await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) =>
+        q.eq("conversationId", conversation._id)
+      )
+      .order("desc")
+      .take(MAX_MESSAGES)
+  ).filter(
+    (message) =>
+      message.role === "assistant" &&
+      (message.status === "pending" || message.status === "streaming")
+  )
+  if (pending.length !== 1)
+    throw new Error("Codex response is no longer available")
+  return { conversation, message: pending[0] }
+}
+
+export const streamDesktopCodexResponse = mutation({
+  args: {
+    conversationId: v.string(),
+    content: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (args.content.length > MAX_MESSAGE_LENGTH)
+      throw new Error("Response is too long")
+    const user = await getCurrentUser(ctx)
+    const { message } = await getPendingDesktopCodexResponse(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    await ctx.db.patch(message._id, {
+      content: args.content,
+      status: "streaming",
+    })
+    return null
+  },
+})
+
 export const finishDesktopCodexResponse = mutation({
   args: {
     conversationId: v.string(),
@@ -521,21 +578,11 @@ export const finishDesktopCodexResponse = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx)
-    const conversation = await getOwnedConversation(
+    const { conversation, message } = await getPendingDesktopCodexResponse(
       ctx,
       user._id,
       args.conversationId
     )
-    if (!conversation.providerConnectionId)
-      throw new Error("Conversation unavailable")
-    const connection = await ctx.db.get(conversation.providerConnectionId)
-    if (
-      !connection ||
-      connection.ownerId !== user._id ||
-      connection.provider !== "codex" ||
-      connection.status !== "connected"
-    )
-      throw new Error("Codex connection unavailable")
     const content = normalizeMessage(args.content)
     const reasoningSteps = args.reasoningSteps?.map((step) => step.trim())
     if (
@@ -544,22 +591,7 @@ export const finishDesktopCodexResponse = mutation({
         reasoningSteps.some((step) => !step || step.length > 2_000))
     )
       throw new Error("Codex reasoning summary is invalid")
-    const pending = (
-      await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (q) =>
-          q.eq("conversationId", conversation._id)
-        )
-        .order("desc")
-        .take(MAX_MESSAGES)
-    ).filter(
-      (message) =>
-        message.role === "assistant" &&
-        (message.status === "pending" || message.status === "streaming")
-    )
-    if (pending.length !== 1)
-      throw new Error("Codex response is no longer available")
-    await ctx.db.patch(pending[0]._id, {
+    await ctx.db.patch(message._id, {
       content,
       ...(reasoningSteps ? { reasoningSteps } : {}),
       status: args.failed ? "failed" : "complete",
@@ -569,7 +601,7 @@ export const finishDesktopCodexResponse = mutation({
       await ctx.scheduler.runAfter(
         0,
         internal.memoryHistory.enqueueForAssistantMessage,
-        { assistantMessageId: pending[0]._id }
+        { assistantMessageId: message._id }
       )
     if (!args.failed && (args.memoryItemIds?.length || args.summaryIds?.length))
       await ctx.scheduler.runAfter(
@@ -579,7 +611,7 @@ export const finishDesktopCodexResponse = mutation({
           conversationId: conversation._id,
           memoryItemIds: args.memoryItemIds ?? [],
           ownerId: user._id,
-          responseMessageId: pending[0]._id,
+          responseMessageId: message._id,
           summaryIds: args.summaryIds ?? [],
         }
       )

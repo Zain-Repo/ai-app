@@ -671,6 +671,9 @@ function ChatWorkspace() {
   const startRealtimeConversation = useMutation(api.conversations.startRealtime)
   const sendMessage = useMutation(api.conversations.send)
   const setMemoryMode = useMutation(api.conversations.setMemoryMode)
+  const streamDesktopCodexResponse = useMutation(
+    api.conversations.streamDesktopCodexResponse
+  )
   const finishDesktopCodexResponse = useMutation(
     api.conversations.finishDesktopCodexResponse
   )
@@ -1582,53 +1585,105 @@ function ChatWorkspace() {
             referenceText: "",
             selectedMemoryItemIds: [],
           }))
-          const result = await desktop.codex.generate({
-            model: meta.settings.model,
-            ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
-            developerInstructions: [
-              "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
-              selectedProject?.instructions,
-              preferences?.responseDetail
-                ? `Response detail: ${preferences.responseDetail}.`
-                : undefined,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            messages: [
-              ...desktopCodexMessages,
-              ...(projectSourceContext
-                ? [
-                    {
-                      content: `Reference context for the next user request:\n${projectSourceContext}`,
-                      role: "user" as const,
-                    },
-                  ]
-                : []),
-              ...(memoryContext.referenceText
-                ? [
-                    {
-                      content: `Reference context for the next user request:\n${memoryContext.referenceText}`,
-                      role: "user" as const,
-                    },
-                  ]
-                : []),
-              { content, role: "user" as const },
-            ],
-          })
-          await finishDesktopCodexResponse({
-            conversationId: targetConversationId,
-            content: result.content,
-            failed: false,
-            ...(memoryContext.selectedMemoryItemIds.length
-              ? { memoryItemIds: memoryContext.selectedMemoryItemIds }
-              : {}),
-            ...(result.reasoningSteps.length
-              ? { reasoningSteps: result.reasoningSteps }
-              : {}),
-            ...(memoryContext.historySummaryIds.length
-              ? { summaryIds: memoryContext.historySummaryIds }
-              : {}),
-          })
+          let streamedContent = ""
+          let persistedContent = ""
+          let streamTimer: ReturnType<typeof setTimeout> | null = null
+          let streamPersistenceAvailable = true
+          let streamWrite = Promise.resolve()
+          // Serialize throttled snapshots so a slower mutation cannot overwrite newer text.
+          const queueStreamWrite = () => {
+            if (
+              !streamPersistenceAvailable ||
+              streamedContent === persistedContent
+            )
+              return
+            const contentToPersist = streamedContent
+            persistedContent = contentToPersist
+            streamWrite = streamWrite.then(async () => {
+              if (!streamPersistenceAvailable) return
+              try {
+                await streamDesktopCodexResponse({
+                  conversationId: targetConversationId,
+                  content: contentToPersist,
+                })
+              } catch {
+                streamPersistenceAvailable = false
+                console.warn(
+                  "Live Codex response persistence failed; final response persistence will still be attempted."
+                )
+              }
+            })
+          }
+          const flushStream = async () => {
+            if (streamTimer) clearTimeout(streamTimer)
+            streamTimer = null
+            queueStreamWrite()
+            await streamWrite
+          }
+          try {
+            const result = await desktop.codex.generate(
+              {
+                model: meta.settings.model,
+                ...(meta.settings.effort
+                  ? { effort: meta.settings.effort }
+                  : {}),
+                developerInstructions: [
+                  "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
+                  selectedProject?.instructions,
+                  preferences?.responseDetail
+                    ? `Response detail: ${preferences.responseDetail}.`
+                    : undefined,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+                messages: [
+                  ...desktopCodexMessages,
+                  ...(projectSourceContext
+                    ? [
+                        {
+                          content: `Reference context for the next user request:\n${projectSourceContext}`,
+                          role: "user" as const,
+                        },
+                      ]
+                    : []),
+                  ...(memoryContext.referenceText
+                    ? [
+                        {
+                          content: `Reference context for the next user request:\n${memoryContext.referenceText}`,
+                          role: "user" as const,
+                        },
+                      ]
+                    : []),
+                  { content, role: "user" as const },
+                ],
+              },
+              (delta) => {
+                streamedContent += delta
+                if (!streamTimer)
+                  streamTimer = setTimeout(() => {
+                    streamTimer = null
+                    queueStreamWrite()
+                  }, 75)
+              }
+            )
+            await flushStream()
+            await finishDesktopCodexResponse({
+              conversationId: targetConversationId,
+              content: result.content,
+              failed: false,
+              ...(memoryContext.selectedMemoryItemIds.length
+                ? { memoryItemIds: memoryContext.selectedMemoryItemIds }
+                : {}),
+              ...(result.reasoningSteps.length
+                ? { reasoningSteps: result.reasoningSteps }
+                : {}),
+              ...(memoryContext.historySummaryIds.length
+                ? { summaryIds: memoryContext.historySummaryIds }
+                : {}),
+            })
+          } finally {
+            await flushStream()
+          }
         } catch (cause) {
           try {
             await finishDesktopCodexResponse({

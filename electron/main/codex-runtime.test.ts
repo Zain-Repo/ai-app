@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   isDesktopCodexReasoningEffort,
+  parseAgentMessageDelta,
   parseDesktopCodexModels,
   selectCompletedTurnItems,
 } from "./codex-app-server"
@@ -54,6 +55,30 @@ describe("Codex runtime metadata", () => {
 })
 
 describe("Codex app-server protocol", () => {
+  it("accepts only agent message deltas for the active thread", () => {
+    expect(
+      parseAgentMessageDelta(
+        "item/agentMessage/delta",
+        { delta: "Hello", threadId: "thread-1", turnId: "turn-1" },
+        "thread-1"
+      )
+    ).toBe("Hello")
+    expect(
+      parseAgentMessageDelta(
+        "item/agentMessage/delta",
+        { delta: "Wrong thread", threadId: "thread-2" },
+        "thread-1"
+      )
+    ).toBeNull()
+    expect(
+      parseAgentMessageDelta(
+        "item/reasoning/textDelta",
+        { delta: "Private reasoning", threadId: "thread-1" },
+        "thread-1"
+      )
+    ).toBeNull()
+  })
+
   it("preserves model reasoning efforts from model/list", () => {
     expect(
       parseDesktopCodexModels({

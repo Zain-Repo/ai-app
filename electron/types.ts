@@ -60,7 +60,8 @@ export type Dev3DesktopApi = {
   codex: {
     account: () => Promise<DesktopCodexAccount>
     generate: (
-      input: DesktopCodexGenerateInput
+      input: DesktopCodexGenerateInput,
+      onDelta?: (delta: string) => void
     ) => Promise<DesktopCodexGenerateResult>
     listModels: () => Promise<DesktopCodexModel[]>
     login: () => Promise<DesktopCodexAccount>

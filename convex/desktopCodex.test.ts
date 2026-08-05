@@ -6,7 +6,7 @@ import schema from "./schema"
 import { modules } from "./test.setup"
 
 describe("desktop Codex conversations", () => {
-  it("leaves the response pending for Electron and completes it once", async () => {
+  it("streams the Electron response before completing it", async () => {
     const t = convexTest(schema, modules)
     const authenticated = t.withIdentity({
       subject: "user_codex",
@@ -45,6 +45,18 @@ describe("desktop Codex conversations", () => {
         status: "pending",
       },
     ])
+
+    await authenticated.mutation(api.conversations.streamDesktopCodexResponse, {
+      conversationId,
+      content: "Here is",
+    })
+    expect(
+      (
+        await authenticated.query(api.conversations.listMessages, {
+          conversationId,
+        })
+      ).at(-1)
+    ).toMatchObject({ content: "Here is", status: "streaming" })
 
     await authenticated.mutation(api.conversations.finishDesktopCodexResponse, {
       conversationId,

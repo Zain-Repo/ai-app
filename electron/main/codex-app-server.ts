@@ -59,6 +59,21 @@ export function selectCompletedTurnItems(
     : []
 }
 
+export function parseAgentMessageDelta(
+  method: string,
+  params: JsonObject,
+  threadId: string
+) {
+  if (
+    method !== "item/agentMessage/delta" ||
+    params.threadId !== threadId ||
+    typeof params.delta !== "string" ||
+    !params.delta
+  )
+    return null
+  return params.delta
+}
+
 export function parseDesktopCodexModels(result: unknown): DesktopCodexModel[] {
   if (!isRecord(result) || !Array.isArray(result.data)) return []
   return result.data.flatMap((entry) => {
@@ -241,7 +256,8 @@ export class CodexAppServer {
   }
 
   async generate(
-    input: DesktopCodexGenerateInput
+    input: DesktopCodexGenerateInput,
+    onDelta?: (delta: string) => void
   ): Promise<DesktopCodexGenerateResult> {
     if (!(await this.account()).connected)
       throw new Error("Sign in with ChatGPT before using Codex")
@@ -271,12 +287,15 @@ export class CodexAppServer {
     const thread = isRecord(threadResult) ? threadResult.thread : null
     if (!isRecord(thread) || typeof thread.id !== "string")
       throw new Error("Codex could not start a conversation")
+    const threadId = thread.id
 
     const completedItems: CompletedItemNotification[] = []
     const stopObserving = this.observeNotifications((method, params) => {
+      const delta = parseAgentMessageDelta(method, params, threadId)
+      if (delta) onDelta?.(delta)
       if (
         method === "item/completed" &&
-        params.threadId === thread.id &&
+        params.threadId === threadId &&
         typeof params.turnId === "string" &&
         isRecord(params.item)
       )
@@ -284,7 +303,7 @@ export class CodexAppServer {
     })
     try {
       const turnResult = await this.request("turn/start", {
-        threadId: thread.id,
+        threadId,
         input: [{ type: "text", text: transcript, text_elements: [] }],
         model: input.model,
         ...(input.effort ? { effort: input.effort } : {}),
@@ -298,7 +317,7 @@ export class CodexAppServer {
         (params) => {
           const completedTurn = params.turn
           return (
-            params.threadId === thread.id &&
+            params.threadId === threadId &&
             isRecord(completedTurn) &&
             completedTurn.id === turn.id
           )

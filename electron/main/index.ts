@@ -94,15 +94,23 @@ function isCodexGenerateInput(
   )
 }
 
+function isCodexRequestId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 100
+}
+
 function registerIpc() {
   handle("desktop:version", () => app.getVersion())
   handle("desktop:codex-account", () => codex.account())
   handle("desktop:codex-login", () => codex.login())
   handle("desktop:codex-logout", () => codex.logout())
   handle("desktop:codex-models", () => codex.listModels())
-  handle("desktop:codex-generate", (_event, value) => {
-    if (!isCodexGenerateInput(value)) throw new Error("Invalid Codex request")
-    return codex.generate(value)
+  handle("desktop:codex-generate", (event, requestId, value) => {
+    if (!isCodexRequestId(requestId) || !isCodexGenerateInput(value))
+      throw new Error("Invalid Codex request")
+    return codex.generate(value, (delta) => {
+      if (!event.sender.isDestroyed())
+        event.sender.send("desktop:codex-delta", requestId, delta)
+    })
   })
   handle("desktop:cursor-account", () => cursor.account())
   handle("desktop:cursor-login", () => cursor.login())
