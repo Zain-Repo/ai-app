@@ -37,3 +37,27 @@ section renders in its own independently scrollable content pane.
 
 This update reorganizes the existing Settings sections only. It does not add
 new preference categories or change persistence, provider, or memory behavior.
+
+## Compact density refinement — 2026-08-05
+
+- Reduced the desktop dialog cap from `max-w-5xl` by 46rem to `max-w-4xl` by
+  40rem while retaining the viewport-aware height limit and independently
+  scrollable content panels.
+- Narrowed the desktop navigation rail, tightened panel padding and section
+  rhythm, and reduced the close action and General-panel select/button heights.
+- Applied the existing semantic label type role to navigation, field labels,
+  selects, buttons, and message-color choices. Section headings now use a
+  lighter Raleway weight and restrained tracking.
+- Reduced message-color rows and swatches without changing radio semantics,
+  focus visibility, disabled states, or preference persistence.
+
+### Refinement validation
+
+- Focused Personalization Center Vitest suite: 3 tests passed.
+- TypeScript type checking passed.
+- Scoped ESLint and Prettier checks passed.
+- The Impeccable UI detector reported no findings for the changed component.
+
+No authenticated browser smoke test was run for this focused refinement.
+Existing interaction coverage and explicit compact-shell regression assertions
+cover the changed settings component.
