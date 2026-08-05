@@ -35,6 +35,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react"
 import type { ReactNode } from "react"
 import {
@@ -83,6 +84,11 @@ import {
   getWorkspaceProduct,
 } from "@/lib/workspace-product"
 import type { WorkspaceProduct } from "@/lib/workspace-product"
+import {
+  getDefaultWelcomeMessage,
+  getLaunchWelcomeMessage,
+  WELCOME_DESCRIPTION,
+} from "@/lib/welcome-message"
 import type {
   AIInputMenuItem,
   AIInputOption,
@@ -186,6 +192,8 @@ const RealtimeVoice = lazy(async () => {
   const module = await import("@/components/realtime-voice")
   return { default: module.RealtimeVoice }
 })
+
+const subscribeToLaunchWelcomeMessage = () => () => undefined
 
 const LibraryWorkspace = lazy(async () => {
   const module = await import("@/components/library-workspace")
@@ -3129,6 +3137,12 @@ type ResponseMemorySource = {
 }
 
 export function MessageArea(props: MessageAreaProps) {
+  const welcomeMessage = useSyncExternalStore(
+    subscribeToLaunchWelcomeMessage,
+    getLaunchWelcomeMessage,
+    getDefaultWelcomeMessage
+  )
+
   if (props.messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
   if (props.messages.length === 0)
@@ -3146,11 +3160,10 @@ export function MessageArea(props: MessageAreaProps) {
             />
           </EmptyMedia>
           <EmptyTitle className="text-balance">
-            {props.name ? `Welcome back, ${props.name}.` : "Welcome back."}
+            {welcomeMessage.title(props.name)}
           </EmptyTitle>
           <EmptyDescription className="max-w-xs text-pretty">
-            Choose a model, then describe the outcome you want. You can attach
-            files from the composer when context matters.
+            {WELCOME_DESCRIPTION}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
