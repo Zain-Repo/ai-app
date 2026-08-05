@@ -21,6 +21,8 @@ type FalModelConfig = {
   maxReferences?: number
 }
 
+// Keep generation and editing endpoints paired so every listed model behaves
+// consistently when a conversation includes reference images.
 export const FAL_IMAGE_MODELS = [
   {
     id: "fal-ai/flux-2/klein/4b",
@@ -29,11 +31,32 @@ export const FAL_IMAGE_MODELS = [
     description: "Fast, low-cost generation with strong prompt adherence",
   },
   {
+    id: "fal-ai/flux-2/klein/9b",
+    editEndpoint: "fal-ai/flux-2/klein/9b/edit",
+    editInput: "image_urls",
+    maxReferences: 4,
+    description: "Higher-detail generation with fast, precise editing",
+  },
+  {
     id: "fal-ai/flux-2",
     editEndpoint: "fal-ai/flux-2/edit",
     editInput: "image_urls",
     maxReferences: 4,
     description: "Fast FLUX.2 generation with native multi-reference editing",
+  },
+  {
+    id: "fal-ai/flux-2/flash",
+    editEndpoint: "fal-ai/flux-2/flash/edit",
+    editInput: "image_urls",
+    maxReferences: 4,
+    description: "Speed-focused FLUX.2 generation and editing",
+  },
+  {
+    id: "fal-ai/flux-2/turbo",
+    editEndpoint: "fal-ai/flux-2/turbo/edit",
+    editInput: "image_urls",
+    maxReferences: 4,
+    description: "Fast FLUX.2 output with stronger generation controls",
   },
   {
     id: "fal-ai/flux-2-flex",
@@ -48,11 +71,23 @@ export const FAL_IMAGE_MODELS = [
     description: "Professional general-purpose generation and editing",
   },
   {
+    id: "fal-ai/flux-2-max",
+    editEndpoint: "fal-ai/flux-2-max/edit",
+    editInput: "image_urls",
+    description: "Premium FLUX.2 realism, precision, and consistency",
+  },
+  {
     id: "fal-ai/flux-pro/kontext/text-to-image",
     editEndpoint: "fal-ai/flux-pro/kontext",
     editInput: "image_url",
     description:
       "Frontier FLUX Kontext generation and precise single-image edits",
+  },
+  {
+    id: "google/nano-banana-lite",
+    editEndpoint: "google/nano-banana-lite/edit",
+    editInput: "image_urls",
+    description: "Cost-efficient, low-latency generation and local edits",
   },
   {
     id: "fal-ai/nano-banana-2",
@@ -93,16 +128,48 @@ export const FAL_IMAGE_MODELS = [
       "Exceptional typography, posters, logos, and realistic outputs",
   },
   {
+    id: "ideogram/v4",
+    editEndpoint: "ideogram/v4/image-to-image",
+    editInput: "image_url",
+    description: "Latest Ideogram quality for crisp text and polished design",
+  },
+  {
+    id: "fal-ai/qwen-image-2/text-to-image",
+    editEndpoint: "fal-ai/qwen-image-2/edit",
+    editInput: "image_urls",
+    maxReferences: 3,
+    description: "Bilingual generation and precise multi-image editing",
+  },
+  {
+    id: "fal-ai/qwen-image-2/pro/text-to-image",
+    editEndpoint: "fal-ai/qwen-image-2/pro/edit",
+    editInput: "image_urls",
+    maxReferences: 3,
+    description: "Quality-first Qwen generation with detailed text rendering",
+  },
+  {
     id: "fal-ai/bytedance/seedream/v4.5/text-to-image",
     editEndpoint: "fal-ai/bytedance/seedream/v4.5/edit",
     editInput: "image_urls",
     description: "High-resolution generation and unified image editing",
   },
   {
+    id: "bytedance/seedream/v5/lite/text-to-image",
+    editEndpoint: "bytedance/seedream/v5/lite/edit",
+    editInput: "image_urls",
+    description: "Fast Seedream 5 generation with high-resolution editing",
+  },
+  {
     id: "bytedance/seedream/v5/pro/text-to-image",
     editEndpoint: "bytedance/seedream/v5/pro/edit",
     editInput: "image_urls",
     description: "Flagship quality for dense layouts and multilingual text",
+  },
+  {
+    id: "reve/2.1/text-to-image",
+    editEndpoint: "reve/2.1/edit",
+    editInput: "image_url",
+    description: "Strong layout intelligence, prompt adherence, and typography",
   },
   {
     id: "xai/grok-imagine-image",
