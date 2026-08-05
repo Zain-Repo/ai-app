@@ -76,18 +76,28 @@ describe("Fal image provider", () => {
   it("covers the curated model endpoints and per-model reference limits", () => {
     expect(FAL_IMAGE_MODELS.map((model) => model.id)).toEqual([
       "fal-ai/flux-2/klein/4b",
+      "fal-ai/flux-2/klein/9b",
       "fal-ai/flux-2",
+      "fal-ai/flux-2/flash",
+      "fal-ai/flux-2/turbo",
       "fal-ai/flux-2-flex",
       "fal-ai/flux-2-pro",
+      "fal-ai/flux-2-max",
       "fal-ai/flux-pro/kontext/text-to-image",
+      "google/nano-banana-lite",
       "fal-ai/nano-banana-2",
       "fal-ai/nano-banana-pro",
       "fal-ai/gpt-image-1.5",
       "openai/gpt-image-2",
       "fal-ai/recraft/v3/text-to-image",
       "fal-ai/ideogram/v3",
+      "ideogram/v4",
+      "fal-ai/qwen-image-2/text-to-image",
+      "fal-ai/qwen-image-2/pro/text-to-image",
       "fal-ai/bytedance/seedream/v4.5/text-to-image",
+      "bytedance/seedream/v5/lite/text-to-image",
       "bytedance/seedream/v5/pro/text-to-image",
+      "reve/2.1/text-to-image",
       "xai/grok-imagine-image",
     ])
     expect(
@@ -110,6 +120,20 @@ describe("Fal image provider", () => {
         "https://four.test",
       ])
     ).toThrow("at most 3 reference images")
+    expect(() =>
+      buildFalImageRequest("fal-ai/qwen-image-2/text-to-image", "edit", [
+        "https://one.test",
+        "https://two.test",
+        "https://three.test",
+        "https://four.test",
+      ])
+    ).toThrow("at most 3 reference images")
+    expect(
+      buildFalImageRequest("ideogram/v4", "edit", ["https://one.test"])
+    ).toEqual({
+      endpoint: "ideogram/v4/image-to-image",
+      input: { image_url: "https://one.test", prompt: "edit" },
+    })
   })
 
   it("submits, polls, and downloads through trusted Fal URLs", async () => {
