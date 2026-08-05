@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
-import type { Doc, Id } from "./_generated/dataModel"
+import type { Id } from "./_generated/dataModel"
 import {
   internalMutation,
   internalQuery,
@@ -51,9 +51,6 @@ const memoryModeValidator = v.union(
   v.literal("read_only"),
   v.literal("off")
 )
-
-type ConversationOutputMode = "image" | "text"
-type ConversationStatus = "active" | "archived"
 
 const conversationValidator = v.object({
   _id: v.id("conversations"),
@@ -1424,71 +1421,6 @@ export const remove = mutation({
   },
 })
 
-function mergeRecentConversationStreams(
-  streams: Doc<"conversations">[][],
-  limit: number
-): Doc<"conversations">[] {
-  return streams
-    .flat()
-    .sort(
-      (left, right) =>
-        right.updatedAt - left.updatedAt ||
-        right._creationTime - left._creationTime
-    )
-    .slice(0, limit)
-}
-
-async function listRecentForOutputMode(
-  ctx: QueryCtx,
-  args: {
-    limit: number
-    outputMode: ConversationOutputMode
-    ownerId: Id<"users">
-    projectId?: Id<"projects">
-    status: ConversationStatus
-    unassignedOnly: boolean
-  }
-): Promise<Doc<"conversations">[]> {
-  // Conversations created before outputMode was introduced belong to text history.
-  const storedModes: (ConversationOutputMode | undefined)[] =
-    args.outputMode === "text" ? ["text", undefined] : ["image"]
-
-  const streams = await Promise.all(
-    storedModes.map(async (storedMode) => {
-      if (args.projectId !== undefined || args.unassignedOnly) {
-        return await ctx.db
-          .query("conversations")
-          .withIndex(
-            "by_owner_id_and_project_id_and_status_and_output_mode_and_updated_at",
-            (indexQuery) =>
-              indexQuery
-                .eq("ownerId", args.ownerId)
-                .eq("projectId", args.projectId)
-                .eq("status", args.status)
-                .eq("outputMode", storedMode)
-          )
-          .order("desc")
-          .take(args.limit)
-      }
-
-      return await ctx.db
-        .query("conversations")
-        .withIndex(
-          "by_owner_id_and_status_and_output_mode_and_updated_at",
-          (indexQuery) =>
-            indexQuery
-              .eq("ownerId", args.ownerId)
-              .eq("status", args.status)
-              .eq("outputMode", storedMode)
-        )
-        .order("desc")
-        .take(args.limit)
-    })
-  )
-
-  return mergeRecentConversationStreams(streams, args.limit)
-}
-
 export const listRecent = query({
   args: {
     limit: v.optional(v.number()),
@@ -1499,6 +1431,8 @@ export const listRecent = query({
   },
   returns: v.array(conversationValidator),
   handler: async (ctx, args) => {
+    // Compound workspace indexes stay staged until their production backfills
+    // complete, so this deploy filters through indexes that are already active.
     const user = await getCurrentUser(ctx)
     const requestedLimit = args.limit ?? MAX_CONVERSATIONS
     const limit = Number.isFinite(requestedLimit)
@@ -1512,69 +1446,79 @@ export const listRecent = query({
       const project = await ctx.db.get(projectId)
       if (!project || project.ownerId !== user._id) return []
 
-      if (args.outputMode !== undefined)
-        return await listRecentForOutputMode(ctx, {
-          limit,
-          outputMode: args.outputMode,
-          ownerId: user._id,
-          projectId: project._id,
-          status,
-          unassignedOnly: false,
-        })
-
-      return await ctx.db
+      const projectConversations = ctx.db
         .query("conversations")
-        .withIndex(
-          "by_owner_id_and_project_id_and_status_and_updated_at",
-          (indexQuery) =>
-            indexQuery
-              .eq("ownerId", user._id)
-              .eq("projectId", project._id)
-              .eq("status", status)
+        .withIndex("by_project_id_and_status_and_updated_at", (indexQuery) =>
+          indexQuery.eq("projectId", project._id).eq("status", status)
         )
         .order("desc")
+
+      if (args.outputMode === undefined)
+        return await projectConversations
+          .filter((filterQuery) =>
+            filterQuery.eq(filterQuery.field("ownerId"), user._id)
+          )
+          .take(limit)
+
+      return await projectConversations
+        .filter((filterQuery) =>
+          filterQuery.and(
+            filterQuery.eq(filterQuery.field("ownerId"), user._id),
+            args.outputMode === "image"
+              ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+              : filterQuery.or(
+                  filterQuery.eq(filterQuery.field("outputMode"), "text"),
+                  filterQuery.eq(filterQuery.field("outputMode"), undefined)
+                )
+          )
+        )
         .take(limit)
     }
 
     if (args.unassignedOnly) {
-      if (args.outputMode !== undefined)
-        return await listRecentForOutputMode(ctx, {
-          limit,
-          outputMode: args.outputMode,
-          ownerId: user._id,
-          status,
-          unassignedOnly: true,
-        })
-
-      return await ctx.db
+      const unassignedConversations = ctx.db
         .query("conversations")
-        .withIndex(
-          "by_owner_id_and_project_id_and_status_and_updated_at",
-          (indexQuery) =>
-            indexQuery
-              .eq("ownerId", user._id)
-              .eq("projectId", undefined)
-              .eq("status", status)
+        .withIndex("by_owner_status_updated_at", (indexQuery) =>
+          indexQuery.eq("ownerId", user._id).eq("status", status)
         )
         .order("desc")
+
+      return await unassignedConversations
+        .filter((filterQuery) =>
+          filterQuery.and(
+            filterQuery.eq(filterQuery.field("projectId"), undefined),
+            args.outputMode === undefined
+              ? true
+              : args.outputMode === "image"
+                ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+                : filterQuery.or(
+                    filterQuery.eq(filterQuery.field("outputMode"), "text"),
+                    filterQuery.eq(filterQuery.field("outputMode"), undefined)
+                  )
+          )
+        )
         .take(limit)
     }
 
-    if (args.outputMode !== undefined)
-      return await listRecentForOutputMode(ctx, {
-        limit,
-        outputMode: args.outputMode,
-        ownerId: user._id,
-        status,
-        unassignedOnly: false,
-      })
-
-    return await ctx.db
+    const recentConversations = ctx.db
       .query("conversations")
       .withIndex("by_owner_status_updated_at", (indexQuery) =>
         indexQuery.eq("ownerId", user._id).eq("status", status)
       )
       .order("desc")
+
+    if (args.outputMode === undefined)
+      return await recentConversations.take(limit)
+
+    return await recentConversations
+      .filter((filterQuery) =>
+        args.outputMode === "image"
+          ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+          : filterQuery.or(
+              filterQuery.eq(filterQuery.field("outputMode"), "text"),
+              filterQuery.eq(filterQuery.field("outputMode"), undefined)
+            )
+      )
       .take(limit)
   },
 })

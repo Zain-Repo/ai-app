@@ -24,9 +24,12 @@ the server by output mode.
 
 ## Deployment sequence
 
-The feature branch intentionally contains two ordered commits. Deploy the
-first commit, which declares the three new indexes as staged, and wait until
-the Convex dashboard reports that every backfill is complete. Only then deploy
-the branch head, which activates the indexes and the queries that use them.
-The feature pull request must remain a draft until that prerequisite deploy is
-complete.
+The feature deploy leaves the three compound indexes staged and filters
+workspace history through the existing owner/status and project/status
+indexes. This lets Convex backfill the new indexes asynchronously without a
+blocking or unsafe deployment dependency.
+
+After the Convex dashboard reports that every backfill is complete, a separate
+follow-up deploy will remove the staged flags and switch the history queries to
+the compound indexes. The follow-up must not be merged before the backfills
+finish.

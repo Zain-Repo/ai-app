@@ -2115,11 +2115,9 @@ function ChatWorkspace() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="gap-1.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2">
-          {conversationId &&
-          workspace === "chat" &&
-          !conversationWorkspacePending ? (
+          {conversationId && !conversationWorkspacePending ? (
             <Select
-              aria-label="Chat memory mode"
+              aria-label="Conversation memory mode"
               onValueChange={(memoryMode) => {
                 if (!memoryMode) return
                 void setMemoryMode({
@@ -2130,7 +2128,7 @@ function ChatWorkspace() {
               value={selected?.memoryMode ?? "standard"}
             >
               <SelectTrigger
-                aria-label="Chat memory mode"
+                aria-label="Conversation memory mode"
                 className="w-full justify-between"
                 size="sm"
               >

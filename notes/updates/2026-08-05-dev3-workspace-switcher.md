@@ -17,7 +17,8 @@ the requirement and opens the existing provider connection flow.
 
 - Workspace routing, sidebar navigation, generation setup, and archived views
   in `src/routes/chat.{-$slug}.tsx` and the related components.
-- Owner-scoped, index-backed workspace history queries in
+- Workspace history filtering through existing deployed indexes, with staged
+  compound indexes backfilling for a later query-activation deploy, in
   `convex/conversations.ts` and `convex/schema.ts`.
 - Component, route, archive, and Convex behavior tests.
 
@@ -41,6 +42,12 @@ the requirement and opens the existing provider connection flow.
 - This change reuses the existing image-generation thread experience. A
   gallery landing page, editor canvas, and image version graph remain outside
   this feature.
-- The pull request remains a draft until its staged-index commit has been
-  deployed and all three Convex backfills have completed. The feature commit
-  must not be deployed first.
+- The new compound indexes remain staged in this deploy. A separate follow-up
+  must activate and query them only after all three Convex backfills complete.
+
+## Review follow-up
+
+- Kept per-conversation memory controls available in both Dev3 Chat and Dev3
+  Image so image prompts can opt out of memory reads and writes.
+- Removed the same-deploy dependency on newly added Convex indexes; the feature
+  now uses already-deployed indexes until the staged backfills complete.
