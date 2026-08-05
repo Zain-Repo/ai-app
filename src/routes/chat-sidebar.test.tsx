@@ -136,6 +136,7 @@ describe("optional chat features", () => {
           onAction={vi.fn()}
           onManageMemory={vi.fn()}
           userMessageBubbleColor={undefined}
+          workspace="chat"
         />,
         { onRecoverableError: () => {} }
       )
@@ -143,6 +144,81 @@ describe("optional chat features", () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+
+  it("submits a workspace-specific starter prompt from an empty chat", () => {
+    const onAction = vi.fn()
+    const view = render(
+      <MessageArea
+        actionsDisabled={false}
+        conversationId={undefined}
+        messages={[]}
+        name={null}
+        onAction={onAction}
+        onManageMemory={vi.fn()}
+        userMessageBubbleColor={undefined}
+        workspace="image"
+      />
+    )
+
+    fireEvent.click(view.getByRole("button", { name: /Product hero/ }))
+
+    expect(onAction).toHaveBeenCalledWith(
+      expect.stringContaining("product hero image")
+    )
+  })
+
+  it("shows copy actions only for completed assistant text responses", () => {
+    const messages = [
+      {
+        _id: "assistant-complete",
+        attachments: [],
+        content: "Completed assistant response",
+        outputMode: "text",
+        role: "assistant",
+        status: "complete",
+      },
+      {
+        _id: "user-complete",
+        attachments: [],
+        content: "Completed user message",
+        outputMode: "text",
+        role: "user",
+        status: "complete",
+      },
+      {
+        _id: "assistant-streaming",
+        attachments: [],
+        content: "Streaming assistant response",
+        outputMode: "text",
+        role: "assistant",
+        status: "streaming",
+      },
+      {
+        _id: "assistant-failed",
+        attachments: [],
+        content: "Failed assistant response",
+        outputMode: "text",
+        role: "assistant",
+        status: "failed",
+      },
+    ] as unknown as NonNullable<ComponentProps<typeof MessageArea>["messages"]>
+    const view = render(
+      <MessageArea
+        actionsDisabled={false}
+        conversationId={"conversation-1" as Id<"conversations">}
+        messages={messages}
+        name={null}
+        onAction={vi.fn()}
+        onManageMemory={vi.fn()}
+        userMessageBubbleColor={undefined}
+        workspace="chat"
+      />
+    )
+
+    expect(view.getAllByRole("button", { name: "Copy response" })).toHaveLength(
+      1
+    )
   })
 
   it("focuses the message opened from Library", () => {
@@ -168,6 +244,7 @@ describe("optional chat features", () => {
         onManageMemory={vi.fn()}
         targetMessageId="message-1"
         userMessageBubbleColor={undefined}
+        workspace="chat"
       />
     )
 
@@ -185,6 +262,7 @@ describe("optional chat features", () => {
         onManageMemory={vi.fn()}
         targetMessageId="message-1"
         userMessageBubbleColor={undefined}
+        workspace="chat"
       />
     )
 
