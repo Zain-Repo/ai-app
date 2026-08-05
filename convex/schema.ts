@@ -2,6 +2,13 @@ import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
 import { messageAttachmentValidator } from "./attachmentPolicy"
+import {
+  imageGenerationConfigValidator,
+  imageGenerationJobStatusValidator,
+  imageGenerationOutputStatusValidator,
+  imageGenerationSetStatusValidator,
+  imageProviderValidator,
+} from "./imageGenerationPolicy"
 import { terminalRunValidator } from "./terminalPolicy"
 
 const connectionStatus = v.union(
@@ -254,6 +261,8 @@ export default defineSchema({
         kind: v.literal("generated_image"),
         conversationId: v.id("conversations"),
         messageId: v.id("messages"),
+        generationSetId: v.optional(v.id("imageGenerationSets")),
+        generationOutputId: v.optional(v.id("imageGenerationOutputs")),
         provider: v.optional(v.string()),
         model: v.optional(v.string()),
       })
@@ -305,13 +314,10 @@ export default defineSchema({
       fields: ["ownerId", "projectId", "status", "updatedAt"],
       staged: true,
     })
-    .index(
-      "by_owner_id_and_project_id_and_status_and_output_mode_and_updated_at",
-      {
-        fields: ["ownerId", "projectId", "status", "outputMode", "updatedAt"],
-        staged: true,
-      }
-    )
+    .index("by_owner_id_project_id_status_output_mode_updated_at", {
+      fields: ["ownerId", "projectId", "status", "outputMode", "updatedAt"],
+      staged: true,
+    })
     .index("by_project_id_and_status_and_updated_at", [
       "projectId",
       "status",
@@ -345,7 +351,78 @@ export default defineSchema({
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
     errorCode: v.optional(v.literal("insufficient_credits")),
-  }).index("by_conversation", ["conversationId"]),
+    scheduledGenerationId: v.optional(v.id("_scheduled_functions")),
+    generationSetId: v.optional(v.id("imageGenerationSets")),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_branch", ["branchId"]),
+
+  imageGenerationSets: defineTable({
+    ownerId: v.id("users"),
+    conversationId: v.id("conversations"),
+    userMessageId: v.id("messages"),
+    assistantMessageId: v.id("messages"),
+    providerConnectionId: v.id("providerConnections"),
+    provider: imageProviderValidator,
+    model: v.string(),
+    endpoint: v.optional(v.string()),
+    prompt: v.string(),
+    config: imageGenerationConfigValidator,
+    capabilityRevision: v.string(),
+    requestedMinimum: v.number(),
+    requestedMaximum: v.number(),
+    pricingKind: v.union(
+      v.literal("exact"),
+      v.literal("from"),
+      v.literal("range"),
+      v.literal("unknown")
+    ),
+    pricingDisplay: v.optional(v.string()),
+    status: imageGenerationSetStatusValidator,
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_id_and_created_at", ["ownerId", "createdAt"])
+    .index("by_conversation_id_and_created_at", ["conversationId", "createdAt"])
+    .index("by_assistant_message_id", ["assistantMessageId"])
+    .index("by_owner_id_and_idempotency_key", ["ownerId", "idempotencyKey"]),
+
+  imageGenerationJobs: defineTable({
+    generationSetId: v.id("imageGenerationSets"),
+    attempt: v.number(),
+    providerRequestId: v.optional(v.string()),
+    requestedOutputs: v.number(),
+    status: imageGenerationJobStatusValidator,
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    cancellationRequestedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_generation_set_id_and_attempt", ["generationSetId", "attempt"])
+    .index("by_generation_set_id_and_status", ["generationSetId", "status"]),
+
+  imageGenerationOutputs: defineTable({
+    generationSetId: v.id("imageGenerationSets"),
+    generationJobId: v.id("imageGenerationJobs"),
+    ordinal: v.number(),
+    status: imageGenerationOutputStatusValidator,
+    storageId: v.optional(v.id("_storage")),
+    libraryAssetId: v.optional(v.id("libraryAssets")),
+    name: v.optional(v.string()),
+    contentType: v.optional(v.string()),
+    size: v.optional(v.number()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    seed: v.optional(v.number()),
+    errorCode: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_generation_set_id_and_ordinal", ["generationSetId", "ordinal"])
+    .index("by_generation_set_id_and_status", ["generationSetId", "status"])
+    .index("by_generation_job_id_and_ordinal", ["generationJobId", "ordinal"]),
 
   memories: defineTable({
     ownerId: v.id("users"),

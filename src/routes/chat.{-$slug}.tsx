@@ -31,6 +31,7 @@ import {
   Component,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -61,6 +62,11 @@ import {
 } from "@/components/ai-elements/context"
 import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
+import { ImageWorkspace } from "@/components/image-workspace/image-workspace"
+import type {
+  ImageGenerationConfig,
+  ImageModelCapability,
+} from "../../shared/image-generation"
 import { PersonalizationCenter } from "@/components/personalization-center"
 import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
 import { ProjectContextProgress } from "@/components/project-context-progress"
@@ -79,6 +85,7 @@ import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { formatProjectDate } from "@/lib/format-project-date"
+import { imageStudioV2Enabled } from "@/lib/image-studio-rollout"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
 import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
@@ -797,6 +804,8 @@ function ChatWorkspace() {
   const connections = useQuery(api.providerConnections.listMine)
   const listModels = useAction(api.providerOAuth.listModels)
   const listModelEndpoints = useAction(api.providerOAuth.listModelEndpoints)
+  const listImageRoutes = useAction(api.imageModelCapabilities.listRoutes)
+  const createImageGeneration = useAction(api.imageGenerationActions.create)
   const getDesktopCodexProjectContext = useAction(
     api.openRouterResponses.getDesktopCodexProjectContext
   )
@@ -840,6 +849,9 @@ function ChatWorkspace() {
     "failed" | "idle" | "loading" | "ready"
   >("idle")
   const [modelEndpoints, setModelEndpoints] = useState<ModelEndpoint[]>([])
+  const [imageRoutingOptions, setImageRoutingOptions] = useState<
+    Array<{ value: string; label: string; description: string }>
+  >([])
   const [endpointState, setEndpointState] = useState<
     "failed" | "idle" | "loading" | "ready"
   >("idle")
@@ -847,6 +859,7 @@ function ChatWorkspace() {
     useState<ActiveProvider>("openrouter")
   const [desktopAvailable, setDesktopAvailable] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState("")
+  const [imageRoutingProvider, setImageRoutingProvider] = useState("auto")
   const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
     "idle"
   )
@@ -869,6 +882,15 @@ function ChatWorkspace() {
   const [voiceMode, setVoiceMode] = useState(false)
   const [voiceConversationId, setVoiceConversationId] = useState<string | null>(
     null
+  )
+  const [pendingImageReference, setPendingImageReference] = useState<{
+    contentType: string
+    name: string
+    url: string
+  } | null>(null)
+  const clearPendingImageReference = useCallback(
+    () => setPendingImageReference(null),
+    []
   )
 
   useEffect(() => {
@@ -1068,6 +1090,10 @@ function ChatWorkspace() {
     )
   }, [preferences?.defaultModel, providerModels, selected?.model])
 
+  useEffect(() => {
+    setImageRoutingProvider(selected?.routingProvider ?? "auto")
+  }, [selected?.routingProvider])
+
   const selectedModel = providerModels.find(
     (model) => model.value === selectedModelId
   )
@@ -1087,13 +1113,39 @@ function ChatWorkspace() {
       !selectedModel
     ) {
       setModelEndpoints([])
+      setImageRoutingOptions([])
       setEndpointState("idle")
       return
     }
 
     let cancelled = false
     setModelEndpoints([])
+    setImageRoutingOptions([])
     setEndpointState("loading")
+    if (outputMode === "image") {
+      void listImageRoutes({ model: selectedModel.value }).then(
+        (routes) => {
+          if (cancelled) return
+          setImageRoutingOptions(routes)
+          setImageRoutingProvider((current) =>
+            current === "auto" ||
+            routes.some((route) => route.value === current)
+              ? current
+              : "auto"
+          )
+          setEndpointState("ready")
+        },
+        () => {
+          if (cancelled) return
+          setImageRoutingOptions([])
+          setImageRoutingProvider("auto")
+          setEndpointState("failed")
+        }
+      )
+      return () => {
+        cancelled = true
+      }
+    }
     void listModelEndpoints({ model: selectedModel.value }).then(
       (endpoints) => {
         if (cancelled) return
@@ -1109,7 +1161,14 @@ function ChatWorkspace() {
     return () => {
       cancelled = true
     }
-  }, [activeConnectionId, activeProvider, listModelEndpoints, selectedModel])
+  }, [
+    activeConnectionId,
+    activeProvider,
+    listImageRoutes,
+    listModelEndpoints,
+    outputMode,
+    selectedModel,
+  ])
 
   const settingGroups = useMemo<PromptSettingGroup[]>(() => {
     if (providerModels.length === 0) return []
@@ -1131,61 +1190,84 @@ function ChatWorkspace() {
     ]
 
     if (activeProvider === "openrouter") {
-      const cheapestImage = Math.min(
-        ...modelEndpoints.flatMap((endpoint) =>
-          endpoint.imagePrice === undefined ? [] : [endpoint.imagePrice]
+      if (outputMode === "image") {
+        groups.push({
+          id: "routingProvider",
+          label: "Provider",
+          display: "submenu",
+          options: [
+            {
+              value: "auto",
+              label: "Automatic routing",
+              description:
+                endpointState === "loading"
+                  ? "Loading compatible image endpoints..."
+                  : endpointState === "failed"
+                    ? "Compatible image endpoints could not be loaded."
+                    : "Uses only endpoints compatible with the selected image settings.",
+            },
+            ...imageRoutingOptions,
+          ],
+        })
+      } else {
+        const cheapestImage = Math.min(
+          ...modelEndpoints.flatMap((endpoint) =>
+            endpoint.imagePrice === undefined ? [] : [endpoint.imagePrice]
+          )
         )
-      )
-      const cheapestPrompt = Math.min(
-        ...modelEndpoints.map((endpoint) => endpoint.promptPrice)
-      )
-      const cheapestCompletion = Math.min(
-        ...modelEndpoints.map((endpoint) => endpoint.completionPrice)
-      )
-      groups.push({
-        id: "routingProvider",
-        label: "Provider",
-        display: "submenu",
-        options: [
-          {
-            value: "auto",
-            label: "Cheapest available",
-            description:
-              endpointState === "loading"
-                ? "Loading live provider prices..."
-                : endpointState === "failed"
-                  ? "Live prices unavailable. OpenRouter will still route by price."
-                  : "Routes by lowest price and falls back if that host is unavailable.",
-          },
-          ...modelEndpoints.map((endpoint) => {
-            if (endpoint.imagePrice !== undefined) {
+        const cheapestPrompt = Math.min(
+          ...modelEndpoints.map((endpoint) => endpoint.promptPrice)
+        )
+        const cheapestCompletion = Math.min(
+          ...modelEndpoints.map((endpoint) => endpoint.completionPrice)
+        )
+        groups.push({
+          id: "routingProvider",
+          label: "Provider",
+          display: "submenu",
+          options: [
+            {
+              value: "auto",
+              label: "Cheapest available",
+              description:
+                endpointState === "loading"
+                  ? "Loading live provider prices..."
+                  : endpointState === "failed"
+                    ? "Live prices unavailable. OpenRouter will still route by price."
+                    : "Routes by lowest price and falls back if that host is unavailable.",
+            },
+            ...modelEndpoints.map((endpoint) => {
+              if (endpoint.imagePrice !== undefined) {
+                return {
+                  value: endpoint.providerTag,
+                  label: `${endpoint.providerName}${
+                    endpoint.imagePrice === cheapestImage
+                      ? " (lowest price)"
+                      : ""
+                  }`,
+                  description: formatEndpointDescription(endpoint),
+                }
+              }
+              const cheapestInput = endpoint.promptPrice === cheapestPrompt
+              const cheapestOutput =
+                endpoint.completionPrice === cheapestCompletion
+              const priceLabel =
+                cheapestInput && cheapestOutput
+                  ? " (lowest price)"
+                  : cheapestInput
+                    ? " (lowest input)"
+                    : cheapestOutput
+                      ? " (lowest output)"
+                      : ""
               return {
                 value: endpoint.providerTag,
-                label: `${endpoint.providerName}${
-                  endpoint.imagePrice === cheapestImage ? " (lowest price)" : ""
-                }`,
+                label: `${endpoint.providerName}${priceLabel}`,
                 description: formatEndpointDescription(endpoint),
               }
-            }
-            const cheapestInput = endpoint.promptPrice === cheapestPrompt
-            const cheapestOutput =
-              endpoint.completionPrice === cheapestCompletion
-            const priceLabel =
-              cheapestInput && cheapestOutput
-                ? " (lowest price)"
-                : cheapestInput
-                  ? " (lowest input)"
-                  : cheapestOutput
-                    ? " (lowest output)"
-                    : ""
-            return {
-              value: endpoint.providerTag,
-              label: `${endpoint.providerName}${priceLabel}`,
-              description: formatEndpointDescription(endpoint),
-            }
-          }),
-        ],
-      })
+            }),
+          ],
+        })
+      }
     }
 
     if (outputMode === "text" && selectedModel?.reasoningEfforts?.length) {
@@ -1204,6 +1286,7 @@ function ChatWorkspace() {
   }, [
     activeProvider,
     endpointState,
+    imageRoutingOptions,
     modelEndpoints,
     outputMode,
     providerModels,
@@ -1931,6 +2014,231 @@ function ChatWorkspace() {
     }
   }
 
+  const generateImages = async ({
+    capability,
+    config,
+    files,
+    prompt,
+    routingProvider,
+  }: {
+    capability: ImageModelCapability
+    config: ImageGenerationConfig
+    files: File[]
+    prompt: string
+    routingProvider?: string
+  }) => {
+    let draftAttachmentIds: Id<"draftAttachments">[] = []
+    setSendState("sending")
+    try {
+      if (activeProvider !== "fal" && activeProvider !== "openrouter")
+        throw new Error("Choose an image provider to continue.")
+      if (!activeConnectionId || !selectedModelId)
+        throw new Error("Choose a connected image model to continue.")
+      draftAttachmentIds = await uploadDraftFiles(files)
+      const result = await createImageGeneration({
+        capabilityRevision: capability.revision,
+        clientRequestId: crypto.randomUUID(),
+        config,
+        content: prompt,
+        ...(conversationId ? { conversationId } : {}),
+        ...(draftAttachmentIds.length ? { draftAttachmentIds } : {}),
+        model: selectedModelId,
+        ...(search.projectId ? { projectId: search.projectId } : {}),
+        provider: activeProvider,
+        providerConnectionId: activeConnectionId,
+        ...(activeProvider === "openrouter" && routingProvider
+          ? { routingProvider }
+          : {}),
+      })
+      draftAttachmentIds = []
+      if (!conversationId)
+        await open({
+          slug: result.conversationId,
+          projectId: search.projectId,
+          workspace: "image",
+        })
+      setSendState("idle")
+    } catch (cause) {
+      await Promise.allSettled(
+        draftAttachmentIds.map(
+          async (draftAttachmentId) =>
+            await discardAttachment({ draftAttachmentId })
+        )
+      )
+      setSendState("failed")
+      throw new Error(
+        cause instanceof Error
+          ? cause.message
+          : "Image generation could not be started."
+      )
+    }
+  }
+
+  const copyMessage = async (message: ChatMessage) => {
+    if (await copyMessageText(message.content)) {
+      setCopiedMessageId(message._id)
+      setActionAnnouncement("Message copied.")
+      window.setTimeout(
+        () =>
+          setCopiedMessageId((current) =>
+            current === message._id ? null : current
+          ),
+        1_500
+      )
+    } else {
+      setActionAnnouncement("Message could not be copied.")
+    }
+  }
+
+  const beginEditingMessage = (message: ChatMessage) => {
+    if (editingMessageId !== message._id)
+      draftBeforeEditRef.current = composerValue
+    setEditingMessageId(message._id)
+    setComposerValue(message.content)
+    setActionAnnouncement("Editing message.")
+  }
+
+  const cancelEditingMessage = () => {
+    setEditingMessageId(null)
+    setComposerValue(draftBeforeEditRef.current)
+    setActionAnnouncement("Editing cancelled.")
+  }
+
+  const retryAssistantMessage = async (
+    message: ChatMessage,
+    alternateModel?: string
+  ) => {
+    if (!conversationId || !selected) return
+    const sourceIndex = messages?.findIndex((item) => item._id === message._id)
+    if (sourceIndex === undefined || sourceIndex < 0) return
+    const selectedRetryModel = alternateModel
+      ? providerModels.find((model) => model.value === alternateModel)
+      : undefined
+    const modelSettings = selectedRetryModel
+      ? {
+          model: selectedRetryModel.value,
+          ...(selectedRetryModel.defaultReasoningEffort
+            ? { reasoningEffort: selectedRetryModel.defaultReasoningEffort }
+            : {}),
+          ...(message.provider === "openrouter"
+            ? { routingProvider: "auto" }
+            : {}),
+        }
+      : undefined
+    setMessageActionPending(true)
+    setActionAnnouncement("Retrying response.")
+    try {
+      await retryResponse({
+        assistantMessageId: message._id,
+        conversationId,
+        ...(selected.activeBranchId
+          ? { expectedActiveBranchId: selected.activeBranchId }
+          : {}),
+        ...(modelSettings ? { modelSettings } : {}),
+      })
+      if (message.provider === "codex") {
+        const model = modelSettings?.model ?? message.model
+        if (!model) throw new Error("Codex model is unavailable")
+        await generateDesktopResponse({
+          conversationId,
+          model,
+          ...((modelSettings?.reasoningEffort ?? message.reasoningEffort)
+            ? {
+                effort:
+                  modelSettings?.reasoningEffort ?? message.reasoningEffort,
+              }
+            : {}),
+          messages: (messages ?? [])
+            .slice(0, sourceIndex)
+            .filter(
+              (item) =>
+                item.status === "complete" &&
+                (item.role === "assistant" || item.role === "user")
+            )
+            .map((item) => ({
+              content: item.content,
+              role: item.role as "assistant" | "user",
+            })),
+        })
+      }
+      setActionAnnouncement("Response retried.")
+    } catch {
+      setActionAnnouncement("Response could not be retried.")
+    } finally {
+      setMessageActionPending(false)
+    }
+  }
+
+  const chooseResponseBranch = async (branchId: Id<"conversationBranches">) => {
+    if (!conversationId || !selected) return
+    setMessageActionPending(true)
+    try {
+      await selectResponseBranch({
+        branchId,
+        conversationId,
+        ...(selected.activeBranchId
+          ? { expectedActiveBranchId: selected.activeBranchId }
+          : {}),
+      })
+      setActionAnnouncement("Response branch selected.")
+    } catch {
+      setActionAnnouncement("Response branch could not be selected.")
+    } finally {
+      setMessageActionPending(false)
+    }
+  }
+
+  const stopActiveResponse = async () => {
+    if (!conversationId) return
+    const assistant = messages?.findLast(
+      (message) =>
+        message.role === "assistant" &&
+        (message.status === "pending" || message.status === "streaming")
+    )
+    if (!assistant) {
+      setActionAnnouncement("Response is still starting.")
+      return
+    }
+    setStoppingMessageId(assistant._id)
+    stoppedConversationIdsRef.current.add(conversationId)
+    try {
+      await stopResponse({
+        assistantMessageId: assistant._id,
+        conversationId,
+      })
+      const desktopRequest = desktopRequestRef.current
+      const desktop = getDesktopApi()
+      if (
+        desktopRequest?.conversationId === conversationId &&
+        desktop?.codex.cancel
+      )
+        await desktop.codex.cancel(desktopRequest.requestId)
+      setActionAnnouncement("Response stopped.")
+    } catch {
+      setActionAnnouncement("Response could not be stopped.")
+    } finally {
+      setStoppingMessageId(null)
+    }
+  }
+
+  const runningAssistant = messages?.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      (message.status === "pending" || message.status === "streaming")
+  )
+  const generationState =
+    stoppingMessageId !== null
+      ? ("stopping" as const)
+      : runningAssistant
+        ? ("generating" as const)
+        : sendState === "sending"
+          ? ("submitting" as const)
+          : ("idle" as const)
+  const chatActionsDisabled =
+    generationState !== "idle" ||
+    messageActionPending ||
+    selected?.status === "archived"
+
   const renderConversation = (conversation: Doc<"conversations">) => (
     <SidebarMenuItem key={conversation._id}>
       <SidebarMenuButton
@@ -2358,6 +2666,15 @@ function ChatWorkspace() {
                   onOpenProject={(projectId) =>
                     void open({ mode: "project", projectId })
                   }
+                  onUseAsReference={(asset) => {
+                    if (!asset.url) return
+                    setPendingImageReference({
+                      contentType: asset.contentType,
+                      name: asset.name,
+                      url: asset.url,
+                    })
+                    void open({ mode: "chat-new", workspace: "image" })
+                  }}
                 />
               </OptionalChatFeatureBoundary>
             </Suspense>
@@ -2888,6 +3205,81 @@ function ChatWorkspace() {
             </Suspense>
           ) : selected === null && conversationId ? (
             <ChatStatus message="That conversation is unavailable." />
+          ) : workspace === "image" && imageStudioV2Enabled ? (
+            <ImageWorkspace
+              archived={selected?.status === "archived"}
+              capabilityRoutingProvider={imageRoutingProvider}
+              conversationId={selected?._id}
+              disabled={
+                !activeConnectionId ||
+                catalogState !== "ready" ||
+                providerModels.length === 0
+              }
+              generationState={
+                generationState === "idle" ? "idle" : "generating"
+              }
+              initialReference={pendingImageReference}
+              legacyGenerations={(messages ?? []).flatMap((message, index) => {
+                if (
+                  message.role !== "assistant" ||
+                  message.generationSetId ||
+                  !message.attachments.some((attachment) =>
+                    attachment.contentType.startsWith("image/")
+                  )
+                )
+                  return []
+                const prompt = (messages ?? [])
+                  .slice(0, index)
+                  .findLast((candidate) => candidate.role === "user")?.content
+                return [
+                  {
+                    createdAt: message._creationTime,
+                    images: message.attachments.flatMap((attachment) =>
+                      attachment.contentType.startsWith("image/")
+                        ? [{ name: attachment.name, url: attachment.url }]
+                        : []
+                    ),
+                    model: message.model ?? "Image model",
+                    prompt: prompt ?? "Earlier image generation",
+                  },
+                ]
+              })}
+              modelId={selectedModelId}
+              models={providerModels.map(({ value, label, description }) => ({
+                value,
+                label,
+                ...(description ? { description } : {}),
+              }))}
+              onConnectProvider={() => setConnectorOpen(true)}
+              onGenerate={generateImages}
+              onInitialReferenceConsumed={clearPendingImageReference}
+              onModelChange={(model) => {
+                setSelectedModelId(model)
+                setImageRoutingProvider("auto")
+              }}
+              onProviderChange={setActiveProvider}
+              onRoutingProviderChange={setImageRoutingProvider}
+              provider={activeProvider === "fal" ? "fal" : "openrouter"}
+              providers={executionProviderOptions.flatMap((option) =>
+                option.value === "fal" || option.value === "openrouter"
+                  ? [
+                      {
+                        label: option.label,
+                        value: option.value,
+                      },
+                    ]
+                  : []
+              )}
+              routingOptions={
+                settingGroups
+                  .find((group) => group.id === "routingProvider")
+                  ?.options.map(({ value, label, description }) => ({
+                    value,
+                    label,
+                    ...(description ? { description } : {}),
+                  })) ?? []
+              }
+            />
           ) : (
             <>
               <MessageArea
@@ -2923,8 +3315,8 @@ function ChatWorkspace() {
                 <div className="mx-auto w-full max-w-3xl">
                   {selected?.status === "archived" ? (
                     <p className="mb-2 text-center text-xs text-muted-foreground">
-                      This {workspace === "image" ? "image thread" : "chat"} is
-                      archived. Restore it from your profile menu to continue.
+                      This chat is archived. Restore it from your profile menu
+                      to continue.
                     </p>
                   ) : null}
                   {needsImageProvider && !conversationId ? (
@@ -3018,7 +3410,7 @@ function ChatWorkspace() {
                     menuItems={menuItems}
                     placeholder={
                       selected?.status === "archived"
-                        ? `Restore this ${workspace === "image" ? "image thread" : "chat"} to continue`
+                        ? "Restore this chat to continue"
                         : needsImageProvider
                           ? "Connect OpenRouter or fal to create images"
                           : !activeConnection

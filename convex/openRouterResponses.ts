@@ -16,7 +16,10 @@ import type { Id } from "./_generated/dataModel"
 import { action, env, internalAction } from "./_generated/server"
 import type { ActionCtx } from "./_generated/server"
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
+import { readBoundedJson } from "./boundedJson"
 import { FalApiError, generateFalImage } from "./fal"
+import { buildProviderImageInput } from "./imageGenerationPolicy"
+import { loadOpenRouterImageCapability } from "./imageModelCapabilities"
 import {
   createProviderEmbeddings,
   getPrivateOpenRouterEmbeddingSettings,
@@ -30,6 +33,15 @@ import {
   MAX_PROJECT_SOURCE_TEXT_CHARS,
 } from "./projectEmbeddingPolicy"
 import { decryptProviderToken } from "./providerCrypto"
+import {
+  getImageOutputRange,
+  getStaticImageModelCapability,
+  validateImageGenerationConfig,
+} from "../shared/image-generation"
+import type {
+  ImageGenerationConfig,
+  ImageModelCapability,
+} from "../shared/image-generation"
 import {
   createTerminalSandboxSession,
   runTerminalCommandInputSchema,
@@ -65,6 +77,7 @@ const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 4
+const MAX_IMAGE_RESPONSE_JSON_BYTES = MAX_IMAGE_BASE64_LENGTH * 4 + 1024 * 1024
 const IMAGE_TYPES = new Set([
   "image/gif",
   "image/jpeg",
@@ -76,6 +89,17 @@ const GENERATED_IMAGE_EXTENSIONS = new Map([
   ["image/png", "png"],
   ["image/webp", "webp"],
 ])
+
+class ResponseStoppedError extends Error {
+  constructor() {
+    super("Response stopped by user")
+  }
+}
+
+function timeoutSignal(milliseconds: number, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(milliseconds)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
+}
 const renderUiTool = tool({
   description: renderUiToolDescription,
   inputSchema: renderUiToolInputSchema,
@@ -192,38 +216,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-export function parseOpenRouterImageResponse(value: unknown) {
-  const image =
-    isRecord(value) && Array.isArray(value.data) && isRecord(value.data[0])
-      ? value.data[0]
-      : null
-  const base64 = image?.b64_json
-  const contentType =
-    typeof image?.media_type === "string" ? image.media_type : "image/png"
-  const extension = GENERATED_IMAGE_EXTENSIONS.get(contentType)
-  if (
-    typeof base64 !== "string" ||
-    !base64 ||
-    base64.length > MAX_IMAGE_BASE64_LENGTH ||
-    !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
-    !extension
-  ) {
-    throw new Error("Provider returned an invalid image")
-  }
+export function parseOpenRouterImageResponses(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.data))
+    throw new Error("Provider returned an invalid image response")
+  const images = value.data.slice(0, 4).map((candidate) => {
+    const image = isRecord(candidate) ? candidate : null
+    const base64 = image?.b64_json
+    const contentType =
+      typeof image?.media_type === "string" ? image.media_type : "image/png"
+    const extension = GENERATED_IMAGE_EXTENSIONS.get(contentType)
+    if (
+      typeof base64 !== "string" ||
+      !base64 ||
+      base64.length > MAX_IMAGE_BASE64_LENGTH ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
+      !extension
+    )
+      throw new Error("Provider returned an invalid image")
+    const bytes = Uint8Array.from(Buffer.from(base64, "base64"))
+    if (!bytes.length || bytes.byteLength > MAX_ATTACHMENT_BYTES)
+      throw new Error("Provider returned an invalid image")
+    return { bytes, contentType, extension }
+  })
+  if (!images.length) throw new Error("Provider returned no images")
+  return { images }
+}
 
-  const bytes = Uint8Array.from(Buffer.from(base64, "base64"))
-  if (!bytes.length || bytes.byteLength > MAX_ATTACHMENT_BYTES)
-    throw new Error("Provider returned an invalid image")
-  return { bytes, contentType, extension }
+export function parseOpenRouterImageResponse(value: unknown) {
+  return parseOpenRouterImageResponses(value).images[0]
 }
 
 export async function generateOpenRouterImage(
   token: string,
   options: {
+    capability?: ImageModelCapability
+    config?: ImageGenerationConfig
     messages: ProviderMessage[]
     model: string
     prompt: string
     routingProvider?: string
+    signal?: AbortSignal
   }
 ) {
   const latestUserMessage = options.messages.findLast(
@@ -241,6 +273,13 @@ export async function generateOpenRouterImage(
         : []
   )
   const provider = getImageProviderRouting(options.routingProvider)
+  const providerInput =
+    options.capability && options.config
+      ? buildProviderImageInput(
+          options.capability,
+          validateImageGenerationConfig(options.capability, options.config)
+        )
+      : {}
   const response = await fetch(OPENROUTER_IMAGES_URL, {
     method: "POST",
     headers: {
@@ -250,14 +289,19 @@ export async function generateOpenRouterImage(
     body: JSON.stringify({
       model: options.model,
       prompt: options.prompt,
+      ...providerInput,
       ...(inputReferences.length ? { input_references: inputReferences } : {}),
       ...(provider ? { provider } : {}),
     }),
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
+    signal: timeoutSignal(IMAGE_REQUEST_TIMEOUT_MS, options.signal),
   })
-  const result: unknown = await response.json().catch(() => null)
+  const result = await readBoundedJson(
+    response,
+    MAX_IMAGE_RESPONSE_JSON_BYTES,
+    "OpenRouter returned an oversized or invalid image response"
+  ).catch(() => null)
   if (!response.ok) throw new OpenRouterImageError(response.status)
-  return parseOpenRouterImageResponse(result)
+  return parseOpenRouterImageResponses(result)
 }
 
 function asReasoningEffort(value?: string): ReasoningEffort | undefined {
@@ -813,11 +857,14 @@ export const getDesktopCodexMemoryContext = action({
       { conversationId: args.conversationId }
     )
     if (!request) throw new Error("Codex conversation unavailable")
-    return await ctx.runAction(internal.memoryActions.buildAgentContextWithRetrieval, {
-      conversationId: request.conversationId,
-      currentMessageId: request.currentMessageId,
-      ownerId: request.ownerId,
-    })
+    return await ctx.runAction(
+      internal.memoryActions.buildAgentContextWithRetrieval,
+      {
+        conversationId: request.conversationId,
+        currentMessageId: request.currentMessageId,
+        ownerId: request.ownerId,
+      }
+    )
   },
 })
 
@@ -857,9 +904,38 @@ export const generate = internalAction({
   args: {
     assistantMessageId: v.id("messages"),
     conversationId: v.id("conversations"),
+    imageGenerationJobId: v.optional(v.id("imageGenerationJobs")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const abortController = new AbortController()
+    let cancellationPollInFlight = false
+    const responseWasStopped = async () =>
+      args.imageGenerationJobId
+        ? await ctx.runQuery(internal.imageGenerations.shouldCancelExecution, {
+            assistantMessageId: args.assistantMessageId,
+            generationJobId: args.imageGenerationJobId,
+          })
+        : await ctx.runQuery(internal.conversations.shouldCancelResponse, {
+            assistantMessageId: args.assistantMessageId,
+          })
+    const throwIfStopped = async () => {
+      if (!abortController.signal.aborted && (await responseWasStopped()))
+        abortController.abort(new ResponseStoppedError())
+      if (abortController.signal.aborted) throw new ResponseStoppedError()
+    }
+    const cancellationPoll = setInterval(() => {
+      if (cancellationPollInFlight || abortController.signal.aborted) return
+      cancellationPollInFlight = true
+      void responseWasStopped()
+        .then((stopped) => {
+          if (stopped && !abortController.signal.aborted)
+            abortController.abort(new ResponseStoppedError())
+        })
+        .finally(() => {
+          cancellationPollInFlight = false
+        })
+    }, 1_000)
     let connectionId: Id<"providerConnections"> | undefined
     let content = ""
     let provider: "openrouter" | "openai" | "fal" | undefined
@@ -867,21 +943,40 @@ export const generate = internalAction({
     let terminalRuns: StoredTerminalRun[] = []
     let uiPayload: string | undefined
     let errorCode: "insufficient_credits" | undefined
+    let imageExecution:
+      | {
+          capabilityRevision: string
+          config: ImageGenerationConfig
+          endpoint?: string
+          generationSetId: Id<"imageGenerationSets">
+          generationJobId: Id<"imageGenerationJobs">
+        }
+      | undefined
+    const stagedImageStorageIds: Id<"_storage">[] = []
     try {
+      if (args.imageGenerationJobId) {
+        const claimed = await ctx.runMutation(
+          internal.imageGenerations.claimExecution,
+          {
+            assistantMessageId: args.assistantMessageId,
+            generationJobId: args.imageGenerationJobId,
+          }
+        )
+        if (!claimed) return null
+        imageExecution = claimed
+      }
+      await throwIfStopped()
       const context = await ctx.runQuery(
         internal.conversations.getOpenRouterResponseContext,
-        args
+        {
+          assistantMessageId: args.assistantMessageId,
+          conversationId: args.conversationId,
+        }
       )
       connectionId = context.connectionId
       provider = context.provider
-      const agentMemoryContext = await ctx.runAction(
-        internal.memoryActions.buildAgentContextWithRetrieval,
-        {
-          conversationId: args.conversationId,
-          currentMessageId: context.lastUserMessageId,
-          ownerId: context.ownerId,
-        }
-      )
+      if (imageExecution && context.outputMode !== "image")
+        throw new Error("Image generation context is unavailable")
       const token = await decryptProviderToken(
         context.ciphertext,
         context.iv,
@@ -889,18 +984,43 @@ export const generate = internalAction({
         context.provider
       )
       if (context.outputMode === "image") {
-        const messages = addGenerationContexts(
-          context.messages,
-          agentMemoryContext.referenceText,
-          ""
+        const execution = imageExecution
+        const messages = context.messages
+        const capability = execution
+          ? context.provider === "fal"
+            ? getStaticImageModelCapability("fal", context.model)
+            : await loadOpenRouterImageCapability(
+                token,
+                context.model,
+                context.routingProvider
+              )
+          : null
+        if (
+          execution &&
+          (!capability || capability.revision !== execution.capabilityRevision)
         )
-        let image: Awaited<ReturnType<typeof generateFalImage>>
+          throw new Error("Image model capability changed before generation")
+        let generated: {
+          requestId?: string
+          images: Array<{
+            bytes: Uint8Array
+            contentType: string
+            extension: string
+            width?: number
+            height?: number
+            seed?: number
+          }>
+        }
         if (context.provider === "openrouter") {
-          image = await generateOpenRouterImage(token, {
+          generated = await generateOpenRouterImage(token, {
+            ...(capability && execution
+              ? { capability, config: execution.config }
+              : {}),
             messages,
             model: context.model,
             prompt: context.lastUserMessage,
             routingProvider: context.routingProvider,
+            signal: abortController.signal,
           })
         } else if (context.provider === "fal") {
           const referenceUrls = (
@@ -909,54 +1029,115 @@ export const generate = internalAction({
           ).flatMap((attachment) =>
             IMAGE_TYPES.has(attachment.contentType) ? [attachment.url] : []
           )
-          image = await generateFalImage(token, {
-            model: context.model,
-            prompt: context.lastUserMessage,
-            referenceUrls,
-          })
+          generated = await generateFalImage(
+            token,
+            {
+              ...(execution ? { config: execution.config } : {}),
+              model: context.model,
+              prompt: context.lastUserMessage,
+              referenceUrls,
+            },
+            { signal: abortController.signal }
+          )
         } else {
           throw new Error("Image generation requires OpenRouter or Fal")
         }
-        const storageId = await ctx.storage.store(
-          new Blob([image.bytes], { type: image.contentType })
-        )
+        const requestedMaximum =
+          execution && capability
+            ? getImageOutputRange(capability, execution.config).maximum
+            : generated.images.length
+        generated.images = generated.images.slice(0, requestedMaximum)
+        await throwIfStopped()
+        const storedOutputs: Array<{
+          storageId: Id<"_storage">
+          name: string
+          contentType: string
+          size: number
+          width?: number
+          height?: number
+          seed?: number
+        }> = []
         try {
-          await ctx.runMutation(
-            internal.conversations.finishOpenRouterResponse,
-            {
-              assistantMessageId: args.assistantMessageId,
-              attachments: [
+          for (const [index, image] of generated.images.entries()) {
+            const storageId = await ctx.storage.store(
+              new Blob([Uint8Array.from(image.bytes).buffer], {
+                type: image.contentType,
+              })
+            )
+            storedOutputs.push({
+              storageId,
+              name: `generated-image-${index + 1}.${image.extension}`,
+              contentType: image.contentType,
+              size: image.bytes.byteLength,
+              ...(image.width === undefined ? {} : { width: image.width }),
+              ...(image.height === undefined ? {} : { height: image.height }),
+              ...(image.seed === undefined ? {} : { seed: image.seed }),
+            })
+            stagedImageStorageIds.push(storageId)
+            if (execution) {
+              const staged = await ctx.runMutation(
+                internal.imageGenerations.stageOutput,
                 {
-                  storageId,
-                  name: `generated-image.${image.extension}`,
-                  contentType: image.contentType,
-                  size: image.bytes.byteLength,
-                },
-              ],
-              content: "",
-              failed: false,
+                  generationSetId: execution.generationSetId,
+                  generationJobId: execution.generationJobId,
+                  ordinal: index,
+                  output: storedOutputs.at(-1)!,
+                }
+              )
+              if (!staged) throw new ResponseStoppedError()
             }
-          )
+          }
+          await throwIfStopped()
+          if (execution) {
+            const completed = await ctx.runMutation(
+              internal.imageGenerations.completeGeneration,
+              {
+                generationSetId: execution.generationSetId,
+                generationJobId: execution.generationJobId,
+                ...(generated.requestId
+                  ? { providerRequestId: generated.requestId }
+                  : {}),
+              }
+            )
+            if (!completed) throw new ResponseStoppedError()
+          } else {
+            await ctx.runMutation(
+              internal.conversations.finishOpenRouterResponse,
+              {
+                assistantMessageId: args.assistantMessageId,
+                attachments: storedOutputs.map(
+                  ({ storageId, name, contentType, size }) => ({
+                    storageId,
+                    name,
+                    contentType,
+                    size,
+                  })
+                ),
+                content: "",
+                failed: false,
+              }
+            )
+          }
         } catch (cause) {
-          await ctx.storage.delete(storageId)
+          if (!execution || cause instanceof ResponseStoppedError)
+            await Promise.allSettled(
+              storedOutputs.map(
+                async ({ storageId }) => await ctx.storage.delete(storageId)
+              )
+            )
           throw cause
-        }
-        try {
-          await ctx.runMutation(
-            internal.memoryContext.recordResponseReferences,
-            {
-              conversationId: args.conversationId,
-              memoryItemIds: agentMemoryContext.selectedMemoryItemIds,
-              ownerId: context.ownerId,
-              responseMessageId: args.assistantMessageId,
-              summaryIds: agentMemoryContext.historySummaryIds,
-            }
-          )
-        } catch {
-          // Source attribution must never delete a completed generated image.
         }
         return null
       }
+      const agentMemoryContext = await ctx.runAction(
+        internal.memoryActions.buildAgentContextWithRetrieval,
+        {
+          conversationId: args.conversationId,
+          currentMessageId: context.lastUserMessageId,
+          ownerId: context.ownerId,
+        }
+      )
+      await throwIfStopped()
       const projectSourceContext = await retrieveRelevantProjectSources(ctx, {
         ownerId: context.ownerId,
         ...(context.projectId ? { projectId: context.projectId } : {}),
@@ -1032,6 +1213,7 @@ export const generate = internalAction({
                     : {}),
                 },
                 ...terminalOptions,
+                abortSignal: abortController.signal,
                 timeout: 120_000,
               })
             })()
@@ -1053,10 +1235,12 @@ export const generate = internalAction({
                   openai: getOpenAIOptions(context.reasoningEffort),
                 },
                 ...terminalOptions,
+                abortSignal: abortController.signal,
                 timeout: 120_000,
               })
             })()
 
+      await throwIfStopped()
       await ctx.runMutation(internal.conversations.updateOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
@@ -1065,6 +1249,7 @@ export const generate = internalAction({
       let lastFlushAt = 0
       const terminalStartedAt = new Map<string, number>()
       for await (const event of result.stream) {
+        await throwIfStopped()
         let terminalChanged = false
         let uiChanged = false
         if (event.type === "error") throw event.error
@@ -1150,6 +1335,7 @@ export const generate = internalAction({
             uiChanged ||
             now - lastFlushAt >= STREAM_FLUSH_INTERVAL_MS
           ) {
+            await throwIfStopped()
             await ctx.runMutation(
               internal.conversations.updateOpenRouterResponse,
               {
@@ -1166,6 +1352,7 @@ export const generate = internalAction({
           }
         }
       }
+      await throwIfStopped()
       content = content.trim()
       if (!completed || (!content && !uiPayload && !terminalRuns.length))
         throw new Error("Provider response incomplete")
@@ -1183,6 +1370,7 @@ export const generate = internalAction({
         // Usage metadata is optional and must not discard a completed response.
       }
 
+      await throwIfStopped()
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
@@ -1205,6 +1393,12 @@ export const generate = internalAction({
       }
       return null
     } catch (cause) {
+      if (
+        cause instanceof ResponseStoppedError ||
+        abortController.signal.aborted ||
+        (await responseWasStopped())
+      )
+        return null
       const apiError = APICallError.isInstance(cause) ? cause : undefined
       const status =
         apiError?.statusCode ??
@@ -1219,6 +1413,32 @@ export const generate = internalAction({
       }
       if (status === 402) errorCode = "insufficient_credits"
       if (status) console.error("Provider request failed", { provider, status })
+      if (imageExecution) {
+        await ctx.runMutation(internal.imageGenerations.failGeneration, {
+          generationSetId: imageExecution.generationSetId,
+          generationJobId: imageExecution.generationJobId,
+          errorCode:
+            status === 402
+              ? "insufficient_credits"
+              : status === 429
+                ? "rate_limited"
+                : status && status >= 500
+                  ? "provider_unavailable"
+                  : "generation_failed",
+          errorMessage:
+            status === 402
+              ? "The connected provider account has insufficient credit."
+              : status === 429
+                ? "The provider rate limit was reached."
+                : "The provider could not complete this image generation.",
+        })
+        await Promise.allSettled(
+          stagedImageStorageIds.map(
+            async (storageId) => await ctx.storage.delete(storageId)
+          )
+        )
+        return null
+      }
       terminalRuns = terminalRuns.map((run) =>
         run.status === "running"
           ? {
@@ -1237,6 +1457,8 @@ export const generate = internalAction({
         ...(terminalRuns.length ? { terminalRuns } : {}),
       })
       throw new Error("Provider response failed")
+    } finally {
+      clearInterval(cancellationPoll)
     }
   },
 })

@@ -3,6 +3,7 @@ import {
   ExternalLink,
   FileText,
   Image as ImageIcon,
+  ImagePlus,
   LibraryBig,
   Search,
 } from "lucide-react"
@@ -150,14 +151,21 @@ function LibraryAssetItem({
   asset,
   onOpenConversation,
   onOpenProject,
+  onUseAsReference,
 }: {
   asset: LibraryAsset
   onOpenConversation: (conversationId: string, messageId: string) => void
   onOpenProject: (projectId: string) => void
+  onUseAsReference?: (asset: LibraryAsset) => void
 }) {
   const [isDownloading, setIsDownloading] = useState(false)
   const isGenerated = asset.kind === "generated_image"
   const isImage = asset.contentType.startsWith("image/")
+  const isSupportedReference = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ].includes(asset.contentType)
   const openContext = () => {
     if (asset.kind === "project_upload") onOpenProject(asset.projectId)
     else onOpenConversation(asset.conversationId, asset.messageId)
@@ -220,6 +228,12 @@ function LibraryAssetItem({
           </DialogHeader>
           <AssetPreview asset={asset} />
           <DialogFooter>
+            {asset.url && isSupportedReference && onUseAsReference ? (
+              <Button onClick={() => onUseAsReference(asset)} variant="outline">
+                <ImagePlus aria-hidden="true" />
+                Use as reference
+              </Button>
+            ) : null}
             <Button onClick={openContext} variant="outline">
               <ExternalLink aria-hidden="true" />
               Open original context
@@ -265,9 +279,11 @@ function LibraryLoading() {
 export function LibraryWorkspace({
   onOpenConversation,
   onOpenProject,
+  onUseAsReference,
 }: {
   onOpenConversation: (conversationId: string, messageId: string) => void
   onOpenProject: (projectId: string) => void
+  onUseAsReference?: (asset: LibraryAsset) => void
 }) {
   const [filter, setFilter] = useState<LibraryFilter>("all")
   const [search, setSearch] = useState("")
@@ -344,6 +360,7 @@ export function LibraryWorkspace({
                           key={asset._id}
                           onOpenConversation={onOpenConversation}
                           onOpenProject={onOpenProject}
+                          onUseAsReference={onUseAsReference}
                         />
                       ))}
                     </ol>

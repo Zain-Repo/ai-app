@@ -113,6 +113,7 @@ const messageValidator = v.object({
   uiPayload: v.optional(v.string()),
   errorCode: v.optional(v.literal("insufficient_credits")),
   scheduledGenerationId: v.optional(v.id("_scheduled_functions")),
+  generationSetId: v.optional(v.id("imageGenerationSets")),
 })
 
 const clientMessageValidator = messageValidator.extend({
@@ -385,7 +386,42 @@ async function deleteConversationMessages(
 ) {
   const messages = await getConversationMessages(ctx, conversationId)
   const attachmentStorageIds = new Set<Id<"_storage">>()
+  const generationSets = await ctx.db
+    .query("imageGenerationSets")
+    .withIndex("by_conversation_id_and_created_at", (indexQuery) =>
+      indexQuery.eq("conversationId", conversationId)
+    )
+    .take(50)
+  for (const generationSet of generationSets) {
+    const outputs = await ctx.db
+      .query("imageGenerationOutputs")
+      .withIndex("by_generation_set_id_and_ordinal", (indexQuery) =>
+        indexQuery.eq("generationSetId", generationSet._id)
+      )
+      .take(4)
+    for (const output of outputs) {
+      if (output.storageId) attachmentStorageIds.add(output.storageId)
+      await ctx.db.delete(output._id)
+    }
+    const jobs = await ctx.db
+      .query("imageGenerationJobs")
+      .withIndex("by_generation_set_id_and_attempt", (indexQuery) =>
+        indexQuery.eq("generationSetId", generationSet._id)
+      )
+      .take(10)
+    for (const job of jobs) await ctx.db.delete(job._id)
+    await ctx.db.delete(generationSet._id)
+  }
   for (const message of messages) {
+    if (
+      message.scheduledGenerationId &&
+      (message.status === "pending" || message.status === "streaming")
+    )
+      try {
+        await ctx.scheduler.cancel(message.scheduledGenerationId)
+      } catch {
+        // A running action observes the removed attempt state and exits safely.
+      }
     await removeMessageAssets(ctx, message._id)
     for (const attachment of message.attachments ?? [])
       attachmentStorageIds.add(attachment.storageId)
