@@ -41,4 +41,3 @@ controls for hosted and desktop generation.
   cannot interrupt an already-running Codex turn.
 - Branch merging, cross-provider retry, historical attachment editing, branch
   deletion, and generic feedback controls remain out of scope.
-
