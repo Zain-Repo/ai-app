@@ -408,7 +408,9 @@ describe("AI SDK provider bridge", () => {
         prompt: "A lighthouse",
         routingProvider: "auto",
       })
-    ).resolves.toMatchObject({ contentType: "image/png", extension: "png" })
+    ).resolves.toMatchObject({
+      images: [{ contentType: "image/png", extension: "png" }],
+    })
 
     const [, request] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(String(request.body))).toEqual({

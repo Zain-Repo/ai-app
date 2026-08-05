@@ -1,4 +1,11 @@
 import { MAX_ATTACHMENT_BYTES } from "./attachmentPolicy"
+import { readBoundedJson } from "./boundedJson"
+import { buildProviderImageInput } from "./imageGenerationPolicy"
+import {
+  getStaticImageModelCapability,
+  validateImageGenerationConfig,
+} from "../shared/image-generation"
+import type { ImageGenerationConfig } from "../shared/image-generation"
 
 const FAL_MODELS_URL = "https://api.fal.ai/v1/models"
 const FAL_PRICING_URL = "https://api.fal.ai/v1/models/pricing"
@@ -7,6 +14,7 @@ const FAL_REQUEST_TIMEOUT_MS = 15_000
 const FAL_GENERATION_TIMEOUT_MS = 5 * 60 * 1000
 const FAL_POLL_INTERVAL_MS = 1_000
 const FAL_MAX_REFERENCES = 10
+const FAL_METADATA_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 const GENERATED_IMAGE_EXTENSIONS = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
@@ -206,7 +214,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function readJson(response: Response): Promise<unknown> {
   try {
-    return await response.json()
+    return await readBoundedJson(
+      response,
+      FAL_METADATA_RESPONSE_MAX_BYTES,
+      "Fal returned an oversized or invalid response"
+    )
   } catch {
     return null
   }
@@ -327,7 +339,8 @@ export async function loadFalImageModels(
 export function buildFalImageRequest(
   modelId: string,
   prompt: string,
-  referenceUrls: string[]
+  referenceUrls: string[],
+  config?: ImageGenerationConfig
 ) {
   const model = falModelsById.get(modelId)
   if (!model) throw new Error("Fal model is unavailable")
@@ -341,13 +354,34 @@ export function buildFalImageRequest(
   if (model.editInput === "image_url" && referenceUrls.length > 1) {
     throw new Error("This Fal model supports one reference image")
   }
-  if (!referenceUrls.length) return { endpoint: model.id, input: { prompt } }
+  const capability = getStaticImageModelCapability("fal", modelId)
+  if (!capability) throw new Error("Fal model capability is unavailable")
+  if (referenceUrls.length > capability.references.max)
+    throw new Error(
+      `This Fal model supports at most ${capability.references.max} reference images`
+    )
+  const providerInput = config
+    ? buildProviderImageInput(
+        capability,
+        validateImageGenerationConfig(capability, config)
+      )
+    : {}
+  if (!referenceUrls.length)
+    return { endpoint: model.id, input: { prompt, ...providerInput } }
+  const editProviderInput =
+    model.id === "xai/grok-imagine-image"
+      ? Object.fromEntries(
+          Object.entries(providerInput).filter(
+            ([key]) => key !== "aspect_ratio"
+          )
+        )
+      : providerInput
   return {
     endpoint: model.editEndpoint,
     input:
       model.editInput === "image_url"
-        ? { prompt, image_url: referenceUrls[0] }
-        : { prompt, image_urls: referenceUrls },
+        ? { prompt, image_url: referenceUrls[0], ...editProviderInput }
+        : { prompt, image_urls: referenceUrls, ...editProviderInput },
   }
 }
 
@@ -373,14 +407,29 @@ function parseQueueUrl(
   return url.toString()
 }
 
-function parseFalResult(value: unknown) {
-  const image =
-    isRecord(value) && Array.isArray(value.images) && isRecord(value.images[0])
-      ? value.images[0]
-      : null
-  if (!image || typeof image.url !== "string")
-    throw new Error("Fal returned an invalid image")
-  return image.url
+function parseFalResults(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.images))
+    throw new Error("Fal returned an invalid image result")
+  const images = value.images.slice(0, 4).map((image) => {
+    if (!isRecord(image) || typeof image.url !== "string")
+      throw new Error("Fal returned an invalid image")
+    return {
+      url: image.url,
+      ...(typeof image.width === "number" && Number.isFinite(image.width)
+        ? { width: image.width }
+        : {}),
+      ...(typeof image.height === "number" && Number.isFinite(image.height)
+        ? { height: image.height }
+        : {}),
+    }
+  })
+  if (!images.length) throw new Error("Fal returned no images")
+  return {
+    images,
+    ...(typeof value.seed === "number" && Number.isFinite(value.seed)
+      ? { seed: value.seed }
+      : {}),
+  }
 }
 
 function isTrustedFalMediaUrl(value: string) {
@@ -466,6 +515,7 @@ async function downloadFalImage(
 export async function generateFalImage(
   token: string,
   options: {
+    config?: ImageGenerationConfig
     model: string
     prompt: string
     referenceUrls: string[]
@@ -487,7 +537,8 @@ export async function generateFalImage(
   const request = buildFalImageRequest(
     options.model,
     options.prompt,
-    options.referenceUrls
+    options.referenceUrls,
+    options.config
   )
   const headers = {
     Authorization: `Key ${token}`,
@@ -552,5 +603,16 @@ export async function generateFalImage(
   })
   const result = await readJson(resultResponse)
   if (!resultResponse.ok) throw new FalApiError(resultResponse.status)
-  return await downloadFalImage(parseFalResult(result), fetcher, signal)
+  const parsed = parseFalResults(result)
+  return {
+    requestId: submission.request_id,
+    images: await Promise.all(
+      parsed.images.map(async (image) => ({
+        ...(await downloadFalImage(image.url, fetcher, signal)),
+        ...(image.width === undefined ? {} : { width: image.width }),
+        ...(image.height === undefined ? {} : { height: image.height }),
+        ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
+      }))
+    ),
+  }
 }

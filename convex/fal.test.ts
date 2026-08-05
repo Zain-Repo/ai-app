@@ -6,6 +6,7 @@ import {
   generateFalImage,
   parseFalImageModels,
 } from "./fal"
+import { getStaticImageModelCapability } from "../shared/image-generation"
 
 const REQUEST_ID = "request_12345678"
 const ENDPOINT = "fal-ai/flux-2/klein/4b"
@@ -13,6 +14,15 @@ const STATUS_URL = `https://queue.fal.run/${ENDPOINT}/requests/${REQUEST_ID}/sta
 const RESPONSE_URL = `https://queue.fal.run/${ENDPOINT}/requests/${REQUEST_ID}/response`
 
 describe("Fal image provider", () => {
+  it("defines an image-studio capability for every curated model", () => {
+    for (const model of FAL_IMAGE_MODELS) {
+      expect(
+        getStaticImageModelCapability("fal", model.id),
+        model.id
+      ).not.toBeNull()
+    }
+  })
+
   it("exposes only supported active image models with current pricing", () => {
     expect(
       parseFalImageModels(
@@ -166,7 +176,7 @@ describe("Fal image provider", () => {
       }
     )
 
-    const image = await generateFalImage(
+    const result = await generateFalImage(
       "secret-key",
       { model: ENDPOINT, prompt: "a lighthouse", referenceUrls: [] },
       {
@@ -178,10 +188,15 @@ describe("Fal image provider", () => {
       }
     )
 
-    expect(image).toEqual({
-      bytes: new Uint8Array([1, 2, 3]),
-      contentType: "image/png",
-      extension: "png",
+    expect(result).toEqual({
+      requestId: REQUEST_ID,
+      images: [
+        {
+          bytes: new Uint8Array([1, 2, 3]),
+          contentType: "image/png",
+          extension: "png",
+        },
+      ],
     })
     expect(waits).toEqual([1_000])
     expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
@@ -191,6 +206,66 @@ describe("Fal image provider", () => {
         "Content-Type": "application/json",
       },
       method: "POST",
+    })
+  })
+
+  it("maps validated model settings into the provider request", () => {
+    expect(
+      buildFalImageRequest(ENDPOINT, "a studio portrait", [], {
+        count: 1,
+        dimension: "portrait_4_3",
+        outputFormat: "webp",
+        promptExpansion: true,
+        seed: 42,
+      })
+    ).toEqual({
+      endpoint: ENDPOINT,
+      input: {
+        enable_prompt_expansion: true,
+        image_size: "portrait_4_3",
+        num_images: 1,
+        output_format: "webp",
+        prompt: "a studio portrait",
+        seed: 42,
+      },
+    })
+  })
+
+  it("uses Grok's multi-output contract without sending aspect ratio to edit", () => {
+    const config = {
+      count: 4,
+      dimension: "16:9",
+      outputFormat: "jpeg" as const,
+      resolution: "2k",
+    }
+    expect(
+      buildFalImageRequest("xai/grok-imagine-image", "create", [], config)
+    ).toEqual({
+      endpoint: "xai/grok-imagine-image",
+      input: {
+        aspect_ratio: "16:9",
+        num_images: 4,
+        output_format: "jpeg",
+        prompt: "create",
+        resolution: "2k",
+      },
+    })
+    expect(
+      buildFalImageRequest(
+        "xai/grok-imagine-image",
+        "edit",
+        ["https://one.test"],
+        config
+      )
+    ).toEqual({
+      endpoint: "xai/grok-imagine-image/edit",
+      input: {
+        image_urls: ["https://one.test"],
+        num_images: 4,
+        output_format: "jpeg",
+        prompt: "edit",
+        resolution: "2k",
+      },
     })
   })
 })
