@@ -118,6 +118,22 @@ const commonRatios: ImageDimensionOption[] = [
   { value: "21:9", label: "Cinematic 21:9", width: 21, height: 9 },
 ]
 
+const extendedRatios: ImageDimensionOption[] = [
+  { value: "auto", label: "Auto", width: 1, height: 1 },
+  ...commonRatios,
+  { value: "4:1", label: "Panorama 4:1", width: 4, height: 1 },
+  { value: "1:4", label: "Vertical 1:4", width: 1, height: 4 },
+]
+
+const reveRatios: ImageDimensionOption[] = [
+  ...extendedRatios,
+  { value: "3:1", label: "Panorama 3:1", width: 3, height: 1 },
+  { value: "2:1", label: "Wide 2:1", width: 2, height: 1 },
+  { value: "17:9", label: "Cinema 17:9", width: 17, height: 9 },
+  { value: "1:2", label: "Tall 1:2", width: 1, height: 2 },
+  { value: "1:3", label: "Vertical 1:3", width: 1, height: 3 },
+]
+
 const exactGptSizes: ImageDimensionOption[] = [
   { value: "1024x1024", label: "Square 1024", width: 1, height: 1 },
   { value: "1536x1024", label: "Landscape 1536", width: 3, height: 2 },
@@ -133,6 +149,29 @@ const singleImageMultiplicity: ImageMultiplicity = {
   appMax: 1,
   default: 1,
   sendParameter: false,
+}
+
+const fourImageMultiplicity: ImageMultiplicity = {
+  kind: "imagesPerRequest",
+  parameter: "num_images",
+  providerMin: 1,
+  providerMax: 4,
+  appMax: IMAGE_STUDIO_APP_MAX_OUTPUTS,
+  default: 1,
+  sendParameter: true,
+}
+
+const seedreamMultiplicity: ImageMultiplicity = {
+  kind: "generationsWithVariableImages",
+  generationParameter: "num_images",
+  generationMin: 1,
+  generationMax: 6,
+  maxImagesParameter: "max_images",
+  maxImagesMin: 1,
+  maxImagesMax: 6,
+  appMaxTotalOutputs: IMAGE_STUDIO_APP_MAX_OUTPUTS,
+  defaultGenerations: 1,
+  defaultMaxImages: 1,
 }
 
 function buildFalCapability(
@@ -175,8 +214,33 @@ const falCapabilities: ImageModelCapability[] = [
     references: { max: IMAGE_STUDIO_MAX_REFERENCES },
     options: fluxOptions,
   }),
+  buildFalCapability("fal-ai/flux-2/klein/9b", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: 4 },
+    options: fluxOptions,
+  }),
   buildFalCapability("fal-ai/flux-2", {
     multiplicity: { ...singleImageMultiplicity, sendParameter: true },
+    references: { max: 4 },
+    dimensions: {
+      parameter: "image_size",
+      options: squareAndOrientationSizes,
+      default: "landscape_4_3",
+    },
+    options: fluxOptions,
+  }),
+  buildFalCapability("fal-ai/flux-2/flash", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: 4 },
+    dimensions: {
+      parameter: "image_size",
+      options: squareAndOrientationSizes,
+      default: "landscape_4_3",
+    },
+    options: fluxOptions,
+  }),
+  buildFalCapability("fal-ai/flux-2/turbo", {
+    multiplicity: fourImageMultiplicity,
     references: { max: 4 },
     dimensions: {
       parameter: "image_size",
@@ -195,11 +259,35 @@ const falCapabilities: ImageModelCapability[] = [
     references: { max: IMAGE_STUDIO_MAX_REFERENCES },
     options: fluxOptions,
   }),
+  buildFalCapability("fal-ai/flux-2-max", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: fluxOptions,
+  }),
   buildFalCapability("fal-ai/flux-pro/kontext/text-to-image", {
     references: { max: 1 },
     options: {
       defaultOutputFormat: "png",
       outputFormats,
+      seed: true,
+    },
+  }),
+  buildFalCapability("google/nano-banana-lite", {
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: [
+        ...extendedRatios,
+        { value: "8:1", label: "Ultra-wide 8:1", width: 8, height: 1 },
+        { value: "1:8", label: "Ultra-tall 1:8", width: 1, height: 8 },
+      ],
+      default: "auto",
+    },
+    multiplicity: fourImageMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
       seed: true,
     },
   }),
@@ -345,6 +433,38 @@ const falCapabilities: ImageModelCapability[] = [
       seed: true,
     },
   }),
+  buildFalCapability("ideogram/v4", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: 1 },
+    options: {
+      defaultOutputFormat: "jpeg",
+      outputFormats: ["jpeg", "png"],
+      outputFormatParameter: true,
+      seed: true,
+    },
+  }),
+  buildFalCapability("fal-ai/qwen-image-2/text-to-image", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: 3 },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
+      promptExpansion: true,
+      seed: true,
+    },
+  }),
+  buildFalCapability("fal-ai/qwen-image-2/pro/text-to-image", {
+    multiplicity: fourImageMultiplicity,
+    references: { max: 3 },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
+      promptExpansion: true,
+      seed: true,
+    },
+  }),
   buildFalCapability("fal-ai/bytedance/seedream/v4.5/text-to-image", {
     dimensions: {
       parameter: "image_size",
@@ -355,18 +475,25 @@ const falCapabilities: ImageModelCapability[] = [
       ],
       default: "auto_2K",
     },
-    multiplicity: {
-      kind: "generationsWithVariableImages",
-      generationParameter: "num_images",
-      generationMin: 1,
-      generationMax: 6,
-      maxImagesParameter: "max_images",
-      maxImagesMin: 1,
-      maxImagesMax: 6,
-      appMaxTotalOutputs: IMAGE_STUDIO_APP_MAX_OUTPUTS,
-      defaultGenerations: 1,
-      defaultMaxImages: 1,
+    multiplicity: seedreamMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats: ["png"],
+      seed: true,
     },
+  }),
+  buildFalCapability("bytedance/seedream/v5/lite/text-to-image", {
+    dimensions: {
+      parameter: "image_size",
+      options: [
+        ...squareAndOrientationSizes,
+        { value: "auto_2K", label: "Automatic 2K", width: 1, height: 1 },
+        { value: "auto_3K", label: "Automatic 3K", width: 1, height: 1 },
+      ],
+      default: "auto_2K",
+    },
+    multiplicity: seedreamMultiplicity,
     references: { max: IMAGE_STUDIO_MAX_REFERENCES },
     options: {
       defaultOutputFormat: "png",
@@ -385,9 +512,24 @@ const falCapabilities: ImageModelCapability[] = [
     },
     references: { max: IMAGE_STUDIO_MAX_REFERENCES },
     options: {
-      defaultOutputFormat: "png",
-      outputFormats: ["png"],
+      defaultOutputFormat: "jpeg",
+      outputFormats: ["jpeg", "png"],
+      outputFormatParameter: true,
       seed: true,
+    },
+  }),
+  buildFalCapability("reve/2.1/text-to-image", {
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: reveRatios,
+      default: "auto",
+    },
+    multiplicity: fourImageMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
     },
   }),
   buildFalCapability("xai/grok-imagine-image", {

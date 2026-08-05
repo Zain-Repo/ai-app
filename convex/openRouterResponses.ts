@@ -1187,6 +1187,7 @@ export const generate = internalAction({
                 compatibility: "strict",
               })
               return streamText({
+                abortSignal: abortController.signal,
                 model: openrouter(
                   context.model,
                   getOpenRouterModelSettings(
@@ -1213,13 +1214,13 @@ export const generate = internalAction({
                     : {}),
                 },
                 ...terminalOptions,
-                abortSignal: abortController.signal,
                 timeout: 120_000,
               })
             })()
           : (() => {
               const openai = createOpenAI({ apiKey: token })
               return streamText({
+                abortSignal: abortController.signal,
                 model: openai.responses(context.model),
                 ...generationPrompt,
                 tools: {
@@ -1235,7 +1236,6 @@ export const generate = internalAction({
                   openai: getOpenAIOptions(context.reasoningEffort),
                 },
                 ...terminalOptions,
-                abortSignal: abortController.signal,
                 timeout: 120_000,
               })
             })()

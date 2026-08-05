@@ -57,4 +57,3 @@ same-provider retry model, and navigate persisted response branches.
 - Cross-provider retry
 - Changing attachments while editing a historical prompt
 - Generic response feedback controls
-

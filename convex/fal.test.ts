@@ -6,6 +6,7 @@ import {
   generateFalImage,
   parseFalImageModels,
 } from "./fal"
+import { getStaticImageModelCapability } from "../shared/image-generation"
 
 const REQUEST_ID = "request_12345678"
 const ENDPOINT = "fal-ai/flux-2/klein/4b"
@@ -13,6 +14,15 @@ const STATUS_URL = `https://queue.fal.run/${ENDPOINT}/requests/${REQUEST_ID}/sta
 const RESPONSE_URL = `https://queue.fal.run/${ENDPOINT}/requests/${REQUEST_ID}/response`
 
 describe("Fal image provider", () => {
+  it("defines an image-studio capability for every curated model", () => {
+    for (const model of FAL_IMAGE_MODELS) {
+      expect(
+        getStaticImageModelCapability("fal", model.id),
+        model.id
+      ).not.toBeNull()
+    }
+  })
+
   it("exposes only supported active image models with current pricing", () => {
     expect(
       parseFalImageModels(
@@ -76,18 +86,28 @@ describe("Fal image provider", () => {
   it("covers the curated model endpoints and per-model reference limits", () => {
     expect(FAL_IMAGE_MODELS.map((model) => model.id)).toEqual([
       "fal-ai/flux-2/klein/4b",
+      "fal-ai/flux-2/klein/9b",
       "fal-ai/flux-2",
+      "fal-ai/flux-2/flash",
+      "fal-ai/flux-2/turbo",
       "fal-ai/flux-2-flex",
       "fal-ai/flux-2-pro",
+      "fal-ai/flux-2-max",
       "fal-ai/flux-pro/kontext/text-to-image",
+      "google/nano-banana-lite",
       "fal-ai/nano-banana-2",
       "fal-ai/nano-banana-pro",
       "fal-ai/gpt-image-1.5",
       "openai/gpt-image-2",
       "fal-ai/recraft/v3/text-to-image",
       "fal-ai/ideogram/v3",
+      "ideogram/v4",
+      "fal-ai/qwen-image-2/text-to-image",
+      "fal-ai/qwen-image-2/pro/text-to-image",
       "fal-ai/bytedance/seedream/v4.5/text-to-image",
+      "bytedance/seedream/v5/lite/text-to-image",
       "bytedance/seedream/v5/pro/text-to-image",
+      "reve/2.1/text-to-image",
       "xai/grok-imagine-image",
     ])
     expect(
@@ -110,6 +130,20 @@ describe("Fal image provider", () => {
         "https://four.test",
       ])
     ).toThrow("at most 3 reference images")
+    expect(() =>
+      buildFalImageRequest("fal-ai/qwen-image-2/text-to-image", "edit", [
+        "https://one.test",
+        "https://two.test",
+        "https://three.test",
+        "https://four.test",
+      ])
+    ).toThrow("at most 3 reference images")
+    expect(
+      buildFalImageRequest("ideogram/v4", "edit", ["https://one.test"])
+    ).toEqual({
+      endpoint: "ideogram/v4/image-to-image",
+      input: { image_url: "https://one.test", prompt: "edit" },
+    })
   })
 
   it("submits, polls, and downloads through trusted Fal URLs", async () => {

@@ -50,6 +50,7 @@ import {
 
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
+import { AiSuggestedActions } from "@/components/ai-suggested-actions"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
 import type { ChatMessageBranchNavigation } from "@/components/chat-message-row"
@@ -84,6 +85,7 @@ import { SidebarWorkspaceSwitcher } from "@/components/sidebar-workspace-switche
 import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
+import { getChatStarterSuggestions } from "@/lib/chat-starter-suggestions"
 import { formatProjectDate } from "@/lib/format-project-date"
 import { imageStudioV2Enabled } from "@/lib/image-studio-rollout"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
@@ -3304,6 +3306,7 @@ function ChatWorkspace() {
                     []
                   ).catch(() => undefined)
                 }}
+                workspace={workspace}
                 userMessageBubbleColor={preferences?.userMessageBubbleColor}
                 targetMessageId={search.messageId}
                 retryModels={providerModels.map(({ label, value }) => ({
@@ -3668,6 +3671,7 @@ type MessageAreaProps = {
   retryModels?: Array<{ label: string; value: string }>
   targetMessageId?: string
   userMessageBubbleColor: UserMessageBubbleColor | undefined
+  workspace: WorkspaceProduct
 }
 
 type LoadedMessageAreaProps = Omit<MessageAreaProps, "messages"> & {
@@ -3709,6 +3713,12 @@ export function MessageArea(props: MessageAreaProps) {
             {WELCOME_DESCRIPTION}
           </EmptyDescription>
         </EmptyHeader>
+        <AiSuggestedActions
+          className="mt-2 max-w-xl"
+          disabled={props.actionsDisabled}
+          onSelect={props.onAction}
+          suggestions={getChatStarterSuggestions(props.workspace)}
+        />
       </Empty>
     )
 
