@@ -12,13 +12,18 @@ import {
   getCurrentCatalogModels,
   getExecutionProviderOptions,
   getPreferredProvider,
+  getWorkspaceSwitchSearch,
+  isConversationWorkspacePending,
   isActiveProvider,
   MessageArea,
+  normalizeWorkspaceProduct,
   OptionalChatFeatureBoundary,
   ProjectConversationDisclosure,
   resolveActiveProjectId,
+  resolveActiveWorkspace,
   toggleExpandedProject,
 } from "./chat.{-$slug}"
+import { getWorkspaceOutputMode } from "@/lib/workspace-product"
 
 const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }))
 
@@ -43,6 +48,47 @@ beforeEach(() => {
 })
 
 afterEach(cleanup)
+
+describe("workspace routing", () => {
+  it("defaults missing and invalid workspace search values to Chat", () => {
+    expect(normalizeWorkspaceProduct(undefined)).toBe("chat")
+    expect(normalizeWorkspaceProduct("video")).toBe("chat")
+    expect(normalizeWorkspaceProduct("image")).toBe("image")
+  })
+
+  it("clears conversation context when switching workspaces", () => {
+    expect(getWorkspaceSwitchSearch("image")).toEqual({
+      workspace: "image",
+      mode: undefined,
+      projectId: undefined,
+      messageId: undefined,
+    })
+  })
+
+  it("canonicalizes opened conversations from their stored output mode", () => {
+    expect(resolveActiveWorkspace("chat", "image", true)).toBe("image")
+    expect(resolveActiveWorkspace("image", "text", true)).toBe("chat")
+    expect(resolveActiveWorkspace("image", undefined, true)).toBe("chat")
+    expect(resolveActiveWorkspace("image", undefined, false)).toBe("image")
+  })
+
+  it("derives generation output mode from the active workspace", () => {
+    expect(
+      getWorkspaceOutputMode(resolveActiveWorkspace("image", undefined, false))
+    ).toBe("image")
+    expect(
+      getWorkspaceOutputMode(resolveActiveWorkspace("chat", undefined, false))
+    ).toBe("text")
+  })
+
+  it("withholds workspace controls until a deep-linked conversation loads", () => {
+    expect(isConversationWorkspacePending("conversation-id", undefined)).toBe(
+      true
+    )
+    expect(isConversationWorkspacePending("conversation-id", null)).toBe(false)
+    expect(isConversationWorkspacePending(undefined, undefined)).toBe(false)
+  })
+})
 
 describe("optional chat features", () => {
   it("contains a failed optional feature without replacing chat", () => {

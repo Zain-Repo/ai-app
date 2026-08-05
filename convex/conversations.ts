@@ -24,6 +24,7 @@ import {
 } from "../shared/chat-title"
 
 const MAX_CONVERSATIONS = 30
+const MAX_WORKSPACE_HISTORY_ROWS_READ = 300
 const MAX_MESSAGES = 200
 const MAX_PROJECT_SOURCES = 8
 const MAX_ALWAYS_INCLUDED_MEMORIES = 20
@@ -70,6 +71,11 @@ const conversationValidator = v.object({
   reasoningEffort: v.optional(v.string()),
   memoryMode: v.optional(memoryModeValidator),
   updatedAt: v.number(),
+})
+
+const workspaceHistoryResultValidator = v.object({
+  conversations: v.array(conversationValidator),
+  isPartial: v.boolean(),
 })
 
 const messageValidator = v.object({
@@ -350,7 +356,8 @@ export const startRealtime = mutation({
         )
         .take(10)
     ).find((connection) => connection.status === "connected")
-    if (!openAiConnection) throw new Error("Connect OpenAI before starting voice")
+    if (!openAiConnection)
+      throw new Error("Connect OpenAI before starting voice")
     return await ctx.db.insert("conversations", {
       ownerId: user._id,
       ...(projectId ? { projectId } : {}),
@@ -1471,6 +1478,119 @@ export const listRecent = query({
       )
       .order("desc")
       .take(limit)
+  },
+})
+
+export const listWorkspaceRecent = query({
+  args: {
+    limit: v.optional(v.number()),
+    outputMode: outputModeValidator,
+    projectId: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("active"), v.literal("archived"))),
+    unassignedOnly: v.optional(v.boolean()),
+  },
+  returns: workspaceHistoryResultValidator,
+  handler: async (ctx, args) => {
+    // Compound workspace indexes stay staged until their production backfills
+    // complete. Transitional queries cap reads and report when that cap means
+    // the returned history may be incomplete.
+    const user = await getCurrentUser(ctx)
+    const requestedLimit = args.limit ?? MAX_CONVERSATIONS
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_CONVERSATIONS))
+      : MAX_CONVERSATIONS
+    const status = args.status ?? "active"
+
+    if (args.projectId) {
+      const projectId = ctx.db.normalizeId("projects", args.projectId)
+      if (!projectId) return { conversations: [], isPartial: false }
+      const project = await ctx.db.get(projectId)
+      if (!project || project.ownerId !== user._id)
+        return { conversations: [], isPartial: false }
+
+      const page = await ctx.db
+        .query("conversations")
+        .withIndex("by_project_id_and_status_and_updated_at", (indexQuery) =>
+          indexQuery.eq("projectId", project._id).eq("status", status)
+        )
+        .order("desc")
+        .filter((filterQuery) =>
+          filterQuery.and(
+            filterQuery.eq(filterQuery.field("ownerId"), user._id),
+            args.outputMode === "image"
+              ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+              : filterQuery.or(
+                  filterQuery.eq(filterQuery.field("outputMode"), "text"),
+                  filterQuery.eq(filterQuery.field("outputMode"), undefined)
+                )
+          )
+        )
+        .paginate({
+          cursor: null,
+          maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+          numItems: limit,
+        })
+      const conversations = page.page.slice(0, limit)
+      return {
+        conversations,
+        isPartial: conversations.length < limit && !page.isDone,
+      }
+    }
+
+    if (args.unassignedOnly) {
+      const page = await ctx.db
+        .query("conversations")
+        .withIndex("by_owner_status_updated_at", (indexQuery) =>
+          indexQuery.eq("ownerId", user._id).eq("status", status)
+        )
+        .order("desc")
+        .filter((filterQuery) =>
+          filterQuery.and(
+            filterQuery.eq(filterQuery.field("projectId"), undefined),
+            args.outputMode === "image"
+              ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+              : filterQuery.or(
+                  filterQuery.eq(filterQuery.field("outputMode"), "text"),
+                  filterQuery.eq(filterQuery.field("outputMode"), undefined)
+                )
+          )
+        )
+        .paginate({
+          cursor: null,
+          maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+          numItems: limit,
+        })
+      const conversations = page.page.slice(0, limit)
+      return {
+        conversations,
+        isPartial: conversations.length < limit && !page.isDone,
+      }
+    }
+
+    const page = await ctx.db
+      .query("conversations")
+      .withIndex("by_owner_status_updated_at", (indexQuery) =>
+        indexQuery.eq("ownerId", user._id).eq("status", status)
+      )
+      .order("desc")
+      .filter((filterQuery) =>
+        args.outputMode === "image"
+          ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+          : filterQuery.or(
+              filterQuery.eq(filterQuery.field("outputMode"), "text"),
+              filterQuery.eq(filterQuery.field("outputMode"), undefined)
+            )
+      )
+      .paginate({
+        cursor: null,
+        maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+        numItems: limit,
+      })
+    const conversations = page.page.slice(0, limit)
+    return {
+      conversations,
+      isPartial: conversations.length < limit && !page.isDone,
+    }
   },
 })
 
