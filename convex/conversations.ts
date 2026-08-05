@@ -1,7 +1,7 @@
 import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import {
   internalMutation,
   internalQuery,
@@ -70,7 +70,16 @@ const conversationValidator = v.object({
   routingProvider: v.optional(v.string()),
   reasoningEffort: v.optional(v.string()),
   memoryMode: v.optional(memoryModeValidator),
+  activeBranchId: v.optional(v.id("conversationBranches")),
   updatedAt: v.number(),
+})
+
+const messageBranchNavigationValidator = v.object({
+  branchId: v.id("conversationBranches"),
+  index: v.number(),
+  total: v.number(),
+  previousBranchId: v.optional(v.id("conversationBranches")),
+  nextBranchId: v.optional(v.id("conversationBranches")),
 })
 
 const workspaceHistoryResultValidator = v.object({
@@ -89,8 +98,10 @@ const messageValidator = v.object({
     v.literal("pending"),
     v.literal("streaming"),
     v.literal("complete"),
-    v.literal("failed")
+    v.literal("failed"),
+    v.literal("stopped")
   ),
+  branchId: v.optional(v.id("conversationBranches")),
   provider: v.optional(v.string()),
   model: v.optional(v.string()),
   outputMode: v.optional(outputModeValidator),
@@ -101,11 +112,26 @@ const messageValidator = v.object({
   terminalRuns: v.optional(v.array(terminalRunValidator)),
   uiPayload: v.optional(v.string()),
   errorCode: v.optional(v.literal("insufficient_credits")),
+  scheduledGenerationId: v.optional(v.id("_scheduled_functions")),
 })
 
 const clientMessageValidator = messageValidator.extend({
   attachments: v.array(messageAttachmentValidator.extend({ url: v.string() })),
+  branchNavigation: v.optional(messageBranchNavigationValidator),
 })
+
+const optionalModelSettingsValidator = v.optional(
+  v.object({
+    model: v.string(),
+    reasoningEffort: v.optional(v.string()),
+    routingProvider: v.optional(v.string()),
+  })
+)
+
+type Conversation = Doc<"conversations">
+type Message = Doc<"messages">
+type Branch = Doc<"conversationBranches">
+type DatabaseReader = Pick<QueryCtx, "db">
 
 function normalizeMessage(content: string) {
   const message = content.trim()
@@ -154,23 +180,226 @@ async function getOwnedConversation(
   return conversation
 }
 
-async function deleteConversationMessages(
-  ctx: MutationCtx,
+async function getConversationMessages(
+  ctx: DatabaseReader,
   conversationId: Id<"conversations">
 ) {
-  // ponytail: simple scan is fine under MAX_MESSAGES; page if chats grow large
   const messages = await ctx.db
     .query("messages")
     .withIndex("by_conversation", (indexQuery) =>
       indexQuery.eq("conversationId", conversationId)
     )
-    .take(MAX_MESSAGES)
+    .order("asc")
+    .take(MAX_MESSAGES + 1)
+  if (messages.length > MAX_MESSAGES)
+    throw new Error("Conversation has reached its message limit")
+  return messages
+}
+
+async function getBranchChain(
+  ctx: DatabaseReader,
+  conversationId: Id<"conversations">,
+  branchId: Id<"conversationBranches">
+) {
+  const reversed: Branch[] = []
+  let currentId: Id<"conversationBranches"> | undefined = branchId
+  while (currentId) {
+    if (reversed.length >= MAX_MESSAGES)
+      throw new Error("Conversation branch depth is unavailable")
+    const branch: Branch | null = await ctx.db.get(currentId)
+    if (!branch || branch.conversationId !== conversationId)
+      throw new Error("Conversation branch unavailable")
+    reversed.push(branch)
+    currentId = branch.parentBranchId
+  }
+  return reversed.reverse()
+}
+
+async function resolveBranchTranscript(
+  ctx: DatabaseReader,
+  conversation: Conversation,
+  targetBranchId = conversation.activeBranchId
+) {
+  const messages = await getConversationMessages(ctx, conversation._id)
+  if (!targetBranchId)
+    return messages.filter((message) => message.branchId === undefined)
+
+  const chain = await getBranchChain(ctx, conversation._id, targetBranchId)
+  let transcript: Message[] = []
+  for (const [index, branch] of chain.entries()) {
+    if (index === 0) {
+      transcript = messages.filter(
+        (message) =>
+          message.branchId === undefined || message.branchId === branch._id
+      )
+      continue
+    }
+    const anchorIndex = branch.forkedAfterMessageId
+      ? transcript.findIndex(
+          (message) => message._id === branch.forkedAfterMessageId
+        )
+      : -1
+    if (branch.forkedAfterMessageId && anchorIndex < 0)
+      throw new Error("Conversation branch anchor unavailable")
+    transcript = [
+      ...transcript.slice(0, anchorIndex + 1),
+      ...messages.filter((message) => message.branchId === branch._id),
+    ]
+  }
+  return transcript
+}
+
+async function ensureRootBranch(
+  ctx: MutationCtx,
+  conversation: Conversation,
+  messages: Message[]
+) {
+  if (conversation.activeBranchId) {
+    const branch = await ctx.db.get(conversation.activeBranchId)
+    if (!branch || branch.conversationId !== conversation._id)
+      throw new Error("Conversation branch unavailable")
+    return branch
+  }
+  const branchId = await ctx.db.insert("conversationBranches", {
+    conversationId: conversation._id,
+    ...(messages.at(-1) ? { lastMessageId: messages.at(-1)?._id } : {}),
+    createdAt: Date.now(),
+  })
+  await ctx.db.patch(conversation._id, { activeBranchId: branchId })
+  const branch = await ctx.db.get(branchId)
+  if (!branch) throw new Error("Conversation branch unavailable")
+  return branch
+}
+
+function assertExpectedActiveBranch(
+  conversation: Conversation,
+  expectedActiveBranchId?: Id<"conversationBranches">
+) {
+  if (conversation.activeBranchId !== expectedActiveBranchId)
+    throw new Error("Conversation changed in another tab")
+}
+
+function assertNoActiveGeneration(messages: Message[]) {
+  if (
+    messages.some(
+      (message) =>
+        message.role === "assistant" &&
+        (message.status === "pending" || message.status === "streaming")
+    )
+  )
+    throw new Error("Wait for the current response to finish")
+}
+
+async function scheduleGeneration(
+  ctx: MutationCtx,
+  conversationId: Id<"conversations">,
+  assistantMessageId: Id<"messages">,
+  provider: string
+) {
+  if (provider === "codex") return
+  const scheduledGenerationId = await ctx.scheduler.runAfter(
+    0,
+    internal.openRouterResponses.generate,
+    { assistantMessageId, conversationId }
+  )
+  await ctx.db.patch(assistantMessageId, { scheduledGenerationId })
+}
+
+function closeRunningTerminalItems(terminalRuns: Message["terminalRuns"]) {
+  return terminalRuns?.map((run) =>
+    run.status === "running"
+      ? { ...run, output: "Stopped by user", status: "failed" as const }
+      : run
+  )
+}
+
+async function getForkLocation(
+  ctx: DatabaseReader,
+  conversationId: Id<"conversations">,
+  rootBranchId: Id<"conversationBranches">,
+  message: Message,
+  transcript: Message[]
+) {
+  const messageIndex = transcript.findIndex((item) => item._id === message._id)
+  if (messageIndex < 0) throw new Error("Message is not on the active branch")
+  const ownBranchId = message.branchId ?? rootBranchId
+  const ownBranch = await ctx.db.get(ownBranchId)
+  if (!ownBranch || ownBranch.conversationId !== conversationId)
+    throw new Error("Conversation branch unavailable")
+  const localMessages = transcript.filter(
+    (item) => item.branchId === ownBranchId
+  )
+  if (ownBranch.parentBranchId && localMessages.at(0)?._id === message._id) {
+    return {
+      forkedAfterMessageId: ownBranch.forkedAfterMessageId,
+      parentBranchId: ownBranch.parentBranchId,
+    }
+  }
+  return {
+    forkedAfterMessageId:
+      messageIndex > 0 ? transcript[messageIndex - 1]._id : undefined,
+    parentBranchId: ownBranchId,
+  }
+}
+
+async function getBranchModelSettings(
+  ctx: MutationCtx,
+  conversation: Conversation,
+  sourceMessage: Message,
+  requested?: {
+    model: string
+    reasoningEffort?: string
+    routingProvider?: string
+  }
+) {
+  if (!conversation.providerConnectionId)
+    throw new Error("Provider connection unavailable")
+  const connection = await ctx.db.get(conversation.providerConnectionId)
+  if (
+    !connection ||
+    connection.ownerId !== conversation.ownerId ||
+    connection.status !== "connected" ||
+    sourceMessage.provider !== connection.provider
+  )
+    throw new Error("Provider connection unavailable")
+  const model = normalizeModel(requested?.model ?? sourceMessage.model ?? "")
+  const reasoningEffort = normalizeReasoningEffort(
+    requested ? requested.reasoningEffort : sourceMessage.reasoningEffort
+  )
+  const routingProvider = normalizeRoutingProvider(
+    requested ? requested.routingProvider : sourceMessage.routingProvider,
+    connection.provider
+  )
+  return {
+    connection,
+    model,
+    outputMode: sourceMessage.outputMode ?? conversation.outputMode ?? "text",
+    reasoningEffort,
+    routingProvider,
+  }
+}
+
+async function deleteConversationMessages(
+  ctx: MutationCtx,
+  conversationId: Id<"conversations">
+) {
+  const messages = await getConversationMessages(ctx, conversationId)
+  const attachmentStorageIds = new Set<Id<"_storage">>()
   for (const message of messages) {
     await removeMessageAssets(ctx, message._id)
     for (const attachment of message.attachments ?? [])
-      await ctx.storage.delete(attachment.storageId)
+      attachmentStorageIds.add(attachment.storageId)
     await ctx.db.delete(message._id)
   }
+  for (const storageId of attachmentStorageIds)
+    await ctx.storage.delete(storageId)
+  const branches = await ctx.db
+    .query("conversationBranches")
+    .withIndex("by_conversation", (indexQuery) =>
+      indexQuery.eq("conversationId", conversationId)
+    )
+    .take(MAX_MESSAGES)
+  for (const branch of branches) await ctx.db.delete(branch._id)
 }
 
 async function getTitleSourceMessage(
@@ -274,8 +503,14 @@ export const start = mutation({
       ...(reasoningEffort ? { reasoningEffort } : {}),
       updatedAt: now,
     })
+    const rootBranchId = await ctx.db.insert("conversationBranches", {
+      conversationId,
+      createdAt: now,
+    })
+    await ctx.db.patch(conversationId, { activeBranchId: rootBranchId })
     const initialUserMessageId = await ctx.db.insert("messages", {
       conversationId,
+      branchId: rootBranchId,
       role: "user",
       content,
       ...(attachments.length ? { attachments } : {}),
@@ -299,6 +534,7 @@ export const start = mutation({
     })
     const assistantMessageId = await ctx.db.insert("messages", {
       conversationId,
+      branchId: rootBranchId,
       role: "assistant",
       content: "",
       status: "pending",
@@ -308,6 +544,7 @@ export const start = mutation({
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     })
+    await ctx.db.patch(rootBranchId, { lastMessageId: assistantMessageId })
     await ctx.scheduler.runAfter(0, internal.memoryCapture.enqueueForMessage, {
       conversationId,
       messageId: initialUserMessageId,
@@ -320,12 +557,12 @@ export const start = mutation({
         { conversationId }
       )
     }
-    if (connection.provider !== "codex") {
-      await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
-        assistantMessageId,
-        conversationId,
-      })
-    }
+    await scheduleGeneration(
+      ctx,
+      conversationId,
+      assistantMessageId,
+      connection.provider
+    )
 
     return conversationId
   },
@@ -358,7 +595,7 @@ export const startRealtime = mutation({
     ).find((connection) => connection.status === "connected")
     if (!openAiConnection)
       throw new Error("Connect OpenAI before starting voice")
-    return await ctx.db.insert("conversations", {
+    const conversationId = await ctx.db.insert("conversations", {
       ownerId: user._id,
       ...(projectId ? { projectId } : {}),
       title: "Voice conversation",
@@ -368,6 +605,12 @@ export const startRealtime = mutation({
       outputMode: "text",
       updatedAt: Date.now(),
     })
+    const rootBranchId = await ctx.db.insert("conversationBranches", {
+      conversationId,
+      createdAt: Date.now(),
+    })
+    await ctx.db.patch(conversationId, { activeBranchId: rootBranchId })
+    return conversationId
   },
 })
 
@@ -420,20 +663,8 @@ export const send = mutation({
     if (outputMode === "text" && connection.provider === "fal")
       throw new Error("Fal is available for image generation only")
 
-    const existingMessages = await ctx.db
-      .query("messages")
-      .withIndex("by_conversation", (indexQuery) =>
-        indexQuery.eq("conversationId", conversationId)
-      )
-      .take(MAX_MESSAGES)
-    if (
-      existingMessages.some(
-        (message) =>
-          message.role === "assistant" &&
-          (message.status === "pending" || message.status === "streaming")
-      )
-    )
-      throw new Error("Wait for the current response to finish")
+    const existingMessages = await getConversationMessages(ctx, conversationId)
+    assertNoActiveGeneration(existingMessages)
     if (existingMessages.length > MAX_MESSAGES - 2)
       throw new Error("Conversation has reached its message limit")
     const attachments = await consumeDraftAttachments(
@@ -443,8 +674,14 @@ export const send = mutation({
     )
 
     const now = Date.now()
+    const activeBranch = await ensureRootBranch(
+      ctx,
+      conversation,
+      existingMessages
+    )
     const messageId = await ctx.db.insert("messages", {
       conversationId,
+      branchId: activeBranch._id,
       role: "user",
       content,
       ...(attachments.length ? { attachments } : {}),
@@ -465,6 +702,7 @@ export const send = mutation({
     })
     const assistantMessageId = await ctx.db.insert("messages", {
       conversationId,
+      branchId: activeBranch._id,
       role: "assistant",
       content: "",
       status: "pending",
@@ -473,6 +711,9 @@ export const send = mutation({
       outputMode,
       ...(routingProvider ? { routingProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
+    })
+    await ctx.db.patch(activeBranch._id, {
+      lastMessageId: assistantMessageId,
     })
     await ctx.db.patch(conversationId, {
       model,
@@ -485,12 +726,296 @@ export const send = mutation({
       messageId,
       ownerId: user._id,
     })
-    if (connection.provider !== "codex")
-      await ctx.scheduler.runAfter(0, internal.openRouterResponses.generate, {
-        assistantMessageId,
-        conversationId,
-      })
+    await scheduleGeneration(
+      ctx,
+      conversationId,
+      assistantMessageId,
+      connection.provider
+    )
     return messageId
+  },
+})
+
+export const stopResponse = mutation({
+  args: {
+    assistantMessageId: v.id("messages"),
+    conversationId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    const message = await ctx.db.get(args.assistantMessageId)
+    if (
+      !message ||
+      message.conversationId !== conversation._id ||
+      message.role !== "assistant"
+    )
+      throw new Error("Response unavailable")
+    const transcript = await resolveBranchTranscript(ctx, conversation)
+    if (!transcript.some((item) => item._id === message._id))
+      throw new Error("Response unavailable")
+    if (message.status === "stopped") return null
+    if (message.status !== "pending" && message.status !== "streaming")
+      throw new Error("Response is no longer running")
+
+    await ctx.db.patch(message._id, {
+      scheduledGenerationId: undefined,
+      status: "stopped",
+      terminalRuns: closeRunningTerminalItems(message.terminalRuns),
+    })
+    await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
+    if (message.scheduledGenerationId) {
+      try {
+        await ctx.scheduler.cancel(message.scheduledGenerationId)
+      } catch {
+        // A running action cooperatively observes the stopped message state.
+      }
+    }
+    return null
+  },
+})
+
+export const retryResponse = mutation({
+  args: {
+    assistantMessageId: v.id("messages"),
+    conversationId: v.string(),
+    expectedActiveBranchId: v.optional(v.id("conversationBranches")),
+    modelSettings: optionalModelSettingsValidator,
+  },
+  returns: v.id("messages"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (conversation.status !== "active")
+      throw new Error("Conversation unavailable")
+    assertExpectedActiveBranch(conversation, args.expectedActiveBranchId)
+    const allMessages = await getConversationMessages(ctx, conversation._id)
+    assertNoActiveGeneration(allMessages)
+    if (allMessages.length >= MAX_MESSAGES)
+      throw new Error("Conversation has reached its message limit")
+    const transcript = await resolveBranchTranscript(ctx, conversation)
+    const source = transcript.find(
+      (message) => message._id === args.assistantMessageId
+    )
+    if (
+      !source ||
+      source.role !== "assistant" ||
+      !["complete", "failed", "stopped"].includes(source.status)
+    )
+      throw new Error("Response unavailable")
+    const sourceIndex = transcript.findIndex(
+      (message) => message._id === source._id
+    )
+    const userMessage = transcript
+      .slice(0, sourceIndex)
+      .findLast(
+        (message) => message.role === "user" && message.status === "complete"
+      )
+    if (!userMessage) throw new Error("Prompt unavailable")
+    const rootBranch = await ensureRootBranch(ctx, conversation, allMessages)
+    const fork = await getForkLocation(
+      ctx,
+      conversation._id,
+      rootBranch._id,
+      source,
+      transcript
+    )
+    const settings = await getBranchModelSettings(
+      ctx,
+      conversation,
+      source,
+      args.modelSettings
+    )
+    const now = Date.now()
+    const branchId = await ctx.db.insert("conversationBranches", {
+      conversationId: conversation._id,
+      parentBranchId: fork.parentBranchId,
+      forkedAfterMessageId: userMessage._id,
+      createdAt: now,
+    })
+    const assistantMessageId = await ctx.db.insert("messages", {
+      conversationId: conversation._id,
+      branchId,
+      role: "assistant",
+      content: "",
+      status: "pending",
+      provider: settings.connection.provider,
+      model: settings.model,
+      outputMode: settings.outputMode,
+      ...(settings.routingProvider
+        ? { routingProvider: settings.routingProvider }
+        : {}),
+      ...(settings.reasoningEffort
+        ? { reasoningEffort: settings.reasoningEffort }
+        : {}),
+    })
+    await ctx.db.patch(branchId, { lastMessageId: assistantMessageId })
+    await ctx.db.patch(conversation._id, {
+      activeBranchId: branchId,
+      model: settings.model,
+      routingProvider: settings.routingProvider,
+      reasoningEffort: settings.reasoningEffort,
+      updatedAt: now,
+    })
+    await scheduleGeneration(
+      ctx,
+      conversation._id,
+      assistantMessageId,
+      settings.connection.provider
+    )
+    return assistantMessageId
+  },
+})
+
+export const editUserMessage = mutation({
+  args: {
+    content: v.string(),
+    conversationId: v.string(),
+    expectedActiveBranchId: v.optional(v.id("conversationBranches")),
+    modelSettings: optionalModelSettingsValidator,
+    userMessageId: v.id("messages"),
+  },
+  returns: v.id("messages"),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    if (conversation.status !== "active")
+      throw new Error("Conversation unavailable")
+    assertExpectedActiveBranch(conversation, args.expectedActiveBranchId)
+    const allMessages = await getConversationMessages(ctx, conversation._id)
+    assertNoActiveGeneration(allMessages)
+    if (allMessages.length > MAX_MESSAGES - 2)
+      throw new Error("Conversation has reached its message limit")
+    const transcript = await resolveBranchTranscript(ctx, conversation)
+    const source = transcript.find(
+      (message) => message._id === args.userMessageId
+    )
+    if (!source || source.role !== "user" || source.status !== "complete")
+      throw new Error("Prompt unavailable")
+    const sourceIndex = transcript.findIndex(
+      (message) => message._id === source._id
+    )
+    const previousMessage =
+      sourceIndex > 0 ? transcript[sourceIndex - 1] : undefined
+    const rootBranch = await ensureRootBranch(ctx, conversation, allMessages)
+    const fork = await getForkLocation(
+      ctx,
+      conversation._id,
+      rootBranch._id,
+      source,
+      transcript
+    )
+    const settings = await getBranchModelSettings(
+      ctx,
+      conversation,
+      source,
+      args.modelSettings
+    )
+    const content = normalizeMessage(args.content)
+    const now = Date.now()
+    const branchId = await ctx.db.insert("conversationBranches", {
+      conversationId: conversation._id,
+      parentBranchId: fork.parentBranchId,
+      ...(previousMessage ? { forkedAfterMessageId: previousMessage._id } : {}),
+      createdAt: now,
+    })
+    const userMessageId = await ctx.db.insert("messages", {
+      conversationId: conversation._id,
+      branchId,
+      role: "user",
+      content,
+      ...(source.attachments?.length
+        ? { attachments: source.attachments }
+        : {}),
+      status: "complete",
+      provider: settings.connection.provider,
+      model: settings.model,
+      outputMode: settings.outputMode,
+      ...(settings.routingProvider
+        ? { routingProvider: settings.routingProvider }
+        : {}),
+      ...(settings.reasoningEffort
+        ? { reasoningEffort: settings.reasoningEffort }
+        : {}),
+    })
+    const assistantMessageId = await ctx.db.insert("messages", {
+      conversationId: conversation._id,
+      branchId,
+      role: "assistant",
+      content: "",
+      status: "pending",
+      provider: settings.connection.provider,
+      model: settings.model,
+      outputMode: settings.outputMode,
+      ...(settings.routingProvider
+        ? { routingProvider: settings.routingProvider }
+        : {}),
+      ...(settings.reasoningEffort
+        ? { reasoningEffort: settings.reasoningEffort }
+        : {}),
+    })
+    await ctx.db.patch(branchId, { lastMessageId: assistantMessageId })
+    await ctx.db.patch(conversation._id, {
+      activeBranchId: branchId,
+      model: settings.model,
+      routingProvider: settings.routingProvider,
+      reasoningEffort: settings.reasoningEffort,
+      updatedAt: now,
+    })
+    await ctx.scheduler.runAfter(0, internal.memoryCapture.enqueueForMessage, {
+      conversationId: conversation._id,
+      messageId: userMessageId,
+      ownerId: user._id,
+    })
+    await scheduleGeneration(
+      ctx,
+      conversation._id,
+      assistantMessageId,
+      settings.connection.provider
+    )
+    return userMessageId
+  },
+})
+
+export const selectBranch = mutation({
+  args: {
+    branchId: v.id("conversationBranches"),
+    conversationId: v.string(),
+    expectedActiveBranchId: v.optional(v.id("conversationBranches")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    const conversation = await getOwnedConversation(
+      ctx,
+      user._id,
+      args.conversationId
+    )
+    assertExpectedActiveBranch(conversation, args.expectedActiveBranchId)
+    const messages = await getConversationMessages(ctx, conversation._id)
+    assertNoActiveGeneration(messages)
+    const branch = await ctx.db.get(args.branchId)
+    if (!branch || branch.conversationId !== conversation._id)
+      throw new Error("Conversation branch unavailable")
+    await resolveBranchTranscript(ctx, conversation, branch._id)
+    await ctx.db.patch(conversation._id, {
+      activeBranchId: branch._id,
+      updatedAt: Date.now(),
+    })
+    return null
   },
 })
 
@@ -532,22 +1057,17 @@ async function getPendingDesktopCodexResponse(
     connection.status !== "connected"
   )
     throw new Error("Codex connection unavailable")
-  const pending = (
-    await ctx.db
-      .query("messages")
-      .withIndex("by_conversation", (q) =>
-        q.eq("conversationId", conversation._id)
-      )
-      .order("desc")
-      .take(MAX_MESSAGES)
-  ).filter(
-    (message) =>
-      message.role === "assistant" &&
-      (message.status === "pending" || message.status === "streaming")
+  const pending = (await resolveBranchTranscript(ctx, conversation)).findLast(
+    (message) => message.role === "assistant"
   )
-  if (pending.length !== 1)
+  if (
+    !pending ||
+    (pending.status !== "pending" &&
+      pending.status !== "streaming" &&
+      pending.status !== "stopped")
+  )
     throw new Error("Codex response is no longer available")
-  return { conversation, message: pending[0] }
+  return { conversation, message: pending }
 }
 
 export const streamDesktopCodexResponse = mutation({
@@ -565,6 +1085,7 @@ export const streamDesktopCodexResponse = mutation({
       user._id,
       args.conversationId
     )
+    if (message.status === "stopped") return null
     await ctx.db.patch(message._id, {
       content: args.content,
       status: "streaming",
@@ -590,6 +1111,7 @@ export const finishDesktopCodexResponse = mutation({
       user._id,
       args.conversationId
     )
+    if (message.status === "stopped") return null
     const content = normalizeMessage(args.content)
     const reasoningSteps = args.reasoningSteps?.map((step) => step.trim())
     if (
@@ -755,17 +1277,11 @@ export const getDesktopCodexMemoryContextRequest = internalQuery({
       connection.status !== "connected"
     )
       return null
-    const lastUserMessage = (
-      await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (indexQuery) =>
-          indexQuery.eq("conversationId", conversation._id)
-        )
-        .order("desc")
-        .take(MAX_MESSAGES)
-    ).find(
-      (message) => message.role === "user" && message.status === "complete"
-    )
+    const lastUserMessage = (await resolveBranchTranscript(ctx, conversation))
+      .reverse()
+      .find(
+        (message) => message.role === "user" && message.status === "complete"
+      )
     if (!lastUserMessage) return null
     return {
       conversationId: conversation._id,
@@ -801,17 +1317,11 @@ export const getRealtimeMemoryContextRequest = internalQuery({
       owner.tokenIdentifier !== identity.tokenIdentifier
     )
       return null
-    const lastUserMessage = (
-      await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (indexQuery) =>
-          indexQuery.eq("conversationId", conversation._id)
-        )
-        .order("desc")
-        .take(MAX_MESSAGES)
-    ).find(
-      (message) => message.role === "user" && message.status === "complete"
-    )
+    const lastUserMessage = (await resolveBranchTranscript(ctx, conversation))
+      .reverse()
+      .find(
+        (message) => message.role === "user" && message.status === "complete"
+      )
     return {
       conversationId: conversation._id,
       ownerId: owner._id,
@@ -837,13 +1347,19 @@ export const commitRealtimeTranscript = mutation({
     if (conversation.status !== "active")
       throw new Error("Conversation unavailable")
     const content = normalizeMessage(args.content)
+    const messages = await getConversationMessages(ctx, conversation._id)
+    if (messages.length >= MAX_MESSAGES)
+      throw new Error("Conversation has reached its message limit")
+    const branch = await ensureRootBranch(ctx, conversation, messages)
     const messageId = await ctx.db.insert("messages", {
+      branchId: branch._id,
       content,
       conversationId: conversation._id,
       provider: "openai",
       role: args.role,
       status: "complete",
     })
+    await ctx.db.patch(branch._id, { lastMessageId: messageId })
     await ctx.db.patch(conversation._id, { updatedAt: Date.now() })
     if (args.role === "user")
       await ctx.scheduler.runAfter(
@@ -889,14 +1405,8 @@ export const getDesktopCodexProjectSourceRequest = internalQuery({
       project.ownerId !== owner._id
     )
       return null
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_conversation", (indexQuery) =>
-        indexQuery.eq("conversationId", conversation._id)
-      )
-      .order("desc")
-      .take(MAX_MESSAGES)
-    const lastUserMessage = messages.find(
+    const messages = await resolveBranchTranscript(ctx, conversation)
+    const lastUserMessage = messages.findLast(
       (message) => message.role === "user" && message.status === "complete"
     )
     if (!lastUserMessage) return null
@@ -946,15 +1456,11 @@ export const getOpenRouterResponseContext = internalQuery({
       .unique()
     if (!credential) throw new Error("Provider credential unavailable")
 
-    const recentMessages = (
-      await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (indexQuery) =>
-          indexQuery.eq("conversationId", conversation._id)
-        )
-        .order("desc")
-        .take(MAX_MESSAGES)
-    ).reverse()
+    const recentMessages = await resolveBranchTranscript(
+      ctx,
+      conversation,
+      assistantMessage.branchId ?? conversation.activeBranchId
+    )
     const responseIndex = recentMessages.findIndex(
       (message) => message._id === assistantMessage._id
     )
@@ -1184,6 +1690,17 @@ export const getOpenRouterResponseContext = internalQuery({
         ? { reasoningEffort: assistantMessage.reasoningEffort }
         : {}),
     }
+  },
+})
+
+export const shouldCancelResponse = internalQuery({
+  args: { assistantMessageId: v.id("messages") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.assistantMessageId)
+    return (
+      !message || message.role !== "assistant" || message.status === "stopped"
+    )
   },
 })
 
@@ -1624,25 +2141,93 @@ export const listMessages = query({
 
     if (!conversation || conversation.ownerId !== user._id) return []
 
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_conversation", (indexQuery) =>
-        indexQuery.eq("conversationId", conversation._id)
-      )
-      .order("asc")
-      .take(MAX_MESSAGES)
-    return await Promise.all(
-      messages.map(async (message) => ({
-        ...message,
-        attachments: (
-          await Promise.all(
-            (message.attachments ?? []).map(async (attachment) => {
-              const url = await ctx.storage.getUrl(attachment.storageId)
-              return url ? { ...attachment, url } : null
-            })
+    const allMessages = await getConversationMessages(ctx, conversation._id)
+    const messages = await resolveBranchTranscript(ctx, conversation)
+    const branches = conversation.activeBranchId
+      ? await ctx.db
+          .query("conversationBranches")
+          .withIndex("by_conversation", (indexQuery) =>
+            indexQuery.eq("conversationId", conversation._id)
           )
-        ).filter((attachment) => attachment !== null),
-      }))
+          .take(MAX_MESSAGES)
+      : []
+    const branchesById = new Map(
+      branches.map((branch) => [branch._id, branch] as const)
+    )
+    const rootBranchId = conversation.activeBranchId
+      ? (
+          await getBranchChain(
+            ctx,
+            conversation._id,
+            conversation.activeBranchId
+          )
+        ).at(0)?._id
+      : undefined
+
+    const getBranchNavigation = (message: Message, messageIndex: number) => {
+      if (message.role !== "assistant" || !rootBranchId) return undefined
+      const ownBranchId = message.branchId ?? rootBranchId
+      const ownBranch = branchesById.get(ownBranchId)
+      if (!ownBranch) return undefined
+      const ownBranchMessages = allMessages.filter(
+        (item) =>
+          item.branchId === ownBranchId ||
+          (ownBranchId === rootBranchId && item.branchId === undefined)
+      )
+      const firstAssistant = ownBranchMessages.find(
+        (item) => item.role === "assistant"
+      )
+      const isForkResponse =
+        ownBranch.parentBranchId && firstAssistant?._id === message._id
+      const groupBranchId = isForkResponse
+        ? ownBranch.parentBranchId
+        : ownBranchId
+      const forkedAfterMessageId = isForkResponse
+        ? ownBranch.forkedAfterMessageId
+        : messages
+            .slice(0, messageIndex)
+            .findLast((item) => item.role === "user")?._id
+      const childBranches = branches
+        .filter(
+          (branch) =>
+            branch.parentBranchId === groupBranchId &&
+            branch.forkedAfterMessageId === forkedAfterMessageId
+        )
+        .sort((left, right) => left.createdAt - right.createdAt)
+      const variants = [
+        groupBranchId,
+        ...childBranches.map((branch) => branch._id),
+      ]
+      const index = variants.findIndex((branchId) => branchId === ownBranchId)
+      if (variants.length < 2 || index < 0) return undefined
+      return {
+        branchId: ownBranchId,
+        index,
+        total: variants.length,
+        ...(variants.at(index - 1)
+          ? { previousBranchId: variants.at(index - 1) }
+          : {}),
+        ...(variants.at(index + 1)
+          ? { nextBranchId: variants.at(index + 1) }
+          : {}),
+      }
+    }
+    return await Promise.all(
+      messages.map(async (message, messageIndex) => {
+        const branchNavigation = getBranchNavigation(message, messageIndex)
+        return {
+          ...message,
+          ...(branchNavigation ? { branchNavigation } : {}),
+          attachments: (
+            await Promise.all(
+              (message.attachments ?? []).map(async (attachment) => {
+                const url = await ctx.storage.getUrl(attachment.storageId)
+                return url ? { ...attachment, url } : null
+              })
+            )
+          ).filter((attachment) => attachment !== null),
+        }
+      })
     )
   },
 })

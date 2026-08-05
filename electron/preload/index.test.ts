@@ -35,4 +35,31 @@ describe("desktop preload bridge compatibility", () => {
     expect(legacyName).toBe("aiHarnessDesktop")
     expect(currentApi).toBe(legacyApi)
   })
+
+  it("forwards supplied generation IDs and cancellation through scoped channels", async () => {
+    electronMocks.invoke.mockResolvedValue({
+      content: "Done",
+      reasoningSteps: [],
+    })
+    const api = electronMocks.exposeInMainWorld.mock.calls[0][1]
+    await api.codex.generate(
+      {
+        messages: [{ content: "Hello", role: "user" }],
+        model: "gpt-5.6-sol",
+      },
+      undefined,
+      "request-123"
+    )
+    await api.codex.cancel("request-123")
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      "desktop:codex-generate",
+      "request-123",
+      expect.objectContaining({ model: "gpt-5.6-sol" })
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      "desktop:codex-cancel",
+      "request-123"
+    )
+  })
 })

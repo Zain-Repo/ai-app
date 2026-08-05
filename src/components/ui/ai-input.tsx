@@ -12,6 +12,7 @@ import {
   Mic,
   Paperclip,
   Plus,
+  Square,
   X,
 } from "lucide-react"
 import {
@@ -1057,7 +1058,9 @@ export function SettingsDropdown({
   menuActions = [],
   onOpenChange,
   onValueChange,
+  disabled = false,
 }: {
+  disabled?: boolean
   groups: PromptSettingGroup[]
   values: Record<string, string>
   menuActions?: PromptMenuAction[]
@@ -1104,6 +1107,10 @@ export function SettingsDropdown({
   useEffect(() => {
     if (open) setInstantDismiss(false)
   }, [open])
+
+  useEffect(() => {
+    if (disabled && open) handleOpenChange(false)
+  }, [disabled, handleOpenChange, open])
 
   const handleSubmenuSelect = useCallback(
     (groupId: string, value: string) => {
@@ -1165,13 +1172,14 @@ export function SettingsDropdown({
   })
 
   const toggleOpen = useCallback(() => {
+    if (disabled) return
     if (open) {
       handleOpenChange(false)
       return
     }
     updatePosition()
     handleOpenChange(true)
-  }, [handleOpenChange, open, updatePosition])
+  }, [disabled, handleOpenChange, open, updatePosition])
 
   const selectedLabels = groups.map((group) =>
     getOptionLabel(group, values[group.id] ?? "")
@@ -1197,6 +1205,7 @@ export function SettingsDropdown({
         aria-haspopup="menu"
         aria-label={`Select settings: ${triggerLabel}`}
         className="flex min-w-0 items-center gap-1.5 rounded-full py-1 text-sm transition-colors hover:text-foreground"
+        disabled={disabled}
         onClick={toggleOpen}
         onMouseDown={(event) => event.preventDefault()}
         ref={triggerRef}
@@ -2004,6 +2013,8 @@ export type AIInputProps = {
   defaultProvider?: string
   /** Disable the composer and all direct submission controls. */
   disabled?: boolean
+  /** Current generation lifecycle; active states keep the draft editable. */
+  generationState?: "idle" | "submitting" | "generating" | "stopping"
   /** Disable the provider selector independently of the composer. */
   providerDisabled?: boolean
   /** Setting groups for the settings dropdown (model, effort, etc.). */
@@ -2014,6 +2025,15 @@ export type AIInputProps = {
   /** Items for the plus menu: actions, toggles, separators, and one-level submenus. */
   menuItems?: AIInputMenuItem[]
   placeholder?: string
+  /** Controlled composer draft. */
+  value?: string
+  onValueChange?: (value: string) => void
+  /** Metadata shown while editing a historical prompt. */
+  editMode?: {
+    attachments: Array<{ name: string; size: number }>
+    messageId: string
+    onCancel: () => void
+  }
   /** Render sent messages as chat bubbles above the composer. */
   showMessages?: boolean
   onSend?: (
@@ -2022,6 +2042,7 @@ export type AIInputProps = {
     files: File[]
   ) => void | Promise<void>
   onMicClick?: () => void
+  onStop?: () => void | Promise<void>
   /** Fired when the plus button is clicked and no menuItems are provided. */
   onPlusClick?: () => void
   /** Fired when an action item (or submenu item) is selected in the plus menu. */
@@ -2041,15 +2062,20 @@ export function AIInput({
   providers = [],
   defaultProvider,
   disabled = false,
+  generationState = "idle",
   providerDisabled = false,
   settingGroups = [],
   defaultSettings,
   menuActions = [],
   menuItems,
   placeholder = "Ask for follow-up changes",
+  value: controlledValue,
+  onValueChange,
+  editMode,
   showMessages = true,
   onSend,
   onMicClick,
+  onStop,
   onPlusClick,
   onMenuSelect,
   onMenuToggle,
@@ -2058,7 +2084,7 @@ export function AIInput({
   footerAccessory,
   className,
 }: AIInputProps) {
-  const [value, setValue] = useState("")
+  const [internalValue, setInternalValue] = useState("")
   const [messages, setMessages] = useState<AIInputMessage[]>([])
   const [attachments, setAttachments] = useState<File[]>([])
   const [attachmentError, setAttachmentError] = useState("")
@@ -2080,8 +2106,12 @@ export function AIInput({
   const attachmentsRef = useRef<File[]>([])
   const dragDepthRef = useRef(0)
   const messagesRef = useRef<HTMLDivElement>(null)
+  const previousEditMessageIdRef = useRef<string | undefined>(undefined)
   const reducedMotion = useReducedMotion() ?? false
+  const value = controlledValue ?? internalValue
   const hasValue = value.trim() !== ""
+  const generationActive = generationState !== "idle"
+  const settingsLocked = providerDisabled || generationActive
   const resolvedMenuItems =
     menuItems ?? (onPlusClick ? [] : DEFAULT_PLUS_MENU_ITEMS)
 
@@ -2090,9 +2120,17 @@ export function AIInput({
     setAttachments(files)
   }, [])
 
+  const updateValue = useCallback(
+    (next: string) => {
+      if (controlledValue === undefined) setInternalValue(next)
+      onValueChange?.(next)
+    },
+    [controlledValue, onValueChange]
+  )
+
   const addFiles = useCallback(
     (incoming: FileList | File[]) => {
-      if (disabled) return
+      if (disabled || editMode) return
       const current = attachmentsRef.current
       const existing = new Set(
         current.map((file) => `${file.name}:${file.size}:${file.lastModified}`)
@@ -2119,12 +2157,12 @@ export function AIInput({
       setAttachmentError(error)
       textareaRef.current?.focus()
     },
-    [disabled, replaceAttachments]
+    [disabled, editMode, replaceAttachments]
   )
 
   const handleMenuSelect = useCallback(
     (selectedValue: string) => {
-      if (disabled) return
+      if (disabled || editMode) return
       if (selectedValue === "add-files") {
         fileInputRef.current?.click()
         return
@@ -2141,7 +2179,7 @@ export function AIInput({
       }
       onMenuSelect?.(selectedValue)
     },
-    [addFiles, disabled, onMenuSelect]
+    [addFiles, disabled, editMode, onMenuSelect]
   )
 
   useEffect(() => () => window.clearTimeout(waveTimeoutRef.current), [])
@@ -2257,8 +2295,21 @@ export function AIInput({
     element.style.height = `${Math.min(element.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
   }, [])
 
+  useEffect(() => {
+    if (
+      editMode?.messageId &&
+      editMode.messageId !== previousEditMessageIdRef.current
+    ) {
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus()
+        syncHeight()
+      })
+    }
+    previousEditMessageIdRef.current = editMode?.messageId
+  }, [editMode?.messageId, syncHeight])
+
   const handleSend = useCallback(async () => {
-    if (disabled || sendingRef.current) return
+    if (disabled || generationActive || sendingRef.current) return
 
     const trimmed = value.trim()
     if (trimmed === "") return
@@ -2270,12 +2321,13 @@ export function AIInput({
         { provider, settings: internalSettings },
         attachments
       )
+      if (editMode) return
       nextMessageIdRef.current += 1
       setMessages((previous) => [
         ...previous,
         { id: nextMessageIdRef.current, text: trimmed },
       ])
-      setValue("")
+      updateValue("")
       replaceAttachments([])
       setAttachmentError("")
 
@@ -2301,10 +2353,13 @@ export function AIInput({
     provider,
     attachments,
     disabled,
+    editMode,
+    generationActive,
     internalSettings,
     onSend,
     reducedMotion,
     replaceAttachments,
+    updateValue,
     value,
   ])
 
@@ -2313,10 +2368,11 @@ export function AIInput({
       if (event.nativeEvent.isComposing) return
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault()
+        if (generationActive) return
         void handleSend()
       }
     },
-    [handleSend]
+    [generationActive, handleSend]
   )
 
   return (
@@ -2380,6 +2436,29 @@ export function AIInput({
           ) : null}
         </AnimatePresence>
 
+        {editMode ? (
+          <div className="mx-3 mt-3 flex items-start justify-between gap-3 rounded-xl border border-border/70 bg-muted/45 px-3 py-2 text-sm sm:mx-3.5">
+            <div className="min-w-0">
+              <p className="font-medium text-foreground">Editing message</p>
+              {editMode.attachments.length ? (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {editMode.attachments
+                    .map((attachment) => attachment.name)
+                    .join(", ")}
+                  {" · Attachments are retained"}
+                </p>
+              ) : null}
+            </div>
+            <button
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              onClick={editMode.onCancel}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : null}
+
         {attachments.length > 0 ? (
           <AttachmentGroup className="px-3 pt-2.5 pb-0 sm:px-3.5">
             {attachments.map((file) => (
@@ -2422,7 +2501,7 @@ export function AIInput({
           className="block max-h-[120px] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground sm:px-4 sm:text-body sm:leading-5"
           disabled={disabled}
           onValueChange={(next) => {
-            setValue(next)
+            updateValue(next)
             syncHeight()
           }}
           placeholder={placeholder}
@@ -2455,7 +2534,7 @@ export function AIInput({
             <OptionMenu
               ariaLabel="Select provider"
               chipClassName="flex min-h-8 min-w-14 items-center gap-1.5 rounded-lg border border-border/60 bg-muted/75 px-2.5 py-1 font-medium text-label text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,transform] duration-150 hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:px-3"
-              disabled={providerDisabled}
+              disabled={settingsLocked}
               onChange={(next) => {
                 setProvider(next)
                 onProviderChange?.(next)
@@ -2471,6 +2550,7 @@ export function AIInput({
             {settingGroups.length > 0 || menuActions.length > 0 ? (
               <SettingsDropdown
                 groups={settingGroups}
+                disabled={generationActive}
                 menuActions={menuActions}
                 onValueChange={(groupId, val) => {
                   const next = { ...internalSettings, [groupId]: val }
@@ -2493,19 +2573,35 @@ export function AIInput({
               </button>
             ) : null}
 
-            <button
-              aria-label="Send message"
-              className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,opacity,transform] disabled:cursor-not-allowed sm:size-9 ${hasValue && !disabled ? "bg-foreground text-background hover:opacity-90" : "bg-muted-foreground/50 text-background"}`}
-              disabled={disabled || !hasValue}
-              onClick={() => void handleSend()}
-              type="button"
-            >
-              <ArrowUp
-                aria-hidden="true"
-                className="size-4"
-                strokeWidth={2.25}
-              />
-            </button>
+            {generationActive ? (
+              <button
+                aria-label={
+                  generationState === "stopping"
+                    ? "Stopping response"
+                    : "Stop response"
+                }
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-wait disabled:opacity-55 sm:size-9"
+                disabled={generationState === "stopping"}
+                onClick={() => void onStop?.()}
+                type="button"
+              >
+                <Square aria-hidden="true" className="size-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                aria-label="Send message"
+                className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,opacity,transform] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed sm:size-9 ${hasValue && !disabled ? "bg-foreground text-background hover:opacity-90" : "bg-muted-foreground/50 text-background"}`}
+                disabled={disabled || !hasValue}
+                onClick={() => void handleSend()}
+                type="button"
+              >
+                <ArrowUp
+                  aria-hidden="true"
+                  className="size-4"
+                  strokeWidth={2.25}
+                />
+              </button>
+            )}
           </div>
         </div>
       </div>

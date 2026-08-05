@@ -22,6 +22,15 @@ type CompletedItemNotification = {
   item: JsonObject
   turnId: string
 }
+type ActiveGeneration = {
+  cancelRequested: boolean
+  completion?: Promise<JsonObject>
+  done: Promise<void>
+  interruptRequest?: Promise<unknown>
+  resolveDone: () => void
+  threadId?: string
+  turnId?: string
+}
 
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const REQUEST_TIMEOUT_MS = 30_000
@@ -166,6 +175,7 @@ function trustedLoginUrl(value: unknown): value is string {
 }
 
 export class CodexAppServer {
+  private activeGenerations = new Map<string, ActiveGeneration>()
   private child: ChildProcessWithoutNullStreams | null = null
   private nextId = 1
   private notificationObservers = new Set<
@@ -256,110 +266,156 @@ export class CodexAppServer {
   }
 
   async generate(
+    requestId: string,
     input: DesktopCodexGenerateInput,
     onDelta?: (delta: string) => void
   ): Promise<DesktopCodexGenerateResult> {
-    if (!(await this.account()).connected)
-      throw new Error("Sign in with ChatGPT before using Codex")
-    if (!input.model || input.model.length > 200)
-      throw new Error("Codex model is unavailable")
-    if (input.messages.length === 0 || input.messages.length > 200)
-      throw new Error("Conversation context is unavailable")
-
-    const transcript = input.messages
-      .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-      .join("\n\n")
-    if (transcript.length > 200_000)
-      throw new Error("Conversation context is too long")
-
-    const workspace = path.join(app.getPath("userData"), "codex-workspace")
-    fs.mkdirSync(workspace, { recursive: true })
-    const threadResult = await this.request("thread/start", {
-      model: input.model,
-      cwd: workspace,
-      approvalPolicy: "never",
-      sandbox: "read-only",
-      ephemeral: true,
-      developerInstructions:
-        input.developerInstructions?.slice(0, 16_000) ||
-        "You are a general-purpose assistant in Dev3. Answer directly. Do not inspect files, run commands, or modify the filesystem.",
+    if (this.activeGenerations.has(requestId))
+      throw new Error("Codex request is already active")
+    let resolveDone = () => {}
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve
     })
-    const thread = isRecord(threadResult) ? threadResult.thread : null
-    if (!isRecord(thread) || typeof thread.id !== "string")
-      throw new Error("Codex could not start a conversation")
-    const threadId = thread.id
-
-    const completedItems: CompletedItemNotification[] = []
-    const stopObserving = this.observeNotifications((method, params) => {
-      const delta = parseAgentMessageDelta(method, params, threadId)
-      if (delta) onDelta?.(delta)
-      if (
-        method === "item/completed" &&
-        params.threadId === threadId &&
-        typeof params.turnId === "string" &&
-        isRecord(params.item)
-      )
-        completedItems.push({ item: params.item, turnId: params.turnId })
-    })
+    const active: ActiveGeneration = {
+      cancelRequested: false,
+      done,
+      resolveDone,
+    }
+    this.activeGenerations.set(requestId, active)
     try {
-      const turnResult = await this.request("turn/start", {
-        threadId,
-        input: [{ type: "text", text: transcript, text_elements: [] }],
+      if (!(await this.account()).connected)
+        throw new Error("Sign in with ChatGPT before using Codex")
+      if (!input.model || input.model.length > 200)
+        throw new Error("Codex model is unavailable")
+      if (input.messages.length === 0 || input.messages.length > 200)
+        throw new Error("Conversation context is unavailable")
+
+      const transcript = input.messages
+        .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
+        .join("\n\n")
+      if (transcript.length > 200_000)
+        throw new Error("Conversation context is too long")
+
+      const workspace = path.join(app.getPath("userData"), "codex-workspace")
+      fs.mkdirSync(workspace, { recursive: true })
+      const threadResult = await this.request("thread/start", {
         model: input.model,
-        ...(input.effort ? { effort: input.effort } : {}),
+        cwd: workspace,
+        approvalPolicy: "never",
+        sandbox: "read-only",
+        ephemeral: true,
+        developerInstructions:
+          input.developerInstructions?.slice(0, 16_000) ||
+          "You are a general-purpose assistant in Dev3. Answer directly. Do not inspect files, run commands, or modify the filesystem.",
       })
-      const turn = isRecord(turnResult) ? turnResult.turn : null
-      if (!isRecord(turn) || typeof turn.id !== "string")
-        throw new Error("Codex could not start a response")
+      const thread = isRecord(threadResult) ? threadResult.thread : null
+      if (!isRecord(thread) || typeof thread.id !== "string")
+        throw new Error("Codex could not start a conversation")
+      const threadId = thread.id
+      active.threadId = threadId
 
-      const completed = await this.waitForNotification(
-        "turn/completed",
-        (params) => {
-          const completedTurn = params.turn
-          return (
-            params.threadId === threadId &&
-            isRecord(completedTurn) &&
-            completedTurn.id === turn.id
-          )
-        },
-        TURN_TIMEOUT_MS
-      )
-      const completedTurn = isRecord(completed.turn) ? completed.turn : null
-      if (!completedTurn || completedTurn.status !== "completed") {
-        const error =
-          completedTurn && isRecord(completedTurn.error)
-            ? completedTurn.error.message
-            : null
-        throw new Error(
-          typeof error === "string" ? error : "Codex response failed"
+      const completedItems: CompletedItemNotification[] = []
+      const stopObserving = this.observeNotifications((method, params) => {
+        const delta = parseAgentMessageDelta(method, params, threadId)
+        if (delta) onDelta?.(delta)
+        if (
+          method === "item/completed" &&
+          params.threadId === threadId &&
+          typeof params.turnId === "string" &&
+          isRecord(params.item)
         )
-      }
+          completedItems.push({ item: params.item, turnId: params.turnId })
+      })
+      try {
+        const turnResult = await this.request("turn/start", {
+          threadId,
+          input: [{ type: "text", text: transcript, text_elements: [] }],
+          model: input.model,
+          ...(input.effort ? { effort: input.effort } : {}),
+        })
+        const turn = isRecord(turnResult) ? turnResult.turn : null
+        if (!isRecord(turn) || typeof turn.id !== "string")
+          throw new Error("Codex could not start a response")
+        active.turnId = turn.id
+        active.completion = this.waitForNotification(
+          "turn/completed",
+          (params) => {
+            const completedTurn = params.turn
+            return (
+              params.threadId === threadId &&
+              isRecord(completedTurn) &&
+              completedTurn.id === turn.id
+            )
+          },
+          TURN_TIMEOUT_MS
+        )
+        if (active.cancelRequested) await this.interruptGeneration(active)
+        const completed = await active.completion
+        const completedTurn = isRecord(completed.turn) ? completed.turn : null
+        if (completedTurn?.status === "interrupted" && active.cancelRequested)
+          return { content: "", interrupted: true, reasoningSteps: [] }
+        if (!completedTurn || completedTurn.status !== "completed") {
+          const error =
+            completedTurn && isRecord(completedTurn.error)
+              ? completedTurn.error.message
+              : null
+          throw new Error(
+            typeof error === "string" ? error : "Codex response failed"
+          )
+        }
 
-      const items = selectCompletedTurnItems(
-        completedTurn,
-        completedItems,
-        turn.id
-      )
-      const content = items
-        .flatMap((item) =>
-          item.type === "agentMessage" && typeof item.text === "string"
-            ? [item.text]
+        const items = selectCompletedTurnItems(
+          completedTurn,
+          completedItems,
+          turn.id
+        )
+        const content = items
+          .flatMap((item) =>
+            item.type === "agentMessage" && typeof item.text === "string"
+              ? [item.text]
+              : []
+          )
+          .join("\n\n")
+          .trim()
+        const reasoningSteps = items.flatMap((item) =>
+          item.type === "reasoning" && Array.isArray(item.summary)
+            ? item.summary.filter(
+                (part): part is string => typeof part === "string"
+              )
             : []
         )
-        .join("\n\n")
-        .trim()
-      const reasoningSteps = items.flatMap((item) =>
-        item.type === "reasoning" && Array.isArray(item.summary)
-          ? item.summary.filter(
-              (part): part is string => typeof part === "string"
-            )
-          : []
-      )
-      if (!content) throw new Error("Codex returned an empty response")
-      return { content, reasoningSteps }
+        if (!content) throw new Error("Codex returned an empty response")
+        return { content, reasoningSteps }
+      } finally {
+        stopObserving()
+      }
     } finally {
-      stopObserving()
+      if (this.activeGenerations.get(requestId) === active)
+        this.activeGenerations.delete(requestId)
+      active.resolveDone()
     }
+  }
+
+  async cancel(requestId: string) {
+    const active = this.activeGenerations.get(requestId)
+    if (!active) return false
+    active.cancelRequested = true
+    if (active.threadId && active.turnId && active.completion) {
+      await this.interruptGeneration(active)
+      await active.completion
+    } else {
+      await active.done
+    }
+    return true
+  }
+
+  private async interruptGeneration(active: ActiveGeneration) {
+    if (!active.threadId || !active.turnId) return
+    active.interruptRequest ??= this.request("turn/interrupt", {
+      threadId: active.threadId,
+      turnId: active.turnId,
+    })
+    await active.interruptRequest
   }
 
   async stop() {
