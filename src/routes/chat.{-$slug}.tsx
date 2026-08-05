@@ -55,7 +55,6 @@ import {
   ContextContentHeader,
   ContextTrigger,
 } from "@/components/ai-elements/context"
-import { Dev3Mark } from "@/components/dev3-logo"
 import { openDesktopUpdaterDialog } from "@/components/desktop-updater"
 import { ImageGeneration } from "@/components/ui/image-generation"
 import { PersonalizationCenter } from "@/components/personalization-center"
@@ -71,13 +70,19 @@ import type {
   ProjectSourceItem,
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
-import { SidebarModeControls } from "@/components/sidebar-mode-controls"
+import { SidebarWorkspaceSwitcher } from "@/components/sidebar-workspace-switcher"
 import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
+import { formatProjectDate } from "@/lib/format-project-date"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
 import { getUserMessageBubbleColorClassName } from "@/lib/user-message-bubble-color"
 import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
+import {
+  getWorkspaceOutputMode,
+  getWorkspaceProduct,
+} from "@/lib/workspace-product"
+import type { WorkspaceProduct } from "@/lib/workspace-product"
 import type {
   AIInputMenuItem,
   AIInputOption,
@@ -496,10 +501,72 @@ const preferenceReasoningEfforts = {
   deep: "high",
 } as const
 
+const workspaceCopy = {
+  chat: {
+    item: "chat",
+    projectCollection: "Chats",
+    projectContinue: "Continue this conversation",
+    projectEmptyDescription: "Start the first conversation in this project.",
+    projectEmptyTitle: "No chats yet",
+    projectLoading: "Loading project chats...",
+    projectNoMatch: "No matching project chats",
+    projectNone: "No chats in this project yet",
+    recentEmpty: "No chats outside projects yet",
+    recentHeading: "Recent chats",
+    recentNoMatch: "No matching conversations",
+  },
+  image: {
+    item: "image",
+    projectCollection: "Images",
+    projectContinue: "Continue creating from this thread",
+    projectEmptyDescription: "Create the first image in this project.",
+    projectEmptyTitle: "No images yet",
+    projectLoading: "Loading project images...",
+    projectNoMatch: "No matching project images",
+    projectNone: "No images in this project yet",
+    recentEmpty: "No images outside projects yet",
+    recentHeading: "Recent images",
+    recentNoMatch: "No matching images",
+  },
+} satisfies Record<WorkspaceProduct, Record<string, string>>
+
+export function normalizeWorkspaceProduct(value: unknown): WorkspaceProduct {
+  return value === "image" ? "image" : "chat"
+}
+
+export function resolveActiveWorkspace(
+  requestedWorkspace: WorkspaceProduct,
+  selectedOutputMode: "image" | "text" | undefined,
+  hasSelectedConversation: boolean
+): WorkspaceProduct {
+  return hasSelectedConversation
+    ? getWorkspaceProduct(selectedOutputMode)
+    : requestedWorkspace
+}
+
+export function getWorkspaceSwitchSearch(workspace: WorkspaceProduct) {
+  return {
+    workspace,
+    mode: undefined,
+    projectId: undefined,
+    messageId: undefined,
+  }
+}
+
+export function isConversationWorkspacePending(
+  conversationId: string | undefined,
+  selectedConversation: Doc<"conversations"> | null | undefined
+): boolean {
+  return Boolean(conversationId && selectedConversation === undefined)
+}
+
 export const Route = createFileRoute("/chat/{-$slug}")({
   beforeLoad: async () => await requireAuth(),
   errorComponent: ChatErrorState,
   validateSearch: (search: Record<string, unknown>) => ({
+    ...(search.workspace === "chat" || search.workspace === "image"
+      ? { workspace: search.workspace }
+      : {}),
     mode:
       search.mode === "chat-new" ||
       search.mode === "library" ||
@@ -529,6 +596,7 @@ function ChatErrorState() {
       to: "/chat/{-$slug}",
       params: { slug: undefined },
       search: {
+        workspace: "chat",
         mode: undefined,
         projectId: undefined,
         messageId: undefined,
@@ -624,11 +692,27 @@ function ChatWorkspace() {
   const viewer = useQuery(api.auth.viewer)
   const preferences = useQuery(api.users.getPreferences)
   const projects = useQuery(api.projects.list)
+  const selected = useQuery(
+    api.conversations.get,
+    conversationId ? { conversationId } : "skip"
+  )
+  const workspace = resolveActiveWorkspace(
+    normalizeWorkspaceProduct(search.workspace),
+    selected?.outputMode,
+    Boolean(conversationId && selected)
+  )
+  const conversationWorkspacePending = isConversationWorkspacePending(
+    conversationId,
+    selected
+  )
+  const outputMode = getWorkspaceOutputMode(workspace)
+  const copy = workspaceCopy[workspace]
   const projectConversations = useQuery(
     api.conversations.listRecent,
     search.projectId
       ? {
           limit: 30,
+          outputMode,
           projectId: search.projectId,
         }
       : "skip"
@@ -647,12 +731,9 @@ function ChatWorkspace() {
   )
   const recentConversations = useQuery(api.conversations.listRecent, {
     limit: 30,
+    outputMode,
     unassignedOnly: true,
   })
-  const selected = useQuery(
-    api.conversations.get,
-    conversationId ? { conversationId } : "skip"
-  )
   const activeProjectId = resolveActiveProjectId(
     conversationId,
     selected?.projectId,
@@ -749,7 +830,6 @@ function ChatWorkspace() {
   const [activeProvider, setActiveProvider] =
     useState<ActiveProvider>("openrouter")
   const [desktopAvailable, setDesktopAvailable] = useState(false)
-  const [outputMode, setOutputMode] = useState<"image" | "text">("text")
   const [selectedModelId, setSelectedModelId] = useState("")
   const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
     "idle"
@@ -762,6 +842,25 @@ function ChatWorkspace() {
   useEffect(() => {
     setExpandedProjectId(search.projectId)
   }, [search.projectId])
+
+  useEffect(() => {
+    if (!conversationId || !selected) return
+    const canonicalWorkspace = getWorkspaceProduct(selected.outputMode)
+    if (canonicalWorkspace === normalizeWorkspaceProduct(search.workspace))
+      return
+
+    void navigate({
+      to: "/chat/{-$slug}",
+      params: { slug: conversationId },
+      replace: true,
+      search: {
+        workspace: canonicalWorkspace,
+        mode: search.mode,
+        projectId: search.projectId,
+        messageId: search.messageId,
+      },
+    })
+  }, [conversationId, navigate, search, selected])
 
   useEffect(() => {
     setDesktopAvailable(Boolean(getDesktopApi()))
@@ -793,6 +892,8 @@ function ChatWorkspace() {
       getExecutionProviderOptions(connectedProviderOptions, "image").length > 0,
     [connectedProviderOptions]
   )
+  const needsImageProvider =
+    workspace === "image" && connections !== undefined && !hasImageProvider
   const activeConnection = connections?.find(
     (connection) =>
       connection.provider === activeProvider &&
@@ -827,10 +928,6 @@ function ChatWorkspace() {
     outputMode,
     selected?.providerConnectionId,
   ])
-
-  useEffect(() => {
-    if (conversationId && selected) setOutputMode(selected.outputMode ?? "text")
-  }, [conversationId, selected])
 
   useEffect(() => {
     if (executionProviderOptions.some(({ value }) => value === activeProvider))
@@ -1125,16 +1222,29 @@ function ChatWorkspace() {
     messageId?: string
     projectId?: string
     slug?: string
+    workspace?: WorkspaceProduct
   }) =>
     navigate({
       to: "/chat/{-$slug}",
       params: { slug: next.slug },
       search: {
+        workspace: next.workspace ?? workspace,
         mode: next.mode,
         projectId: next.projectId,
         messageId: next.messageId,
       },
     })
+
+  const switchWorkspace = (nextWorkspace: WorkspaceProduct) => {
+    setSearchQuery("")
+    setVoiceMode(false)
+    setVoiceConversationId(null)
+    return navigate({
+      to: "/chat/{-$slug}",
+      params: { slug: undefined },
+      search: getWorkspaceSwitchSearch(nextWorkspace),
+    })
+  }
 
   const activateVoice = async () => {
     if (conversationId) {
@@ -1779,28 +1889,12 @@ function ChatWorkspace() {
     <SidebarProvider className="chat-workspace-shell h-svh overflow-hidden">
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
         <SidebarHeader className="gap-2 border-b border-sidebar-border/50 p-2.5">
-          <a
-            aria-label="Dev3 home"
-            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            href="/chat"
-          >
-            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#0B0D12] p-1.5 shadow-sm ring-1 ring-sidebar-border/70">
-              <Dev3Mark className="size-full" mode="dark" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
-                Dev3
-              </span>
-              <span className="mt-0.5 block truncate text-[10px] font-medium tracking-[0.14em] text-sidebar-foreground/45 uppercase">
-                Workspace
-              </span>
-            </span>
-          </a>
-          <SidebarModeControls
-            disabled={Boolean(conversationId) || sendState === "sending"}
-            hasImageProvider={hasImageProvider}
-            mode={outputMode}
-            onModeChange={setOutputMode}
+          <SidebarWorkspaceSwitcher
+            disabled={conversationWorkspacePending || sendState === "sending"}
+            workspace={workspace}
+            onWorkspaceChange={(nextWorkspace) =>
+              void switchWorkspace(nextWorkspace)
+            }
             onVoiceActivate={() => void activateVoice()}
           />
           <Button
@@ -1816,7 +1910,7 @@ function ChatWorkspace() {
               icon={Add01Icon}
               strokeWidth={2}
             />{" "}
-            New chat
+            {workspace === "image" ? "New image" : "New chat"}
           </Button>
           <ProviderConnectDialog
             onOpenChange={setConnectorOpen}
@@ -1830,10 +1924,16 @@ function ChatWorkspace() {
               strokeWidth={1.8}
             />
             <SidebarInput
-              aria-label="Search recent chats"
+              aria-label={
+                workspace === "image"
+                  ? "Search recent images"
+                  : "Search recent chats"
+              }
               className="h-8 rounded-lg border-sidebar-border/60 bg-background/55 pl-8 transition-colors focus-visible:bg-background"
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search chats"
+              placeholder={
+                workspace === "image" ? "Search images" : "Search chats"
+              }
               value={searchQuery}
             />
           </div>
@@ -1902,7 +2002,7 @@ function ChatWorkspace() {
                           </span>
                         </SidebarMenuButton>
                         <SidebarMenuAction
-                          aria-label={`Start a new chat in ${project.name}`}
+                          aria-label={`Start a new ${copy.item} in ${project.name}`}
                           className="right-7"
                           disabled={projectMenuActionId === project._id}
                           onClick={() =>
@@ -1965,8 +2065,8 @@ function ChatWorkspace() {
                               ) : filteredProjectConversations.length === 0 ? (
                                 <p className="px-2 py-2 text-xs text-sidebar-foreground/55">
                                   {searchQuery
-                                    ? "No matching project chats"
-                                    : "No chats in this project yet"}
+                                    ? copy.projectNoMatch
+                                    : copy.projectNone}
                                 </p>
                               ) : (
                                 <CappedConversationList
@@ -1994,7 +2094,7 @@ function ChatWorkspace() {
           </SidebarGroup>
           <SidebarGroup className="p-1.5 pt-2">
             <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
-              Recent chats
+              {copy.recentHeading}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
@@ -2002,9 +2102,7 @@ function ChatWorkspace() {
                   <SidebarMenuSkeleton />
                 ) : filteredRecentConversations.length === 0 ? (
                   <p className="px-2 py-2 text-xs text-sidebar-foreground/55">
-                    {searchQuery
-                      ? "No matching conversations"
-                      : "No chats outside projects yet"}
+                    {searchQuery ? copy.recentNoMatch : copy.recentEmpty}
                   </p>
                 ) : (
                   <CappedConversationList
@@ -2017,7 +2115,9 @@ function ChatWorkspace() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="gap-1.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2">
-          {conversationId ? (
+          {conversationId &&
+          workspace === "chat" &&
+          !conversationWorkspacePending ? (
             <Select
               aria-label="Chat memory mode"
               onValueChange={(memoryMode) => {
@@ -2087,6 +2187,7 @@ function ChatWorkspace() {
               })
             }
             open={archivedOpen}
+            outputMode={outputMode}
           />
         </SidebarFooter>
       </Sidebar>
@@ -2117,13 +2218,16 @@ function ChatWorkspace() {
                 ? "Library"
                 : search.mode === "project"
                   ? (selectedProject?.name ?? "Project")
-                  : (selected?.title ?? "New chat")}
+                  : (selected?.title ??
+                    (workspace === "image" ? "New image" : "New chat"))}
             </p>
           </div>
         </header>
         <section
           className="flex min-h-0 flex-1 flex-col"
-          aria-label="Chat workspace"
+          aria-label={
+            workspace === "image" ? "Image workspace" : "Chat workspace"
+          }
         >
           {search.mode === "library" ? (
             <Suspense
@@ -2177,6 +2281,7 @@ function ChatWorkspace() {
                 }
                 project={selectedProject}
                 sources={projectSources}
+                workspace={workspace}
               />
             ) : (
               <ChatStatus message="That project is unavailable." />
@@ -2653,6 +2758,8 @@ function ChatWorkspace() {
                 </aside>
               </div>
             </div>
+          ) : conversationWorkspacePending ? (
+            <ChatStatus loading message="Loading conversation..." />
           ) : voiceMode && voiceConversationId ? (
             <Suspense
               fallback={<ChatStatus loading message="Starting voice…" />}
@@ -2695,9 +2802,35 @@ function ChatWorkspace() {
                 <div className="mx-auto w-full max-w-3xl">
                   {selected?.status === "archived" ? (
                     <p className="mb-2 text-center text-xs text-muted-foreground">
-                      This chat is archived. Restore it from your profile menu
-                      to keep chatting.
+                      This {workspace === "image" ? "image thread" : "chat"} is
+                      archived. Restore it from your profile menu to continue.
                     </p>
+                  ) : null}
+                  {needsImageProvider && !conversationId ? (
+                    <div
+                      className="mb-3 flex flex-col items-start justify-between gap-3 border-y border-border/70 py-3 sm:flex-row sm:items-center"
+                      role="status"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          Connect an image provider to start creating
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          Dev3 Image uses OpenRouter or fal for image
+                          generation.
+                        </p>
+                      </div>
+                      <Button
+                        className="shrink-0"
+                        onClick={() => setConnectorOpen(true)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Plug aria-hidden="true" />
+                        Connect provider
+                      </Button>
+                    </div>
                   ) : null}
                   {catalogState === "failed" ? (
                     <p
@@ -2709,6 +2842,7 @@ function ChatWorkspace() {
                     </p>
                   ) : null}
                   <AIInput
+                    key={workspace}
                     defaultProvider={activeProvider}
                     defaultSettings={defaultSettings}
                     disabled={
@@ -2745,20 +2879,22 @@ function ChatWorkspace() {
                     menuItems={menuItems}
                     placeholder={
                       selected?.status === "archived"
-                        ? "Restore this chat to continue messaging"
-                        : !activeConnection
-                          ? "Connect a provider to choose a model"
-                          : catalogState === "loading"
-                            ? "Loading provider models..."
-                            : catalogState === "failed"
-                              ? "Reconnect your provider to continue"
-                              : activeProvider === "cursor"
-                                ? "Cursor chat is not available yet"
-                                : selectedModel
-                                  ? outputMode === "image"
-                                    ? `Describe an image for ${selectedModel.label}`
-                                    : `Message ${selectedModel.label}`
-                                  : "Choose a model"
+                        ? `Restore this ${workspace === "image" ? "image thread" : "chat"} to continue`
+                        : needsImageProvider
+                          ? "Connect OpenRouter or fal to create images"
+                          : !activeConnection
+                            ? "Connect a provider to choose a model"
+                            : catalogState === "loading"
+                              ? "Loading provider models..."
+                              : catalogState === "failed"
+                                ? "Reconnect your provider to continue"
+                                : activeProvider === "cursor"
+                                  ? "Cursor chat is not available yet"
+                                  : selectedModel
+                                    ? outputMode === "image"
+                                      ? `Describe an image for ${selectedModel.label}`
+                                      : `Message ${selectedModel.label}`
+                                    : "Choose a model"
                     }
                     providerDisabled={
                       Boolean(conversationId) || sendState === "sending"
@@ -2793,17 +2929,6 @@ function ChatWorkspace() {
   )
 }
 
-function formatProjectDate(value: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year:
-      new Date(value).getFullYear() === new Date().getFullYear()
-        ? undefined
-        : "numeric",
-  }).format(value)
-}
-
 function ProjectWorkspace({
   conversations,
   embeddingActionError,
@@ -2819,6 +2944,7 @@ function ProjectWorkspace({
   onUploadFiles,
   project,
   sources,
+  workspace,
 }: {
   conversations: Doc<"conversations">[] | undefined
   embeddingActionError: string
@@ -2839,8 +2965,10 @@ function ProjectWorkspace({
   ) => Promise<void>
   project: Doc<"projects">
   sources: ProjectSourceItem[] | undefined
+  workspace: WorkspaceProduct
 }) {
   const [activeTab, setActiveTab] = useState("chats")
+  const copy = workspaceCopy[workspace]
   const inputId = `project-${project._id}-source-files`
   const remainingFiles =
     sources === undefined
@@ -2881,7 +3009,7 @@ function ProjectWorkspace({
               strokeWidth={2}
             />
             <span className="text-body text-muted-foreground">
-              New chat in {project.name}
+              New {copy.item} in {project.name}
             </span>
           </button>
 
@@ -2892,7 +3020,7 @@ function ProjectWorkspace({
                   className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
                   value="chats"
                 >
-                  Chats
+                  {copy.projectCollection}
                 </TabsTrigger>
                 <TabsTrigger
                   className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
@@ -2918,13 +3046,13 @@ function ProjectWorkspace({
             </div>
             <TabsContent value="chats">
               {conversations === undefined ? (
-                <ChatStatus loading message="Loading project chats..." />
+                <ChatStatus loading message={copy.projectLoading} />
               ) : conversations.length === 0 ? (
                 <Empty className="min-h-56 border-0">
                   <EmptyHeader>
-                    <EmptyTitle>No chats yet</EmptyTitle>
+                    <EmptyTitle>{copy.projectEmptyTitle}</EmptyTitle>
                     <EmptyDescription>
-                      Start the first conversation in this project.
+                      {copy.projectEmptyDescription}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -2942,7 +3070,7 @@ function ProjectWorkspace({
                           {conversation.title}
                         </span>
                         <span className="mt-0.5 block truncate text-body text-muted-foreground">
-                          Continue this conversation
+                          {copy.projectContinue}
                         </span>
                       </span>
                       <time

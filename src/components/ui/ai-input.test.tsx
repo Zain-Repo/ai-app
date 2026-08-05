@@ -45,6 +45,30 @@ describe("AIInput attachments", () => {
     expect(onSend.mock.calls[0]?.[0]).toBe("Summarize this file")
     expect(onSend.mock.calls[0]?.[2]).toEqual([file])
   })
+
+  it("clears draft text and attachments when its workspace key changes", () => {
+    const file = new File(["image prompt"], "reference.png", {
+      type: "image/png",
+    })
+    const view = render(<AIInput key="chat" />)
+
+    fireEvent.drop(window, {
+      dataTransfer: { files: [file], types: ["Files"] },
+    })
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Use this reference" },
+    })
+
+    expect(screen.getByText("reference.png")).toBeTruthy()
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Message").value).toBe(
+      "Use this reference"
+    )
+
+    view.rerender(<AIInput key="image" />)
+
+    expect(screen.queryByText("reference.png")).toBeNull()
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Message").value).toBe("")
+  })
 })
 
 describe("AIInput controlled defaults", () => {

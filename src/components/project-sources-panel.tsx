@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/empty"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner"
+import { formatProjectDate } from "@/lib/format-project-date"
 
 export type ProjectEmbeddingProvider = "openai" | "openrouter"
 
@@ -219,17 +220,6 @@ function formatFileSize(size: number) {
   return size < 1024 * 1024
     ? `${Math.max(1, Math.round(size / 1024))} KB`
     : `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatProjectDate(value: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year:
-      new Date(value).getFullYear() === new Date().getFullYear()
-        ? undefined
-        : "numeric",
-  }).format(value)
 }
 
 function getAttachmentState(status: ProjectEmbeddingStatus) {

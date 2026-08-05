@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import type { WorkspaceOutputMode } from "@/lib/workspace-product"
 
 type ArchivedChatsDialogProps = {
   onOpenChange?: (open: boolean) => void
@@ -24,17 +25,35 @@ type ArchivedChatsDialogProps = {
     slug: Id<"conversations">
   }) => void | Promise<void>
   open?: boolean
+  outputMode: WorkspaceOutputMode
   trigger?: ReactElement
+}
+
+function getArchivedWorkspaceCopy(outputMode: WorkspaceOutputMode) {
+  if (outputMode === "image")
+    return {
+      item: "image",
+      items: "images",
+      restoreTarget: "an image thread",
+    }
+
+  return {
+    item: "chat",
+    items: "chats",
+    restoreTarget: "a chat",
+  }
 }
 
 export function ArchivedChatsDialog({
   onOpenChange,
   onOpenChat,
   open: controlledOpen,
+  outputMode,
   trigger,
 }: ArchivedChatsDialogProps) {
   const archived = useQuery(api.conversations.listRecent, {
     limit: 30,
+    outputMode,
     status: "archived",
   })
   const unarchiveConversation = useMutation(api.conversations.unarchive)
@@ -44,6 +63,7 @@ export function ArchivedChatsDialog({
   const [error, setError] = useState<string | null>(null)
   const isControlled = controlledOpen !== undefined
   const open = controlledOpen ?? uncontrolledOpen
+  const copy = getArchivedWorkspaceCopy(outputMode)
 
   function setOpen(nextOpen: boolean) {
     if (!isControlled) setUncontrolledOpen(nextOpen)
@@ -60,7 +80,7 @@ export function ArchivedChatsDialog({
     try {
       await unarchiveConversation({ conversationId })
     } catch {
-      setError("Could not restore that chat. Try again.")
+      setError(`Could not restore that ${copy.item}. Try again.`)
     } finally {
       setPendingId(null)
     }
@@ -72,7 +92,7 @@ export function ArchivedChatsDialog({
     try {
       await removeConversation({ conversationId })
     } catch {
-      setError("Could not delete that chat. Try again.")
+      setError(`Could not delete that ${copy.item}. Try again.`)
     } finally {
       setPendingId(null)
     }
@@ -90,7 +110,7 @@ export function ArchivedChatsDialog({
       })
       setOpen(false)
     } catch {
-      setError("Could not open that chat. Try again.")
+      setError(`Could not open that ${copy.item}. Try again.`)
     }
   }
 
@@ -104,9 +124,10 @@ export function ArchivedChatsDialog({
       {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="border-b border-border/70 px-4 py-3.5 pr-12 sm:px-5">
-          <DialogTitle>Archived chats</DialogTitle>
+          <DialogTitle>Archived {copy.items}</DialogTitle>
           <DialogDescription>
-            Restore a chat to the sidebar or delete it permanently.
+            Restore {copy.restoreTarget} to the sidebar or delete it
+            permanently.
           </DialogDescription>
         </DialogHeader>
 
@@ -114,11 +135,11 @@ export function ArchivedChatsDialog({
           {archived === undefined ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner className="size-4" />
-              Loading archived chats
+              Loading archived {copy.items}
             </div>
           ) : archived.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No archived chats yet.
+              No archived {copy.items} yet.
             </p>
           ) : (
             <ul className="space-y-2">

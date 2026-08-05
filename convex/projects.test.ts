@@ -594,6 +594,115 @@ describe("projects and conversations", () => {
     ).toEqual([expect.objectContaining({ title: "Outside chat" })])
   })
 
+  it("separates text and image histories across recent, project, and archive views", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|workspace-owner"))
+    const otherOwner = t.withIdentity(identity("clerk|workspace-other"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    const otherOwnerId = await otherOwner.mutation(api.users.syncCurrent)
+    const projectId = await owner.mutation(api.projects.create, {
+      name: "Workspace project",
+    })
+
+    await t.run(async (ctx) => {
+      const conversations = [
+        { title: "Legacy unassigned", updatedAt: 8 },
+        { title: "Text unassigned", updatedAt: 7, outputMode: "text" as const },
+        {
+          title: "Image unassigned",
+          updatedAt: 9,
+          outputMode: "image" as const,
+        },
+        { title: "Legacy project", updatedAt: 6, projectId },
+        {
+          title: "Text project",
+          updatedAt: 5,
+          outputMode: "text" as const,
+          projectId,
+        },
+        {
+          title: "Image project",
+          updatedAt: 4,
+          outputMode: "image" as const,
+          projectId,
+        },
+      ]
+
+      for (const conversation of conversations) {
+        await ctx.db.insert("conversations", {
+          ownerId,
+          status: "active",
+          ...conversation,
+        })
+      }
+
+      for (const conversation of [
+        { title: "Legacy archived", updatedAt: 3 },
+        { title: "Text archived", updatedAt: 2, outputMode: "text" as const },
+        { title: "Image archived", updatedAt: 1, outputMode: "image" as const },
+      ]) {
+        await ctx.db.insert("conversations", {
+          ownerId,
+          status: "archived",
+          ...conversation,
+        })
+      }
+
+      await ctx.db.insert("conversations", {
+        ownerId: otherOwnerId,
+        status: "active",
+        title: "Other owner's image",
+        updatedAt: 10,
+        outputMode: "image",
+      })
+    })
+
+    const titles = async (args: {
+      limit?: number
+      outputMode?: "image" | "text"
+      projectId?: string
+      status?: "active" | "archived"
+      unassignedOnly?: boolean
+    }) =>
+      (await owner.query(api.conversations.listRecent, args)).map(
+        (conversation) => conversation.title
+      )
+
+    await expect(titles({ outputMode: "text" })).resolves.toEqual([
+      "Legacy unassigned",
+      "Text unassigned",
+      "Legacy project",
+      "Text project",
+    ])
+    await expect(titles({ outputMode: "image" })).resolves.toEqual([
+      "Image unassigned",
+      "Image project",
+    ])
+    await expect(titles({ limit: 2, outputMode: "text" })).resolves.toEqual([
+      "Legacy unassigned",
+      "Text unassigned",
+    ])
+    await expect(
+      titles({ outputMode: "text", unassignedOnly: true })
+    ).resolves.toEqual(["Legacy unassigned", "Text unassigned"])
+    await expect(
+      titles({ outputMode: "image", unassignedOnly: true })
+    ).resolves.toEqual(["Image unassigned"])
+    await expect(titles({ outputMode: "text", projectId })).resolves.toEqual([
+      "Legacy project",
+      "Text project",
+    ])
+    await expect(titles({ outputMode: "image", projectId })).resolves.toEqual([
+      "Image project",
+    ])
+    await expect(
+      titles({ outputMode: "text", status: "archived" })
+    ).resolves.toEqual(["Legacy archived", "Text archived"])
+    await expect(
+      titles({ outputMode: "image", status: "archived" })
+    ).resolves.toEqual(["Image archived"])
+  })
+
   it("archives, lists archived, restores, and deletes owned chats", async () => {
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))

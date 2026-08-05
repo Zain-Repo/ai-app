@@ -295,20 +295,21 @@ export default defineSchema({
     .index("by_owner_updated_at", ["ownerId", "updatedAt"])
     .index("by_project_id_and_updated_at", ["projectId", "updatedAt"])
     .index("by_owner_status_updated_at", ["ownerId", "status", "updatedAt"])
-    .index("by_owner_id_and_status_and_output_mode_and_updated_at", {
-      fields: ["ownerId", "status", "outputMode", "updatedAt"],
-      staged: true,
-    })
-    .index("by_owner_id_and_project_id_and_status_and_updated_at", {
-      fields: ["ownerId", "projectId", "status", "updatedAt"],
-      staged: true,
-    })
+    .index("by_owner_id_and_status_and_output_mode_and_updated_at", [
+      "ownerId",
+      "status",
+      "outputMode",
+      "updatedAt",
+    ])
+    .index("by_owner_id_and_project_id_and_status_and_updated_at", [
+      "ownerId",
+      "projectId",
+      "status",
+      "updatedAt",
+    ])
     .index(
       "by_owner_id_and_project_id_and_status_and_output_mode_and_updated_at",
-      {
-        fields: ["ownerId", "projectId", "status", "outputMode", "updatedAt"],
-        staged: true,
-      }
+      ["ownerId", "projectId", "status", "outputMode", "updatedAt"]
     )
     .index("by_project_id_and_status_and_updated_at", [
       "projectId",
