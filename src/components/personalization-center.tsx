@@ -1,3 +1,11 @@
+import {
+  AiBrain01Icon,
+  AiNetworkIcon,
+  Cancel01Icon,
+  Clock01Icon,
+  Settings02Icon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "convex/react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
@@ -18,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -280,27 +289,106 @@ export function PersonalizationCenter({
         if (next && saved) setPreferences(saved)
       }}
     >
-      <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
-            Manage providers, conversation defaults, and memory.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="h-[min(46rem,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        showCloseButton={false}
+      >
         <p aria-live="polite" className="sr-only" role="status">
           {notice}
         </p>
-        <Tabs className="gap-0" defaultValue="defaults">
-          <TabsList
-            aria-label="Settings sections"
-            className="mx-5 mt-4 w-auto sm:mx-6"
+        <Tabs
+          className="grid min-h-0 grid-cols-[4rem_minmax(0,1fr)] gap-0 sm:grid-cols-[13.5rem_minmax(0,1fr)]"
+          defaultValue="defaults"
+          orientation="vertical"
+        >
+          <aside className="flex min-h-0 flex-col border-r border-border/70 bg-muted/25">
+            <div className="flex items-start justify-center gap-3 border-b border-border/70 p-2.5 sm:justify-start sm:p-3.5">
+              <DialogClose
+                render={
+                  <Button
+                    className="shrink-0 rounded-xl"
+                    size="icon"
+                    variant="outline"
+                  />
+                }
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Cancel01Icon}
+                  strokeWidth={2}
+                />
+                <span className="sr-only">Close</span>
+              </DialogClose>
+              <DialogHeader className="sr-only min-w-0 pt-0.5 sm:not-sr-only sm:flex">
+                <DialogTitle>Settings</DialogTitle>
+                <DialogDescription className="text-xs leading-relaxed">
+                  Providers, defaults, and memory.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+            <nav
+              aria-label="Settings navigation"
+              className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:p-3"
+            >
+              <TabsList
+                aria-label="Settings sections"
+                className="h-auto w-full flex-col justify-start gap-1 rounded-none bg-transparent p-0"
+              >
+                <TabsTrigger
+                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  value="defaults"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={Settings02Icon}
+                    strokeWidth={1.8}
+                  />
+                  <span className="sr-only sm:not-sr-only">General</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  value="memory"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={AiBrain01Icon}
+                    strokeWidth={1.8}
+                  />
+                  <span className="sr-only sm:not-sr-only">Saved memory</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  value="history"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={Clock01Icon}
+                    strokeWidth={1.8}
+                  />
+                  <span className="sr-only sm:not-sr-only">History</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  value="processing"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={AiNetworkIcon}
+                    strokeWidth={1.8}
+                  />
+                  <span className="sr-only sm:not-sr-only">Processing</span>
+                </TabsTrigger>
+              </TabsList>
+            </nav>
+          </aside>
+          <TabsContent
+            className="h-full min-h-0 min-w-0 space-y-8 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            value="defaults"
           >
-            <TabsTrigger value="defaults">General</TabsTrigger>
-            <TabsTrigger value="memory">Saved memory</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="processing">Processing</TabsTrigger>
-          </TabsList>
-          <TabsContent className="space-y-8 px-5 py-5 sm:px-6" value="defaults">
+            <SettingsPanelHeader
+              description="Manage connected providers and choose the defaults used for new conversations."
+              title="General"
+            />
             <section
               aria-labelledby="providers-settings-heading"
               className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-muted/45 p-4"
@@ -478,12 +566,19 @@ export function PersonalizationCenter({
               </Button>
             </section>
           </TabsContent>
-          <TabsContent className="space-y-4 px-5 py-5 sm:px-6" value="memory">
+          <TabsContent
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            value="memory"
+          >
+            <SettingsPanelHeader
+              description="Review, add, edit, and remove durable details used in future conversations."
+              title="Saved memory"
+            />
             <section aria-labelledby="memory-heading">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-medium" id="memory-heading">
-                    Saved memory
+                    Memory library
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     {personalization
@@ -859,7 +954,14 @@ export function PersonalizationCenter({
               ) : null}
             </section>
           </TabsContent>
-          <TabsContent className="space-y-4 px-5 py-5 sm:px-6" value="history">
+          <TabsContent
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            value="history"
+          >
+            <SettingsPanelHeader
+              description="Control whether eligible conversations create private history summaries."
+              title="History"
+            />
             <section aria-labelledby="history-heading">
               <h2 className="text-base font-medium" id="history-heading">
                 Chat history memory
@@ -899,9 +1001,13 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="space-y-4 px-5 py-5 sm:px-6"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
             value="processing"
           >
+            <SettingsPanelHeader
+              description="Choose the provider that extracts and indexes memory, and monitor its status."
+              title="Processing"
+            />
             <section aria-labelledby="processing-heading">
               <h2 className="text-base font-medium" id="processing-heading">
                 Memory processing
@@ -994,6 +1100,25 @@ export function PersonalizationCenter({
         </Tabs>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function SettingsPanelHeader({
+  description,
+  title,
+}: {
+  description: string
+  title: string
+}) {
+  return (
+    <header className="sticky top-0 z-10 -mx-5 -mt-5 border-b border-border/70 bg-popover/95 px-5 py-5 backdrop-blur-sm sm:-mx-7 sm:-mt-6 sm:px-7 sm:py-6">
+      <h2 className="font-heading text-lg font-medium tracking-tight">
+        {title}
+      </h2>
+      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+        {description}
+      </p>
+    </header>
   )
 }
 

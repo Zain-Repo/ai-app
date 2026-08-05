@@ -159,6 +159,19 @@ describe("PersonalizationCenter", () => {
       />
     )
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy()
+    expect(
+      screen.getByRole("navigation", { name: "Settings navigation" }).className
+    ).toContain("overflow-y-auto")
+    expect(
+      screen
+        .getByRole("tablist", { name: "Settings sections" })
+        .getAttribute("data-orientation")
+    ).toBe("vertical")
+    const generalPanel = screen
+      .getByRole("heading", { name: "General" })
+      .closest('[data-slot="tabs-content"]')
+    expect(generalPanel).not.toBeNull()
+    expect((generalPanel as HTMLElement).className).toContain("overflow-y-auto")
     expect(screen.getByRole("tab", { name: "General" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Saved memory" })).toBeTruthy()
     expect(screen.getByText("1 provider connected")).toBeTruthy()
