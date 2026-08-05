@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import fs from "node:fs"
 
 import {
+  CodexAppServer,
   isDesktopCodexReasoningEffort,
   parseAgentMessageDelta,
   parseDesktopCodexModels,
@@ -12,9 +14,45 @@ import {
   parseCodexVersion,
 } from "./codex-runtime"
 
-vi.mock("electron", () => ({ app: {}, shell: {} }))
+vi.mock("electron", () => ({
+  app: { getPath: () => "C:/test-user-data" },
+  shell: {},
+}))
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve = (_value: T) => {}
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve
+  })
+  return { promise, resolve }
+}
+
+type TestableCodexServer = {
+  request: (
+    method: string,
+    params?: Record<string, unknown>
+  ) => Promise<unknown>
+  waitForNotification: (
+    method: string,
+    predicate: (params: Record<string, unknown>) => boolean,
+    timeoutMs: number
+  ) => Promise<Record<string, unknown>>
+}
+
+const generationInput = {
+  messages: [{ content: "Hello", role: "user" as const }],
+  model: "gpt-test",
+}
 
 describe("Codex runtime metadata", () => {
   it("accepts only the expected app release and a valid Codex version", () => {
@@ -55,6 +93,82 @@ describe("Codex runtime metadata", () => {
 })
 
 describe("Codex app-server protocol", () => {
+  it("interrupts the originating thread and turn after turn/start", async () => {
+    vi.spyOn(fs, "mkdirSync").mockReturnValue(undefined)
+    const server = new CodexAppServer()
+    const internals = server as unknown as TestableCodexServer
+    const completion = deferred<Record<string, unknown>>()
+    const request = vi
+      .spyOn(internals, "request")
+      .mockImplementation(async (method) => {
+        if (method === "account/read") return { account: { type: "chatgpt" } }
+        if (method === "thread/start") return { thread: { id: "thread-1" } }
+        if (method === "turn/start") return { turn: { id: "turn-1" } }
+        if (method === "turn/interrupt") return {}
+        throw new Error(`Unexpected request: ${method}`)
+      })
+    vi.spyOn(internals, "waitForNotification").mockReturnValue(
+      completion.promise
+    )
+
+    const generation = server.generate("request-1", generationInput)
+    await vi.waitFor(() =>
+      expect(internals.waitForNotification).toHaveBeenCalled()
+    )
+    const cancellation = server.cancel("request-1")
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith("turn/interrupt", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+      })
+    )
+    completion.resolve({ turn: { id: "turn-1", status: "interrupted" } })
+
+    await expect(cancellation).resolves.toBe(true)
+    await expect(generation).resolves.toEqual({
+      content: "",
+      interrupted: true,
+      reasoningSteps: [],
+    })
+  })
+
+  it("handles cancellation while turn/start is still pending", async () => {
+    vi.spyOn(fs, "mkdirSync").mockReturnValue(undefined)
+    const server = new CodexAppServer()
+    const internals = server as unknown as TestableCodexServer
+    const turnStart = deferred<unknown>()
+    const requestedMethods: string[] = []
+    const request = vi
+      .spyOn(internals, "request")
+      .mockImplementation(async (method) => {
+        requestedMethods.push(method)
+        if (method === "account/read") return { account: { type: "chatgpt" } }
+        if (method === "thread/start") return { thread: { id: "thread-1" } }
+        if (method === "turn/start") return await turnStart.promise
+        if (method === "turn/interrupt") return {}
+        throw new Error(`Unexpected request: ${method}`)
+      })
+    vi.spyOn(internals, "waitForNotification").mockResolvedValue({
+      turn: { id: "turn-1", status: "interrupted" },
+    })
+
+    const generation = server.generate("request-1", generationInput)
+    await vi.waitFor(() => expect(requestedMethods).toContain("turn/start"))
+    const cancellation = server.cancel("request-1")
+    turnStart.resolve({ turn: { id: "turn-1" } })
+
+    await expect(cancellation).resolves.toBe(true)
+    await expect(generation).resolves.toEqual({
+      content: "",
+      interrupted: true,
+      reasoningSteps: [],
+    })
+    expect(request).toHaveBeenCalledWith("turn/interrupt", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+    })
+  })
+
   it("accepts only agent message deltas for the active thread", () => {
     expect(
       parseAgentMessageDelta(

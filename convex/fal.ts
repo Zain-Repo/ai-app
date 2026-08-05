@@ -394,6 +394,11 @@ function isTrustedFalMediaUrl(value: string) {
   )
 }
 
+function timeoutSignal(milliseconds: number, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(milliseconds)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
+}
+
 async function readBoundedImage(response: Response) {
   if (!response.body) throw new Error("Fal returned an invalid image")
   const reader = response.body.getReader()
@@ -423,14 +428,18 @@ async function readBoundedImage(response: Response) {
   return bytes
 }
 
-async function downloadFalImage(imageUrl: string, fetcher: Fetcher) {
+async function downloadFalImage(
+  imageUrl: string,
+  fetcher: Fetcher,
+  signal?: AbortSignal
+) {
   let url = imageUrl
   for (let redirect = 0; redirect < 4; redirect += 1) {
     if (!isTrustedFalMediaUrl(url))
       throw new Error("Fal returned an invalid image URL")
     const response = await fetcher(url, {
       redirect: "manual",
-      signal: AbortSignal.timeout(FAL_REQUEST_TIMEOUT_MS),
+      signal: timeoutSignal(FAL_REQUEST_TIMEOUT_MS, signal),
     })
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location")
@@ -464,11 +473,13 @@ export async function generateFalImage(
   dependencies: {
     fetcher?: Fetcher
     now?: () => number
+    signal?: AbortSignal
     wait?: (milliseconds: number) => Promise<void>
   } = {}
 ) {
   const fetcher = dependencies.fetcher ?? fetch
   const now = dependencies.now ?? Date.now
+  const signal = dependencies.signal
   const wait =
     dependencies.wait ??
     ((milliseconds: number) =>
@@ -488,7 +499,7 @@ export async function generateFalImage(
       method: "POST",
       headers,
       body: JSON.stringify(request.input),
-      signal: AbortSignal.timeout(FAL_REQUEST_TIMEOUT_MS),
+      signal: timeoutSignal(FAL_REQUEST_TIMEOUT_MS, signal),
     }
   )
   const submission = await readJson(submitResponse)
@@ -514,10 +525,11 @@ export async function generateFalImage(
   const deadline = now() + FAL_GENERATION_TIMEOUT_MS
 
   for (;;) {
+    signal?.throwIfAborted()
     if (now() >= deadline) throw new Error("Fal image generation timed out")
     const statusResponse = await fetcher(statusUrl, {
       headers: { Authorization: headers.Authorization },
-      signal: AbortSignal.timeout(FAL_REQUEST_TIMEOUT_MS),
+      signal: timeoutSignal(FAL_REQUEST_TIMEOUT_MS, signal),
     })
     const status = await readJson(statusResponse)
     if (!statusResponse.ok) throw new FalApiError(statusResponse.status)
@@ -531,13 +543,14 @@ export async function generateFalImage(
     if (status.status !== "IN_QUEUE" && status.status !== "IN_PROGRESS")
       throw new Error("Fal returned an invalid queue status")
     await wait(FAL_POLL_INTERVAL_MS)
+    signal?.throwIfAborted()
   }
 
   const resultResponse = await fetcher(responseUrl, {
     headers: { Authorization: headers.Authorization },
-    signal: AbortSignal.timeout(FAL_REQUEST_TIMEOUT_MS),
+    signal: timeoutSignal(FAL_REQUEST_TIMEOUT_MS, signal),
   })
   const result = await readJson(resultResponse)
   if (!resultResponse.ok) throw new FalApiError(resultResponse.status)
-  return await downloadFalImage(parseFalResult(result), fetcher)
+  return await downloadFalImage(parseFalResult(result), fetcher, signal)
 }

@@ -76,6 +76,17 @@ const GENERATED_IMAGE_EXTENSIONS = new Map([
   ["image/png", "png"],
   ["image/webp", "webp"],
 ])
+
+class ResponseStoppedError extends Error {
+  constructor() {
+    super("Response stopped by user")
+  }
+}
+
+function timeoutSignal(milliseconds: number, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(milliseconds)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
+}
 const renderUiTool = tool({
   description: renderUiToolDescription,
   inputSchema: renderUiToolInputSchema,
@@ -224,6 +235,7 @@ export async function generateOpenRouterImage(
     model: string
     prompt: string
     routingProvider?: string
+    signal?: AbortSignal
   }
 ) {
   const latestUserMessage = options.messages.findLast(
@@ -253,7 +265,7 @@ export async function generateOpenRouterImage(
       ...(inputReferences.length ? { input_references: inputReferences } : {}),
       ...(provider ? { provider } : {}),
     }),
-    signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
+    signal: timeoutSignal(IMAGE_REQUEST_TIMEOUT_MS, options.signal),
   })
   const result: unknown = await response.json().catch(() => null)
   if (!response.ok) throw new OpenRouterImageError(response.status)
@@ -813,11 +825,14 @@ export const getDesktopCodexMemoryContext = action({
       { conversationId: args.conversationId }
     )
     if (!request) throw new Error("Codex conversation unavailable")
-    return await ctx.runAction(internal.memoryActions.buildAgentContextWithRetrieval, {
-      conversationId: request.conversationId,
-      currentMessageId: request.currentMessageId,
-      ownerId: request.ownerId,
-    })
+    return await ctx.runAction(
+      internal.memoryActions.buildAgentContextWithRetrieval,
+      {
+        conversationId: request.conversationId,
+        currentMessageId: request.currentMessageId,
+        ownerId: request.ownerId,
+      }
+    )
   },
 })
 
@@ -860,6 +875,29 @@ export const generate = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const abortController = new AbortController()
+    let cancellationPollInFlight = false
+    const responseWasStopped = async () =>
+      await ctx.runQuery(internal.conversations.shouldCancelResponse, {
+        assistantMessageId: args.assistantMessageId,
+      })
+    const throwIfStopped = async () => {
+      if (!abortController.signal.aborted && (await responseWasStopped()))
+        abortController.abort(new ResponseStoppedError())
+      if (abortController.signal.aborted) throw new ResponseStoppedError()
+    }
+    const cancellationPoll = setInterval(() => {
+      if (cancellationPollInFlight || abortController.signal.aborted) return
+      cancellationPollInFlight = true
+      void responseWasStopped()
+        .then((stopped) => {
+          if (stopped && !abortController.signal.aborted)
+            abortController.abort(new ResponseStoppedError())
+        })
+        .finally(() => {
+          cancellationPollInFlight = false
+        })
+    }, 1_000)
     let connectionId: Id<"providerConnections"> | undefined
     let content = ""
     let provider: "openrouter" | "openai" | "fal" | undefined
@@ -868,6 +906,7 @@ export const generate = internalAction({
     let uiPayload: string | undefined
     let errorCode: "insufficient_credits" | undefined
     try {
+      await throwIfStopped()
       const context = await ctx.runQuery(
         internal.conversations.getOpenRouterResponseContext,
         args
@@ -882,6 +921,7 @@ export const generate = internalAction({
           ownerId: context.ownerId,
         }
       )
+      await throwIfStopped()
       const token = await decryptProviderToken(
         context.ciphertext,
         context.iv,
@@ -901,6 +941,7 @@ export const generate = internalAction({
             model: context.model,
             prompt: context.lastUserMessage,
             routingProvider: context.routingProvider,
+            signal: abortController.signal,
           })
         } else if (context.provider === "fal") {
           const referenceUrls = (
@@ -909,18 +950,24 @@ export const generate = internalAction({
           ).flatMap((attachment) =>
             IMAGE_TYPES.has(attachment.contentType) ? [attachment.url] : []
           )
-          image = await generateFalImage(token, {
-            model: context.model,
-            prompt: context.lastUserMessage,
-            referenceUrls,
-          })
+          image = await generateFalImage(
+            token,
+            {
+              model: context.model,
+              prompt: context.lastUserMessage,
+              referenceUrls,
+            },
+            { signal: abortController.signal }
+          )
         } else {
           throw new Error("Image generation requires OpenRouter or Fal")
         }
+        await throwIfStopped()
         const storageId = await ctx.storage.store(
           new Blob([image.bytes], { type: image.contentType })
         )
         try {
+          await throwIfStopped()
           await ctx.runMutation(
             internal.conversations.finishOpenRouterResponse,
             {
@@ -941,6 +988,7 @@ export const generate = internalAction({
           await ctx.storage.delete(storageId)
           throw cause
         }
+        await throwIfStopped()
         try {
           await ctx.runMutation(
             internal.memoryContext.recordResponseReferences,
@@ -1006,6 +1054,7 @@ export const generate = internalAction({
                 compatibility: "strict",
               })
               return streamText({
+                abortSignal: abortController.signal,
                 model: openrouter(
                   context.model,
                   getOpenRouterModelSettings(
@@ -1038,6 +1087,7 @@ export const generate = internalAction({
           : (() => {
               const openai = createOpenAI({ apiKey: token })
               return streamText({
+                abortSignal: abortController.signal,
                 model: openai.responses(context.model),
                 ...generationPrompt,
                 tools: {
@@ -1057,6 +1107,7 @@ export const generate = internalAction({
               })
             })()
 
+      await throwIfStopped()
       await ctx.runMutation(internal.conversations.updateOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
@@ -1065,6 +1116,7 @@ export const generate = internalAction({
       let lastFlushAt = 0
       const terminalStartedAt = new Map<string, number>()
       for await (const event of result.stream) {
+        await throwIfStopped()
         let terminalChanged = false
         let uiChanged = false
         if (event.type === "error") throw event.error
@@ -1150,6 +1202,7 @@ export const generate = internalAction({
             uiChanged ||
             now - lastFlushAt >= STREAM_FLUSH_INTERVAL_MS
           ) {
+            await throwIfStopped()
             await ctx.runMutation(
               internal.conversations.updateOpenRouterResponse,
               {
@@ -1166,6 +1219,7 @@ export const generate = internalAction({
           }
         }
       }
+      await throwIfStopped()
       content = content.trim()
       if (!completed || (!content && !uiPayload && !terminalRuns.length))
         throw new Error("Provider response incomplete")
@@ -1183,6 +1237,7 @@ export const generate = internalAction({
         // Usage metadata is optional and must not discard a completed response.
       }
 
+      await throwIfStopped()
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
@@ -1205,6 +1260,12 @@ export const generate = internalAction({
       }
       return null
     } catch (cause) {
+      if (
+        cause instanceof ResponseStoppedError ||
+        abortController.signal.aborted ||
+        (await responseWasStopped())
+      )
+        return null
       const apiError = APICallError.isInstance(cause) ? cause : undefined
       const status =
         apiError?.statusCode ??
@@ -1237,6 +1298,8 @@ export const generate = internalAction({
         ...(terminalRuns.length ? { terminalRuns } : {}),
       })
       throw new Error("Provider response failed")
+    } finally {
+      clearInterval(cancellationPoll)
     }
   },
 })

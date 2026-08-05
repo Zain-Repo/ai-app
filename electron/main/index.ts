@@ -9,6 +9,7 @@ import {
   CodexAppServer,
   isDesktopCodexReasoningEffort,
 } from "./codex-app-server"
+import { CodexRequestOwnership } from "./codex-request-ownership"
 import { CursorCli } from "./cursor-cli"
 import {
   desktopEntryUrl,
@@ -22,6 +23,7 @@ type DesktopConfig = { rendererUrl?: unknown }
 preserveLegacyUserDataDirectory(app)
 
 const codex = new CodexAppServer()
+const codexRequestOwners = new CodexRequestOwnership()
 const cursor = new CursorCli()
 let mainWindow: BrowserWindow | null = null
 let authWindow: BrowserWindow | null = null
@@ -104,13 +106,24 @@ function registerIpc() {
   handle("desktop:codex-login", () => codex.login())
   handle("desktop:codex-logout", () => codex.logout())
   handle("desktop:codex-models", () => codex.listModels())
-  handle("desktop:codex-generate", (event, requestId, value) => {
+  handle("desktop:codex-generate", async (event, requestId, value) => {
     if (!isCodexRequestId(requestId) || !isCodexGenerateInput(value))
       throw new Error("Invalid Codex request")
-    return codex.generate(value, (delta) => {
-      if (!event.sender.isDestroyed())
-        event.sender.send("desktop:codex-delta", requestId, delta)
-    })
+    if (!codexRequestOwners.register(requestId, event.sender.id))
+      throw new Error("Codex request is already active")
+    try {
+      return await codex.generate(requestId, value, (delta) => {
+        if (!event.sender.isDestroyed())
+          event.sender.send("desktop:codex-delta", requestId, delta)
+      })
+    } finally {
+      codexRequestOwners.release(requestId)
+    }
+  })
+  handle("desktop:codex-cancel", async (event, requestId) => {
+    if (!isCodexRequestId(requestId)) throw new Error("Invalid Codex request")
+    if (!codexRequestOwners.isOwner(requestId, event.sender.id)) return false
+    return await codex.cancel(requestId)
   })
   handle("desktop:cursor-account", () => cursor.account())
   handle("desktop:cursor-login", () => cursor.login())
