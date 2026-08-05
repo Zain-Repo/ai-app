@@ -26,8 +26,10 @@ the server by output mode.
 
 The feature deploy leaves the three compound indexes staged and filters
 workspace history through the existing owner/status and project/status
-indexes. This lets Convex backfill the new indexes asynchronously without a
-blocking or unsafe deployment dependency.
+indexes. Filtered queries cap each transitional scan at 300 rows so accounts
+with a long opposite-workspace history cannot exceed an unbounded read budget.
+This lets Convex backfill the new indexes asynchronously without a blocking or
+unsafe deployment dependency.
 
 After the Convex dashboard reports that every backfill is complete, a separate
 follow-up deploy will remove the staged flags and switch the history queries to

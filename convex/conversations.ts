@@ -24,6 +24,7 @@ import {
 } from "../shared/chat-title"
 
 const MAX_CONVERSATIONS = 30
+const MAX_WORKSPACE_HISTORY_ROWS_READ = 300
 const MAX_MESSAGES = 200
 const MAX_PROJECT_SOURCES = 8
 const MAX_ALWAYS_INCLUDED_MEMORIES = 20
@@ -1453,14 +1454,20 @@ export const listRecent = query({
         )
         .order("desc")
 
-      if (args.outputMode === undefined)
-        return await projectConversations
+      if (args.outputMode === undefined) {
+        const projectPage = await projectConversations
           .filter((filterQuery) =>
             filterQuery.eq(filterQuery.field("ownerId"), user._id)
           )
-          .take(limit)
+          .paginate({
+            cursor: null,
+            maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+            numItems: limit,
+          })
+        return projectPage.page.slice(0, limit)
+      }
 
-      return await projectConversations
+      const projectPage = await projectConversations
         .filter((filterQuery) =>
           filterQuery.and(
             filterQuery.eq(filterQuery.field("ownerId"), user._id),
@@ -1472,7 +1479,12 @@ export const listRecent = query({
                 )
           )
         )
-        .take(limit)
+        .paginate({
+          cursor: null,
+          maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+          numItems: limit,
+        })
+      return projectPage.page.slice(0, limit)
     }
 
     if (args.unassignedOnly) {
@@ -1483,7 +1495,7 @@ export const listRecent = query({
         )
         .order("desc")
 
-      return await unassignedConversations
+      const unassignedPage = await unassignedConversations
         .filter((filterQuery) =>
           filterQuery.and(
             filterQuery.eq(filterQuery.field("projectId"), undefined),
@@ -1497,7 +1509,12 @@ export const listRecent = query({
                   )
           )
         )
-        .take(limit)
+        .paginate({
+          cursor: null,
+          maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+          numItems: limit,
+        })
+      return unassignedPage.page.slice(0, limit)
     }
 
     const recentConversations = ctx.db
@@ -1510,7 +1527,7 @@ export const listRecent = query({
     if (args.outputMode === undefined)
       return await recentConversations.take(limit)
 
-    return await recentConversations
+    const recentPage = await recentConversations
       .filter((filterQuery) =>
         args.outputMode === "image"
           ? filterQuery.eq(filterQuery.field("outputMode"), "image")
@@ -1519,7 +1536,12 @@ export const listRecent = query({
               filterQuery.eq(filterQuery.field("outputMode"), undefined)
             )
       )
-      .take(limit)
+      .paginate({
+        cursor: null,
+        maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
+        numItems: limit,
+      })
+    return recentPage.page.slice(0, limit)
   },
 })
 
