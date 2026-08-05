@@ -30,6 +30,7 @@ export type DesktopCodexGenerateInput = {
 
 export type DesktopCodexGenerateResult = {
   content: string
+  interrupted?: boolean
   reasoningSteps: string[]
 }
 
@@ -59,9 +60,11 @@ export type DesktopUpdaterState = {
 export type Dev3DesktopApi = {
   codex: {
     account: () => Promise<DesktopCodexAccount>
+    cancel?: (requestId: string) => Promise<boolean>
     generate: (
       input: DesktopCodexGenerateInput,
-      onDelta?: (delta: string) => void
+      onDelta?: (delta: string) => void,
+      requestId?: string
     ) => Promise<DesktopCodexGenerateResult>
     listModels: () => Promise<DesktopCodexModel[]>
     login: () => Promise<DesktopCodexAccount>

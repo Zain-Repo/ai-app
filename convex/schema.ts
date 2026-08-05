@@ -22,7 +22,8 @@ const messageStatus = v.union(
   v.literal("pending"),
   v.literal("streaming"),
   v.literal("complete"),
-  v.literal("failed")
+  v.literal("failed"),
+  v.literal("stopped")
 )
 
 const outputMode = v.union(v.literal("image"), v.literal("text"))
@@ -285,6 +286,7 @@ export default defineSchema({
     outputMode: v.optional(outputMode),
     routingProvider: v.optional(v.string()),
     reasoningEffort: v.optional(v.string()),
+    activeBranchId: v.optional(v.id("conversationBranches")),
     // "off" conversations continue to exist in history but never read or write
     // personalization data. Older conversations default to "standard".
     memoryMode: v.optional(
@@ -316,8 +318,19 @@ export default defineSchema({
       "updatedAt",
     ]),
 
+  conversationBranches: defineTable({
+    conversationId: v.id("conversations"),
+    parentBranchId: v.optional(v.id("conversationBranches")),
+    forkedAfterMessageId: v.optional(v.id("messages")),
+    lastMessageId: v.optional(v.id("messages")),
+    createdAt: v.number(),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_parent_and_fork", ["parentBranchId", "forkedAfterMessageId"]),
+
   messages: defineTable({
     conversationId: v.id("conversations"),
+    branchId: v.optional(v.id("conversationBranches")),
     role: messageRole,
     content: v.string(),
     attachments: v.optional(v.array(messageAttachmentValidator)),

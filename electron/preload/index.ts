@@ -11,14 +11,17 @@ const api: Dev3DesktopApi = {
   version: () => ipcRenderer.invoke("desktop:version"),
   codex: {
     account: () => ipcRenderer.invoke("desktop:codex-account"),
+    cancel: (requestId: string) =>
+      ipcRenderer.invoke("desktop:codex-cancel", requestId),
     login: () => ipcRenderer.invoke("desktop:codex-login"),
     logout: () => ipcRenderer.invoke("desktop:codex-logout"),
     listModels: () => ipcRenderer.invoke("desktop:codex-models"),
     generate: async (
       input: DesktopCodexGenerateInput,
-      onDelta?: (delta: string) => void
+      onDelta?: (delta: string) => void,
+      suppliedRequestId?: string
     ) => {
-      const requestId = crypto.randomUUID()
+      const requestId = suppliedRequestId ?? crypto.randomUUID()
       const handler = (
         _event: Electron.IpcRendererEvent,
         progressRequestId: unknown,

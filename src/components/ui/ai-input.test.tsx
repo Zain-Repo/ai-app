@@ -177,3 +177,58 @@ describe("AIInput provider selector", () => {
     expect(trigger.textContent).toContain("DeepSeek")
   })
 })
+
+describe("AIInput generation controls", () => {
+  it("replaces Send with Stop while preserving the editable draft", () => {
+    const onStop = vi.fn()
+    render(
+      <AIInput
+        generationState="generating"
+        onStop={onStop}
+        value="Keep this draft"
+      />
+    )
+
+    expect(screen.queryByLabelText("Send message")).toBeNull()
+    fireEvent.click(screen.getByLabelText("Stop response"))
+    expect(onStop).toHaveBeenCalledOnce()
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Message").value).toBe(
+      "Keep this draft"
+    )
+  })
+
+  it("does not submit with Enter while generation is active", () => {
+    const onSend = vi.fn()
+    render(
+      <AIInput
+        generationState="generating"
+        onSend={onSend}
+        value="A second prompt"
+      />
+    )
+
+    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" })
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("focuses the controlled draft in edit mode and exposes Cancel", async () => {
+    const onCancel = vi.fn()
+    render(
+      <AIInput
+        editMode={{
+          attachments: [{ name: "context.txt", size: 12 }],
+          messageId: "message-1",
+          onCancel,
+        }}
+        value="Edited prompt"
+      />
+    )
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText("Message"))
+    )
+    expect(screen.getByText(/Attachments are retained/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+})
