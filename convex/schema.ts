@@ -288,17 +288,28 @@ export default defineSchema({
     // "off" conversations continue to exist in history but never read or write
     // personalization data. Older conversations default to "standard".
     memoryMode: v.optional(
-      v.union(
-        v.literal("standard"),
-        v.literal("read_only"),
-        v.literal("off")
-      )
+      v.union(v.literal("standard"), v.literal("read_only"), v.literal("off"))
     ),
     updatedAt: v.number(),
   })
     .index("by_owner_updated_at", ["ownerId", "updatedAt"])
     .index("by_project_id_and_updated_at", ["projectId", "updatedAt"])
     .index("by_owner_status_updated_at", ["ownerId", "status", "updatedAt"])
+    .index("by_owner_id_and_status_and_output_mode_and_updated_at", {
+      fields: ["ownerId", "status", "outputMode", "updatedAt"],
+      staged: true,
+    })
+    .index("by_owner_id_and_project_id_and_status_and_updated_at", {
+      fields: ["ownerId", "projectId", "status", "updatedAt"],
+      staged: true,
+    })
+    .index(
+      "by_owner_id_and_project_id_and_status_and_output_mode_and_updated_at",
+      {
+        fields: ["ownerId", "projectId", "status", "outputMode", "updatedAt"],
+        staged: true,
+      }
+    )
     .index("by_project_id_and_status_and_updated_at", [
       "projectId",
       "status",
@@ -599,7 +610,11 @@ export default defineSchema({
     memoryItemId: v.optional(v.id("memoryItems")),
     summaryId: v.optional(v.id("conversationMemorySummaries")),
     feedback: v.optional(
-      v.union(v.literal("helpful"), v.literal("incorrect"), v.literal("dont_use"))
+      v.union(
+        v.literal("helpful"),
+        v.literal("incorrect"),
+        v.literal("dont_use")
+      )
     ),
     createdAt: v.number(),
   })
