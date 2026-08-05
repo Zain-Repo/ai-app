@@ -50,6 +50,8 @@ import {
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
+import type { ChatMessageBranchNavigation } from "@/components/chat-message-row"
 import { WorkspaceHistoryPartialNotice } from "@/components/workspace-history-partial-notice"
 import {
   Context,
@@ -105,7 +107,6 @@ import {
   AttachmentTitle,
   AttachmentTrigger,
 } from "@/components/ui/attachment"
-import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -138,7 +139,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { Message, MessageContent, MessageGroup } from "@/components/ui/message"
+import { MessageGroup } from "@/components/ui/message"
 import {
   ReasoningStep,
   ReasoningSteps,
@@ -149,7 +150,6 @@ import {
   MessageScroller,
   MessageScrollerContent,
   MessageScrollerButton,
-  MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
@@ -457,6 +457,7 @@ type ChatAttachment = {
 
 type ChatMessage = Omit<Doc<"messages">, "attachments"> & {
   attachments: ChatAttachment[]
+  branchNavigation?: ChatMessageBranchNavigation
 }
 
 function readStorageId(value: unknown) {
@@ -762,6 +763,10 @@ function ChatWorkspace() {
   const startConversation = useMutation(api.conversations.start)
   const startRealtimeConversation = useMutation(api.conversations.startRealtime)
   const sendMessage = useMutation(api.conversations.send)
+  const editUserMessage = useMutation(api.conversations.editUserMessage)
+  const retryResponse = useMutation(api.conversations.retryResponse)
+  const selectResponseBranch = useMutation(api.conversations.selectBranch)
+  const stopResponse = useMutation(api.conversations.stopResponse)
   const setMemoryMode = useMutation(api.conversations.setMemoryMode)
   const streamDesktopCodexResponse = useMutation(
     api.conversations.streamDesktopCodexResponse
@@ -845,6 +850,22 @@ function ChatWorkspace() {
   const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
     "idle"
   )
+  const [composerValue, setComposerValue] = useState("")
+  const [editingMessageId, setEditingMessageId] =
+    useState<Id<"messages"> | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<Id<"messages"> | null>(
+    null
+  )
+  const [messageActionPending, setMessageActionPending] = useState(false)
+  const [stoppingMessageId, setStoppingMessageId] =
+    useState<Id<"messages"> | null>(null)
+  const [actionAnnouncement, setActionAnnouncement] = useState("")
+  const draftBeforeEditRef = useRef("")
+  const stoppedConversationIdsRef = useRef(new Set<string>())
+  const desktopRequestRef = useRef<{
+    conversationId: string
+    requestId: string
+  } | null>(null)
   const [voiceMode, setVoiceMode] = useState(false)
   const [voiceConversationId, setVoiceConversationId] = useState<string | null>(
     null
@@ -1608,11 +1629,210 @@ function ChatWorkspace() {
     }
   }
 
+  const generateDesktopResponse = async ({
+    conversationId: targetConversationId,
+    effort,
+    messages: inputMessages,
+    model,
+  }: {
+    conversationId: string
+    effort?: string
+    messages: Array<{ content: string; role: "assistant" | "user" }>
+    model: string
+  }) => {
+    const desktop = getDesktopApi()
+    if (!desktop) throw new Error("Codex is only available in the desktop app")
+    stoppedConversationIdsRef.current.delete(targetConversationId)
+    const projectSourceContext = await getDesktopCodexProjectContext({
+      conversationId: targetConversationId,
+    }).catch(() => {
+      console.warn(
+        "Project source context unavailable; continuing Codex generation without it."
+      )
+      return ""
+    })
+    const memoryContext = await getDesktopCodexMemoryContext({
+      conversationId: targetConversationId,
+    }).catch(() => ({
+      budgetUsed: 0,
+      historySummaryIds: [],
+      memoryMode: "off" as const,
+      referenceText: "",
+      selectedMemoryItemIds: [],
+    }))
+    let streamedContent = ""
+    let persistedContent = ""
+    let streamTimer: ReturnType<typeof setTimeout> | null = null
+    let streamPersistenceAvailable = true
+    let streamWrite = Promise.resolve()
+    const requestId = crypto.randomUUID()
+    desktopRequestRef.current = {
+      conversationId: targetConversationId,
+      requestId,
+    }
+
+    // Serialize snapshots so a slower mutation cannot overwrite newer text.
+    const queueStreamWrite = () => {
+      if (!streamPersistenceAvailable || streamedContent === persistedContent)
+        return
+      const contentToPersist = streamedContent
+      persistedContent = contentToPersist
+      streamWrite = streamWrite.then(async () => {
+        if (!streamPersistenceAvailable) return
+        try {
+          await streamDesktopCodexResponse({
+            conversationId: targetConversationId,
+            content: contentToPersist,
+          })
+        } catch {
+          streamPersistenceAvailable = false
+        }
+      })
+    }
+    const flushStream = async () => {
+      if (streamTimer) clearTimeout(streamTimer)
+      streamTimer = null
+      queueStreamWrite()
+      await streamWrite
+    }
+
+    try {
+      const result = await desktop.codex.generate(
+        {
+          model,
+          ...(effort ? { effort } : {}),
+          developerInstructions: [
+            "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
+            selectedProject?.instructions,
+            preferences?.responseDetail
+              ? "Response detail: " + preferences.responseDetail + "."
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          messages: [
+            ...inputMessages,
+            ...(projectSourceContext
+              ? [
+                  {
+                    content:
+                      "Reference context for the next user request:\n" +
+                      projectSourceContext,
+                    role: "user" as const,
+                  },
+                ]
+              : []),
+            ...(memoryContext.referenceText
+              ? [
+                  {
+                    content:
+                      "Reference context for the next user request:\n" +
+                      memoryContext.referenceText,
+                    role: "user" as const,
+                  },
+                ]
+              : []),
+          ],
+        },
+        (delta) => {
+          streamedContent += delta
+          if (!streamTimer)
+            streamTimer = setTimeout(() => {
+              streamTimer = null
+              queueStreamWrite()
+            }, 75)
+        },
+        requestId
+      )
+      await flushStream()
+      if (result.interrupted) return
+      await finishDesktopCodexResponse({
+        conversationId: targetConversationId,
+        content: result.content,
+        failed: false,
+        ...(memoryContext.selectedMemoryItemIds.length
+          ? { memoryItemIds: memoryContext.selectedMemoryItemIds }
+          : {}),
+        ...(result.reasoningSteps.length
+          ? { reasoningSteps: result.reasoningSteps }
+          : {}),
+        ...(memoryContext.historySummaryIds.length
+          ? { summaryIds: memoryContext.historySummaryIds }
+          : {}),
+      })
+    } catch (cause) {
+      if (stoppedConversationIdsRef.current.has(targetConversationId)) return
+      try {
+        await finishDesktopCodexResponse({
+          conversationId: targetConversationId,
+          content:
+            "Codex could not complete this response. Reconnect your ChatGPT subscription and try again.",
+          failed: true,
+        })
+      } catch {
+        // Preserve the originating Codex error for the composer state.
+      }
+      throw cause
+    } finally {
+      await flushStream()
+      if (desktopRequestRef.current.requestId === requestId)
+        desktopRequestRef.current = null
+    }
+  }
+
   const send = async (
     content: string,
     meta: { provider: string; settings: Record<string, string> },
     files: File[]
   ) => {
+    if (editingMessageId && conversationId && selected) {
+      const sourceIndex =
+        messages?.findIndex((message) => message._id === editingMessageId) ?? -1
+      const source = sourceIndex >= 0 ? messages?.[sourceIndex] : undefined
+      setSendState("sending")
+      try {
+        await editUserMessage({
+          content,
+          conversationId,
+          userMessageId: editingMessageId,
+          ...(selected.activeBranchId
+            ? { expectedActiveBranchId: selected.activeBranchId }
+            : {}),
+        })
+        setEditingMessageId(null)
+        setComposerValue(draftBeforeEditRef.current)
+        setActionAnnouncement("Message edited and response started.")
+        if (source?.provider === "codex" && source.model) {
+          await generateDesktopResponse({
+            conversationId,
+            model: source.model,
+            ...(source.reasoningEffort
+              ? { effort: source.reasoningEffort }
+              : {}),
+            messages: [
+              ...(messages ?? [])
+                .slice(0, sourceIndex)
+                .filter(
+                  (message) =>
+                    message.status === "complete" &&
+                    (message.role === "assistant" || message.role === "user")
+                )
+                .map((message) => ({
+                  content: message.content,
+                  role: message.role as "assistant" | "user",
+                })),
+              { content, role: "user" },
+            ],
+          })
+        }
+        setSendState("idle")
+        return
+      } catch {
+        setSendState("failed")
+        throw new Error("Message could not be edited")
+      }
+    }
+
     let draftAttachmentIds: Id<"draftAttachments">[] = []
     setSendState("sending")
     try {
@@ -1688,136 +1908,15 @@ function ChatWorkspace() {
             model: meta.settings.model,
             setGeneratedTitle: setDesktopCodexGeneratedTitle,
           })
-        try {
-          const projectSourceContext = await getDesktopCodexProjectContext({
-            conversationId: targetConversationId,
-          }).catch(() => {
-            console.warn(
-              "Project source context unavailable; continuing Codex generation without it."
-            )
-            return ""
-          })
-          const memoryContext = await getDesktopCodexMemoryContext({
-            conversationId: targetConversationId,
-          }).catch(() => ({
-            budgetUsed: 0,
-            historySummaryIds: [],
-            memoryMode: "off" as const,
-            referenceText: "",
-            selectedMemoryItemIds: [],
-          }))
-          let streamedContent = ""
-          let persistedContent = ""
-          let streamTimer: ReturnType<typeof setTimeout> | null = null
-          let streamPersistenceAvailable = true
-          let streamWrite = Promise.resolve()
-          // Serialize throttled snapshots so a slower mutation cannot overwrite newer text.
-          const queueStreamWrite = () => {
-            if (
-              !streamPersistenceAvailable ||
-              streamedContent === persistedContent
-            )
-              return
-            const contentToPersist = streamedContent
-            persistedContent = contentToPersist
-            streamWrite = streamWrite.then(async () => {
-              if (!streamPersistenceAvailable) return
-              try {
-                await streamDesktopCodexResponse({
-                  conversationId: targetConversationId,
-                  content: contentToPersist,
-                })
-              } catch {
-                streamPersistenceAvailable = false
-                console.warn(
-                  "Live Codex response persistence failed; final response persistence will still be attempted."
-                )
-              }
-            })
-          }
-          const flushStream = async () => {
-            if (streamTimer) clearTimeout(streamTimer)
-            streamTimer = null
-            queueStreamWrite()
-            await streamWrite
-          }
-          try {
-            const result = await desktop.codex.generate(
-              {
-                model: meta.settings.model,
-                ...(meta.settings.effort
-                  ? { effort: meta.settings.effort }
-                  : {}),
-                developerInstructions: [
-                  "Answer as a general-purpose assistant inside Dev3. Do not inspect files, run commands, or modify the filesystem.",
-                  selectedProject?.instructions,
-                  preferences?.responseDetail
-                    ? `Response detail: ${preferences.responseDetail}.`
-                    : undefined,
-                ]
-                  .filter(Boolean)
-                  .join("\n"),
-                messages: [
-                  ...desktopCodexMessages,
-                  ...(projectSourceContext
-                    ? [
-                        {
-                          content: `Reference context for the next user request:\n${projectSourceContext}`,
-                          role: "user" as const,
-                        },
-                      ]
-                    : []),
-                  ...(memoryContext.referenceText
-                    ? [
-                        {
-                          content: `Reference context for the next user request:\n${memoryContext.referenceText}`,
-                          role: "user" as const,
-                        },
-                      ]
-                    : []),
-                  { content, role: "user" as const },
-                ],
-              },
-              (delta) => {
-                streamedContent += delta
-                if (!streamTimer)
-                  streamTimer = setTimeout(() => {
-                    streamTimer = null
-                    queueStreamWrite()
-                  }, 75)
-              }
-            )
-            await flushStream()
-            await finishDesktopCodexResponse({
-              conversationId: targetConversationId,
-              content: result.content,
-              failed: false,
-              ...(memoryContext.selectedMemoryItemIds.length
-                ? { memoryItemIds: memoryContext.selectedMemoryItemIds }
-                : {}),
-              ...(result.reasoningSteps.length
-                ? { reasoningSteps: result.reasoningSteps }
-                : {}),
-              ...(memoryContext.historySummaryIds.length
-                ? { summaryIds: memoryContext.historySummaryIds }
-                : {}),
-            })
-          } finally {
-            await flushStream()
-          }
-        } catch (cause) {
-          try {
-            await finishDesktopCodexResponse({
-              conversationId: targetConversationId,
-              content:
-                "Codex could not complete this response. Reconnect your ChatGPT subscription and try again.",
-              failed: true,
-            })
-          } catch {
-            // Preserve the original local Codex error for the composer state.
-          }
-          throw cause
-        }
+        await generateDesktopResponse({
+          conversationId: targetConversationId,
+          model: meta.settings.model,
+          ...(meta.settings.effort ? { effort: meta.settings.effort } : {}),
+          messages: [
+            ...desktopCodexMessages,
+            { content, role: "user" as const },
+          ],
+        })
       }
       setSendState("idle")
     } catch {
@@ -2792,17 +2891,20 @@ function ChatWorkspace() {
           ) : (
             <>
               <MessageArea
-                actionsDisabled={
-                  sendState === "sending" ||
-                  selected?.status === "archived" ||
-                  !activeConnectionId ||
-                  catalogState !== "ready" ||
-                  providerModels.length === 0
-                }
+                actionsDisabled={chatActionsDisabled}
+                copiedMessageId={copiedMessageId}
                 conversationId={selected?._id}
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
+                onCopy={(message) => void copyMessage(message)}
+                onEdit={beginEditingMessage}
                 onManageMemory={() => setSettingsOpen(true)}
+                onRetry={(message, model) =>
+                  void retryAssistantMessage(message, model)
+                }
+                onSelectBranch={(branchId) =>
+                  void chooseResponseBranch(branchId)
+                }
                 onAction={(value) => {
                   void send(
                     value,
@@ -2812,6 +2914,10 @@ function ChatWorkspace() {
                 }}
                 userMessageBubbleColor={preferences?.userMessageBubbleColor}
                 targetMessageId={search.messageId}
+                retryModels={providerModels.map(({ label, value }) => ({
+                  label,
+                  value,
+                }))}
               />
               <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-6 pb-3 sm:px-5">
                 <div className="mx-auto w-full max-w-3xl">
@@ -2861,11 +2967,27 @@ function ChatWorkspace() {
                     defaultProvider={activeProvider}
                     defaultSettings={defaultSettings}
                     disabled={
-                      sendState === "sending" ||
                       selected?.status === "archived" ||
                       !activeConnectionId ||
                       catalogState !== "ready" ||
                       providerModels.length === 0
+                    }
+                    editMode={
+                      editingMessageId
+                        ? {
+                            attachments:
+                              messages
+                                ?.find(
+                                  (message) => message._id === editingMessageId
+                                )
+                                ?.attachments.map(({ name, size }) => ({
+                                  name,
+                                  size,
+                                })) ?? [],
+                            messageId: editingMessageId,
+                            onCancel: cancelEditingMessage,
+                          }
+                        : undefined
                     }
                     footerAccessory={
                       contextMessage?.contextTokens !== undefined &&
@@ -2891,6 +3013,8 @@ function ChatWorkspace() {
                       setSelectedModelId(settings.model)
                     }
                     onSend={send}
+                    onStop={stopActiveResponse}
+                    onValueChange={setComposerValue}
                     menuItems={menuItems}
                     placeholder={
                       selected?.status === "archived"
@@ -2912,12 +3036,17 @@ function ChatWorkspace() {
                                     : "Choose a model"
                     }
                     providerDisabled={
-                      Boolean(conversationId) || sendState === "sending"
+                      Boolean(conversationId) || generationState !== "idle"
                     }
                     providers={executionProviderOptions}
                     settingGroups={settingGroups}
                     showMessages={false}
+                    generationState={generationState}
+                    value={composerValue}
                   />
+                  <p aria-live="polite" className="sr-only" role="status">
+                    {actionAnnouncement}
+                  </p>
                   {sendState === "failed" ? (
                     <p
                       aria-live="polite"
@@ -3134,11 +3263,17 @@ function ProjectWorkspace({
 
 type MessageAreaProps = {
   actionsDisabled: boolean
+  copiedMessageId?: Id<"messages"> | null
   conversationId: Id<"conversations"> | undefined
   messages: ChatMessage[] | undefined
   name: string | null | undefined
   onAction: (value: string) => void
+  onCopy?: (message: ChatMessage) => void
+  onEdit?: (message: ChatMessage) => void
   onManageMemory: () => void
+  onRetry?: (message: ChatMessage, model?: string) => void
+  onSelectBranch?: (branchId: Id<"conversationBranches">) => void
+  retryModels?: Array<{ label: string; value: string }>
   targetMessageId?: string
   userMessageBubbleColor: UserMessageBubbleColor | undefined
 }
@@ -3221,10 +3356,16 @@ function MessageAreaWithResponseSources(props: LoadedMessageAreaProps) {
 
 function MessageAreaContent({
   actionsDisabled,
+  copiedMessageId,
   messages,
   onAction,
+  onCopy = () => undefined,
+  onEdit = () => undefined,
   onManageMemory,
+  onRetry = () => undefined,
+  onSelectBranch = () => undefined,
   responseSourcesByMessageId,
+  retryModels = [],
   targetMessageId,
   userMessageBubbleColor,
 }: LoadedMessageAreaProps & {
@@ -3272,271 +3413,258 @@ function MessageAreaContent({
                     )
                   : message.attachments
                 return (
-                  <MessageScrollerItem
-                    className="focus-visible:rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-                    id={`message-${message._id}`}
+                  <ChatMessageRow
+                    actionsDisabled={actionsDisabled}
+                    bubbleClassName={
+                      isUser
+                        ? getUserMessageBubbleColorClassName(
+                            userMessageBubbleColor
+                          )
+                        : "w-full max-w-2xl"
+                    }
+                    copied={copiedMessageId === message._id}
                     key={message._id}
-                    tabIndex={-1}
+                    message={message}
+                    onCopy={() => onCopy(message)}
+                    onEdit={() => onEdit(message)}
+                    onRetry={(model) => onRetry(message, model)}
+                    onSelectBranch={onSelectBranch}
+                    retryModels={retryModels}
                   >
-                    <Message align={isUser ? "end" : "start"}>
-                      <MessageContent>
-                        <Bubble
-                          align={isUser ? "end" : "start"}
-                          variant={isUser ? "default" : "ghost"}
+                    {!isUser && message.terminalRuns?.length ? (
+                      <div className="mb-3 space-y-2">
+                        {message.terminalRuns.map((run) => {
+                          const status =
+                            run.status === "running"
+                              ? ""
+                              : run.status === "complete"
+                                ? `\n[exit ${run.exitCode ?? 0}${
+                                    run.durationMs === undefined
+                                      ? ""
+                                      : ` · ${run.durationMs}ms`
+                                  }]`
+                                : `\n[failed${
+                                    run.exitCode === undefined
+                                      ? ""
+                                      : ` · exit ${run.exitCode}`
+                                  }]`
+                          const output = [
+                            `${run.workingDirectory ?? "/workspace"} $ ${run.command}`,
+                            run.stdout?.trimEnd(),
+                            run.stderr?.trimEnd(),
+                            status,
+                          ]
+                            .filter(Boolean)
+                            .join("\n")
+                          return (
+                            <Suspense
+                              fallback={
+                                <div
+                                  aria-hidden="true"
+                                  className="h-24 animate-pulse rounded-lg bg-muted"
+                                />
+                              }
+                              key={run.toolCallId}
+                            >
+                              <Terminal
+                                aria-label="Terminal command"
+                                isStreaming={run.status === "running"}
+                                output={output}
+                              />
+                            </Suspense>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+                    {!isUser &&
+                    message.outputMode === "image" &&
+                    message.status !== "failed" &&
+                    message.status !== "stopped" ? (
+                      <ImageGeneration
+                        completed={
+                          message.status === "complete" &&
+                          Boolean(generatedImage)
+                        }
+                      >
+                        {generatedImage ? (
+                          <a
+                            aria-label="Open generated image"
+                            className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            href={generatedImage.url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            <img
+                              alt="AI-generated image"
+                              className="max-h-[32rem] w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+                              loading="lazy"
+                              src={generatedImage.url}
+                            />
+                          </a>
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            className="aspect-square w-full bg-muted/40"
+                          />
+                        )}
+                      </ImageGeneration>
+                    ) : message.status === "pending" ||
+                      (isStreaming &&
+                        !message.content &&
+                        !hasReasoning &&
+                        !hasTerminalRuns &&
+                        !hasUi) ? (
+                      <div
+                        aria-label="Thinking"
+                        className="text-sm text-muted-foreground"
+                        role="status"
+                      >
+                        <TextShimmer
+                          as="span"
+                          baseColor="var(--muted-foreground)"
+                          duration={2}
+                          shimmerColor="var(--foreground)"
                         >
-                          <BubbleContent
-                            className={
-                              isUser
-                                ? getUserMessageBubbleColorClassName(
-                                    userMessageBubbleColor
-                                  )
-                                : "w-full max-w-2xl"
+                          Thinking
+                        </TextShimmer>
+                      </div>
+                    ) : message.status === "failed" ? (
+                      message.errorCode === "insufficient_credits" ? (
+                        <span className="block space-y-2">
+                          <span className="block">
+                            {message.provider === "fal"
+                              ? "Fal rejected this request because the account or API key has insufficient credit."
+                              : "OpenRouter rejected this request because the account or API key has insufficient credit."}
+                          </span>
+                          <a
+                            className="inline-flex font-medium underline underline-offset-2"
+                            href={
+                              message.provider === "fal"
+                                ? "https://fal.ai/dashboard/billing"
+                                : "https://openrouter.ai/settings/credits"
+                            }
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {message.provider === "fal"
+                              ? "Add Fal credits"
+                              : "Add OpenRouter credits"}
+                          </a>
+                        </span>
+                      ) : message.provider === "codex" ? (
+                        message.content ||
+                        "Codex could not complete this response."
+                      ) : message.provider === "openai" ? (
+                        "OpenAI could not complete this response."
+                      ) : message.provider === "fal" ? (
+                        "Fal could not complete this response."
+                      ) : (
+                        "OpenRouter could not complete this response."
+                      )
+                    ) : isUser ? (
+                      <span className="whitespace-pre-wrap">
+                        {message.content}
+                      </span>
+                    ) : (
+                      <div className="space-y-3">
+                        {message.reasoningSteps?.length ? (
+                          <ReasoningSteps className="max-w-full border">
+                            <ReasoningStepsTrigger />
+                            <ReasoningStepsContent>
+                              {message.reasoningSteps.map((step, index) => (
+                                <ReasoningStep
+                                  id={`${message._id}-${index}`}
+                                  key={`${message._id}-${index}`}
+                                  label={step}
+                                  status={
+                                    isStreaming &&
+                                    index === message.reasoningSteps!.length - 1
+                                      ? "active"
+                                      : "done"
+                                  }
+                                />
+                              ))}
+                            </ReasoningStepsContent>
+                          </ReasoningSteps>
+                        ) : null}
+                        {message.content ? (
+                          <Suspense
+                            fallback={
+                              <div
+                                aria-hidden="true"
+                                className="h-5 w-32 animate-pulse rounded bg-muted"
+                              />
                             }
                           >
-                            {!isUser && message.terminalRuns?.length ? (
-                              <div className="mb-3 space-y-2">
-                                {message.terminalRuns.map((run) => {
-                                  const status =
-                                    run.status === "running"
-                                      ? ""
-                                      : run.status === "complete"
-                                        ? `\n[exit ${run.exitCode ?? 0}${
-                                            run.durationMs === undefined
-                                              ? ""
-                                              : ` · ${run.durationMs}ms`
-                                          }]`
-                                        : `\n[failed${
-                                            run.exitCode === undefined
-                                              ? ""
-                                              : ` · exit ${run.exitCode}`
-                                          }]`
-                                  const output = [
-                                    `${run.workingDirectory ?? "/workspace"} $ ${run.command}`,
-                                    run.stdout?.trimEnd(),
-                                    run.stderr?.trimEnd(),
-                                    status,
-                                  ]
-                                    .filter(Boolean)
-                                    .join("\n")
-                                  return (
-                                    <Suspense
-                                      fallback={
-                                        <div
-                                          aria-hidden="true"
-                                          className="h-24 animate-pulse rounded-lg bg-muted"
-                                        />
-                                      }
-                                      key={run.toolCallId}
-                                    >
-                                      <Terminal
-                                        aria-label="Terminal command"
-                                        isStreaming={run.status === "running"}
-                                        output={output}
-                                      />
-                                    </Suspense>
-                                  )
-                                })}
-                              </div>
-                            ) : null}
-                            {!isUser &&
-                            message.outputMode === "image" &&
-                            message.status !== "failed" ? (
-                              <ImageGeneration
-                                completed={
-                                  message.status === "complete" &&
-                                  Boolean(generatedImage)
-                                }
+                            <MessageResponse animated isAnimating={isStreaming}>
+                              {message.content}
+                            </MessageResponse>
+                          </Suspense>
+                        ) : null}
+                        {message.uiPayload ? (
+                          <Suspense fallback={null}>
+                            <GenerativeUi
+                              disabled={actionsDisabled}
+                              onAction={onAction}
+                              payload={message.uiPayload}
+                            />
+                          </Suspense>
+                        ) : null}
+                      </div>
+                    )}
+                    {!isUser && message.status === "stopped" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Stopped
+                      </p>
+                    ) : null}
+                    {!isUser && message.status === "complete" ? (
+                      <OptionalChatFeatureBoundary>
+                        <MemoryUsed
+                          onManageMemory={onManageMemory}
+                          sources={responseSourcesByMessageId?.get(message._id)}
+                        />
+                      </OptionalChatFeatureBoundary>
+                    ) : null}
+                    {remainingAttachments.length ? (
+                      <AttachmentGroup className="mt-2 max-w-full">
+                        {remainingAttachments.map((attachment) => {
+                          const isImage =
+                            attachment.contentType.startsWith("image/")
+                          return (
+                            <Attachment key={attachment.storageId} size="sm">
+                              <AttachmentMedia
+                                variant={isImage ? "image" : "icon"}
                               >
-                                {generatedImage ? (
-                                  <a
-                                    aria-label="Open generated image"
-                                    className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                                    href={generatedImage.url}
-                                    rel="noreferrer"
-                                    target="_blank"
-                                  >
-                                    <img
-                                      alt="AI-generated image"
-                                      className="max-h-[32rem] w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-                                      loading="lazy"
-                                      src={generatedImage.url}
-                                    />
-                                  </a>
+                                {isImage ? (
+                                  <img alt="" src={attachment.url} />
                                 ) : (
-                                  <div
-                                    aria-hidden="true"
-                                    className="aspect-square w-full bg-muted/40"
-                                  />
+                                  <FileText aria-hidden="true" />
                                 )}
-                              </ImageGeneration>
-                            ) : message.status === "pending" ||
-                              (isStreaming &&
-                                !message.content &&
-                                !hasReasoning &&
-                                !hasTerminalRuns &&
-                                !hasUi) ? (
-                              <div
-                                aria-label="Thinking"
-                                className="text-sm text-muted-foreground"
-                                role="status"
-                              >
-                                <TextShimmer
-                                  as="span"
-                                  baseColor="var(--muted-foreground)"
-                                  duration={2}
-                                  shimmerColor="var(--foreground)"
-                                >
-                                  Thinking
-                                </TextShimmer>
-                              </div>
-                            ) : message.status === "failed" ? (
-                              message.errorCode === "insufficient_credits" ? (
-                                <span className="block space-y-2">
-                                  <span className="block">
-                                    {message.provider === "fal"
-                                      ? "Fal rejected this request because the account or API key has insufficient credit."
-                                      : "OpenRouter rejected this request because the account or API key has insufficient credit."}
-                                  </span>
+                              </AttachmentMedia>
+                              <AttachmentContent className="max-w-44">
+                                <AttachmentTitle>
+                                  {attachment.name}
+                                </AttachmentTitle>
+                                <AttachmentDescription>
+                                  {formatFileSize(attachment.size)}
+                                </AttachmentDescription>
+                              </AttachmentContent>
+                              <AttachmentTrigger
+                                aria-label={`Open ${attachment.name}`}
+                                render={
                                   <a
-                                    className="inline-flex font-medium underline underline-offset-2"
-                                    href={
-                                      message.provider === "fal"
-                                        ? "https://fal.ai/dashboard/billing"
-                                        : "https://openrouter.ai/settings/credits"
-                                    }
+                                    href={attachment.url}
                                     rel="noreferrer"
                                     target="_blank"
-                                  >
-                                    {message.provider === "fal"
-                                      ? "Add Fal credits"
-                                      : "Add OpenRouter credits"}
-                                  </a>
-                                </span>
-                              ) : message.provider === "codex" ? (
-                                message.content ||
-                                "Codex could not complete this response."
-                              ) : message.provider === "openai" ? (
-                                "OpenAI could not complete this response."
-                              ) : message.provider === "fal" ? (
-                                "Fal could not complete this response."
-                              ) : (
-                                "OpenRouter could not complete this response."
-                              )
-                            ) : isUser ? (
-                              <span className="whitespace-pre-wrap">
-                                {message.content}
-                              </span>
-                            ) : (
-                              <div className="space-y-3">
-                                {message.reasoningSteps?.length ? (
-                                  <ReasoningSteps className="max-w-full border">
-                                    <ReasoningStepsTrigger />
-                                    <ReasoningStepsContent>
-                                      {message.reasoningSteps.map(
-                                        (step, index) => (
-                                          <ReasoningStep
-                                            id={`${message._id}-${index}`}
-                                            key={`${message._id}-${index}`}
-                                            label={step}
-                                            status={
-                                              isStreaming &&
-                                              index ===
-                                                message.reasoningSteps!.length -
-                                                  1
-                                                ? "active"
-                                                : "done"
-                                            }
-                                          />
-                                        )
-                                      )}
-                                    </ReasoningStepsContent>
-                                  </ReasoningSteps>
-                                ) : null}
-                                {message.content ? (
-                                  <Suspense
-                                    fallback={
-                                      <div
-                                        aria-hidden="true"
-                                        className="h-5 w-32 animate-pulse rounded bg-muted"
-                                      />
-                                    }
-                                  >
-                                    <MessageResponse
-                                      animated
-                                      isAnimating={isStreaming}
-                                    >
-                                      {message.content}
-                                    </MessageResponse>
-                                  </Suspense>
-                                ) : null}
-                                {message.uiPayload ? (
-                                  <Suspense fallback={null}>
-                                    <GenerativeUi
-                                      disabled={actionsDisabled}
-                                      onAction={onAction}
-                                      payload={message.uiPayload}
-                                    />
-                                  </Suspense>
-                                ) : null}
-                              </div>
-                            )}
-                            {!isUser && message.status === "complete" ? (
-                              <OptionalChatFeatureBoundary>
-                                <MemoryUsed
-                                  onManageMemory={onManageMemory}
-                                  sources={responseSourcesByMessageId?.get(
-                                    message._id
-                                  )}
-                                />
-                              </OptionalChatFeatureBoundary>
-                            ) : null}
-                            {remainingAttachments.length ? (
-                              <AttachmentGroup className="mt-2 max-w-full">
-                                {remainingAttachments.map((attachment) => {
-                                  const isImage =
-                                    attachment.contentType.startsWith("image/")
-                                  return (
-                                    <Attachment
-                                      key={attachment.storageId}
-                                      size="sm"
-                                    >
-                                      <AttachmentMedia
-                                        variant={isImage ? "image" : "icon"}
-                                      >
-                                        {isImage ? (
-                                          <img alt="" src={attachment.url} />
-                                        ) : (
-                                          <FileText aria-hidden="true" />
-                                        )}
-                                      </AttachmentMedia>
-                                      <AttachmentContent className="max-w-44">
-                                        <AttachmentTitle>
-                                          {attachment.name}
-                                        </AttachmentTitle>
-                                        <AttachmentDescription>
-                                          {formatFileSize(attachment.size)}
-                                        </AttachmentDescription>
-                                      </AttachmentContent>
-                                      <AttachmentTrigger
-                                        aria-label={`Open ${attachment.name}`}
-                                        render={
-                                          <a
-                                            href={attachment.url}
-                                            rel="noreferrer"
-                                            target="_blank"
-                                          />
-                                        }
-                                      />
-                                    </Attachment>
-                                  )
-                                })}
-                              </AttachmentGroup>
-                            ) : null}
-                          </BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </Message>
-                  </MessageScrollerItem>
+                                  />
+                                }
+                              />
+                            </Attachment>
+                          )
+                        })}
+                      </AttachmentGroup>
+                    ) : null}
+                  </ChatMessageRow>
                 )
               })}
             </MessageGroup>
