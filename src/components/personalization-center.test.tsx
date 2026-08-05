@@ -159,6 +159,10 @@ describe("PersonalizationCenter", () => {
       />
     )
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy()
+    expect(screen.getByRole("dialog").className).toContain("sm:max-w-4xl")
+    expect(screen.getByRole("dialog").className).toContain(
+      "h-[min(40rem,calc(100svh-2rem))]"
+    )
     expect(
       screen.getByRole("navigation", { name: "Settings navigation" }).className
     ).toContain("overflow-y-auto")
@@ -172,6 +176,9 @@ describe("PersonalizationCenter", () => {
       .closest('[data-slot="tabs-content"]')
     expect(generalPanel).not.toBeNull()
     expect((generalPanel as HTMLElement).className).toContain("overflow-y-auto")
+    expect(
+      screen.getByLabelText("Default model").getAttribute("data-size")
+    ).toBe("sm")
     expect(screen.getByRole("tab", { name: "General" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Saved memory" })).toBeTruthy()
     expect(screen.getByText("1 provider connected")).toBeTruthy()

@@ -290,24 +290,24 @@ export function PersonalizationCenter({
       }}
     >
       <DialogContent
-        className="h-[min(46rem,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        className="h-[min(40rem,calc(100svh-2rem))] max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-4xl"
         showCloseButton={false}
       >
         <p aria-live="polite" className="sr-only" role="status">
           {notice}
         </p>
         <Tabs
-          className="grid min-h-0 grid-cols-[3.75rem_minmax(0,1fr)] gap-0 sm:grid-cols-[12rem_minmax(0,1fr)]"
+          className="grid min-h-0 grid-cols-[3.75rem_minmax(0,1fr)] gap-0 font-sans sm:grid-cols-[11rem_minmax(0,1fr)]"
           defaultValue="defaults"
           orientation="vertical"
         >
           <aside className="flex min-h-0 flex-col border-r border-border/70 bg-muted/25">
-            <div className="flex items-start justify-center gap-2.5 border-b border-border/70 p-2 sm:justify-start sm:p-3">
+            <div className="flex items-start justify-center gap-2 border-b border-border/70 p-2 sm:justify-start sm:p-2.5">
               <DialogClose
                 render={
                   <Button
                     className="shrink-0 rounded-lg"
-                    size="icon"
+                    size="icon-sm"
                     variant="outline"
                   />
                 }
@@ -319,23 +319,25 @@ export function PersonalizationCenter({
                 />
                 <span className="sr-only">Close</span>
               </DialogClose>
-              <DialogHeader className="sr-only min-w-0 pt-0.5 sm:not-sr-only sm:flex">
-                <DialogTitle>Settings</DialogTitle>
-                <DialogDescription className="text-xs leading-relaxed">
+              <DialogHeader className="sr-only min-w-0 sm:not-sr-only sm:flex">
+                <DialogTitle className="text-sm font-medium tracking-[-0.01em]">
+                  Settings
+                </DialogTitle>
+                <DialogDescription className="text-label leading-snug">
                   Providers, defaults, and memory.
                 </DialogDescription>
               </DialogHeader>
             </div>
             <nav
               aria-label="Settings navigation"
-              className="min-h-0 flex-1 overflow-y-auto px-2 py-2.5 sm:p-2.5"
+              className="min-h-0 flex-1 overflow-y-auto p-2"
             >
               <TabsList
                 aria-label="Settings sections"
                 className="h-auto w-full flex-col justify-start gap-1 rounded-none bg-transparent p-0"
               >
                 <TabsTrigger
-                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 text-label sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="defaults"
                 >
                   <HugeiconsIcon
@@ -346,7 +348,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">General</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 text-label sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="memory"
                 >
                   <HugeiconsIcon
@@ -357,7 +359,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">Saved memory</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 text-label sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="history"
                 >
                   <HugeiconsIcon
@@ -368,7 +370,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">History</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 text-label sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="processing"
                 >
                   <HugeiconsIcon
@@ -382,7 +384,7 @@ export function PersonalizationCenter({
             </nav>
           </aside>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-6 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
+            className="h-full min-h-0 min-w-0 space-y-5 overflow-y-auto p-4"
             value="defaults"
           >
             <SettingsPanelHeader
@@ -391,11 +393,11 @@ export function PersonalizationCenter({
             />
             <section
               aria-labelledby="providers-settings-heading"
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/45 p-3.5"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/45 p-3"
             >
               <div className="min-w-0">
                 <h2
-                  className="text-title font-semibold"
+                  className="font-heading text-sm font-medium tracking-[-0.01em]"
                   id="providers-settings-heading"
                 >
                   AI providers
@@ -409,22 +411,29 @@ export function PersonalizationCenter({
                 </p>
               </div>
               <Button
+                className="text-label"
                 onClick={() => {
                   onOpenChange(false)
                   onOpenProviders()
                 }}
+                size="sm"
                 type="button"
                 variant="outline"
               >
                 Manage providers
               </Button>
             </section>
-            <section aria-labelledby="defaults-heading" className="space-y-4">
-              <h2 className="text-title font-semibold" id="defaults-heading">
+            <section aria-labelledby="defaults-heading" className="space-y-3.5">
+              <h2
+                className="font-heading text-sm font-medium tracking-[-0.01em]"
+                id="defaults-heading"
+              >
                 Conversation defaults
               </h2>
               <PreferenceSelect label="Default model">
                 <NativeSelect
+                  className="[&_select]:text-label"
+                  size="sm"
                   value={preferences.defaultModel ?? ""}
                   onChange={(event) =>
                     setPreferences((current) => ({
@@ -445,6 +454,8 @@ export function PersonalizationCenter({
               </PreferenceSelect>
               <PreferenceSelect label="Language">
                 <NativeSelect
+                  className="[&_select]:text-label"
+                  size="sm"
                   value={preferences.language}
                   onChange={(event) =>
                     setPreferences((current) => ({
@@ -463,6 +474,8 @@ export function PersonalizationCenter({
               </PreferenceSelect>
               <PreferenceSelect label="Reasoning">
                 <NativeSelect
+                  className="[&_select]:text-label"
+                  size="sm"
                   value={preferences.intelligenceLevel}
                   onChange={(event) =>
                     setPreferences((current) => ({
@@ -484,6 +497,8 @@ export function PersonalizationCenter({
               </PreferenceSelect>
               <PreferenceSelect label="Response detail">
                 <NativeSelect
+                  className="[&_select]:text-label"
+                  size="sm"
                   value={preferences.responseDetail}
                   onChange={(event) =>
                     setPreferences((current) => ({
@@ -506,10 +521,10 @@ export function PersonalizationCenter({
               </PreferenceSelect>
               <fieldset
                 aria-describedby="message-bubble-color-description"
-                className="space-y-2"
+                className="space-y-1.5"
                 disabled={busy || saved === undefined}
               >
-                <legend className="text-sm font-medium">
+                <legend className="text-label font-medium">
                   Your message color
                 </legend>
                 <p
@@ -524,7 +539,7 @@ export function PersonalizationCenter({
                       preferences.userMessageBubbleColor === option.value
                     return (
                       <label
-                        className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-[background-color,border-color,box-shadow] has-[input:checked]:border-primary/50 has-[input:checked]:bg-primary/5 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring/50 has-[input:focus-visible]:ring-offset-2"
+                        className="flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-[background-color,border-color,box-shadow] has-[input:checked]:border-primary/50 has-[input:checked]:bg-primary/5 has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-50 has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring/50 has-[input:focus-visible]:ring-offset-2"
                         key={option.value}
                       >
                         <input
@@ -542,9 +557,9 @@ export function PersonalizationCenter({
                         />
                         <span
                           aria-hidden="true"
-                          className={`size-6 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20 ${option.swatchClassName}`}
+                          className={`size-5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20 ${option.swatchClassName}`}
                         />
-                        <span className="min-w-0 flex-1 text-sm">
+                        <span className="min-w-0 flex-1 text-label">
                           {option.label}
                         </span>
                         <span
@@ -559,15 +574,17 @@ export function PersonalizationCenter({
                 </div>
               </fieldset>
               <Button
+                className="text-label"
                 disabled={busy || saved === undefined}
                 onClick={() => void saveDefaults()}
+                size="sm"
               >
                 {busy ? <Spinner /> : null} Save defaults
               </Button>
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto p-4"
             value="memory"
           >
             <SettingsPanelHeader
@@ -955,7 +972,7 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto p-4"
             value="history"
           >
             <SettingsPanelHeader
@@ -1001,7 +1018,7 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto p-4"
             value="processing"
           >
             <SettingsPanelHeader
@@ -1111,11 +1128,11 @@ function SettingsPanelHeader({
   title: string
 }) {
   return (
-    <header className="sticky top-0 z-10 -mx-4 -mt-4 border-b border-border/70 bg-popover/95 px-4 py-4 backdrop-blur-sm sm:-mx-5 sm:-mt-4.5 sm:px-5 sm:py-4.5">
-      <h2 className="font-heading text-title font-semibold tracking-tight">
+    <header className="sticky top-0 z-10 -mx-4 -mt-4 border-b border-border/70 bg-popover/95 px-4 py-3.5 backdrop-blur-sm">
+      <h2 className="font-heading text-sm font-medium tracking-[-0.01em]">
         {title}
       </h2>
-      <p className="mt-1 max-w-2xl text-body leading-relaxed text-muted-foreground">
+      <p className="mt-1 max-w-2xl text-label leading-snug text-muted-foreground">
         {description}
       </p>
     </header>
@@ -1130,7 +1147,7 @@ function PreferenceSelect({
   label: string
 }) {
   return (
-    <label className="grid gap-2 text-body font-medium sm:grid-cols-[10rem_1fr] sm:items-center">
+    <label className="grid gap-1.5 text-label font-medium sm:grid-cols-[9rem_1fr] sm:items-center">
       <span>{label}</span>
       {children}
     </label>
