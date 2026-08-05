@@ -1,7 +1,4 @@
-import {
-  ArchiveRestoreIcon,
-  Delete02Icon,
-} from "@hugeicons/core-free-icons"
+import { ArchiveRestoreIcon, Delete02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "convex/react"
 import { useState } from "react"
@@ -106,14 +103,14 @@ export function ArchivedChatsDialog({
     >
       {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
+        <DialogHeader className="border-b border-border/70 px-4 py-3.5 pr-12 sm:px-5">
           <DialogTitle>Archived chats</DialogTitle>
           <DialogDescription>
             Restore a chat to the sidebar or delete it permanently.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[min(28rem,calc(100svh-10rem))] overflow-y-auto px-5 py-4 sm:px-6">
+        <div className="max-h-[min(28rem,calc(100svh-9rem))] overflow-y-auto px-4 py-3.5 sm:px-5">
           {archived === undefined ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner className="size-4" />
@@ -129,7 +126,7 @@ export function ArchivedChatsDialog({
                 const busy = pendingId === conversation._id
                 return (
                   <li
-                    className="flex items-start gap-3 rounded-2xl border border-border/70 px-3 py-3"
+                    className="flex items-start gap-2.5 rounded-xl border border-border/70 px-3 py-2.5"
                     key={conversation._id}
                   >
                     <button

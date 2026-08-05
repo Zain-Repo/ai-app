@@ -2370,7 +2370,7 @@ export function AIInput({
         </div>
       ) : null}
 
-      <div className="@container relative rounded-[28px] border border-border bg-card shadow-[0_10px_26px_-22px_rgba(0,0,0,0.14)]">
+      <div className="@container relative rounded-2xl border border-border bg-card shadow-[0_8px_22px_-20px_rgba(0,0,0,0.16)]">
         <AnimatePresence>
           {waveRun > 0 ? (
             <SendWave
@@ -2381,7 +2381,7 @@ export function AIInput({
         </AnimatePresence>
 
         {attachments.length > 0 ? (
-          <AttachmentGroup className="px-3 pt-3 pb-0 sm:px-4">
+          <AttachmentGroup className="px-3 pt-2.5 pb-0 sm:px-3.5">
             {attachments.map((file) => (
               <Attachment
                 aria-label={`Attached file ${file.name}`}
@@ -2419,7 +2419,7 @@ export function AIInput({
 
         <InputPrimitive
           aria-label="Message"
-          className="block max-h-[132px] w-full resize-none bg-transparent px-4 pt-4 pb-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground sm:px-5 sm:text-sm"
+          className="block max-h-[120px] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground sm:px-4 sm:text-body sm:leading-5"
           disabled={disabled}
           onValueChange={(next) => {
             setValue(next)
@@ -2432,7 +2432,7 @@ export function AIInput({
           value={value}
         />
 
-        <div className="flex items-center gap-1.5 px-2.5 pt-1 pb-2.5 sm:gap-2 sm:px-3 sm:pb-3">
+        <div className="flex items-center gap-1 px-2 pt-0.5 pb-2 sm:gap-1.5 sm:px-2.5 sm:pb-2.5">
           {resolvedMenuItems.length > 0 ? (
             <PlusMenu
               items={resolvedMenuItems}
@@ -2454,7 +2454,7 @@ export function AIInput({
           {providers.length > 0 ? (
             <OptionMenu
               ariaLabel="Select provider"
-              chipClassName="flex min-h-9 min-w-14 items-center gap-1.5 rounded-full border border-border/60 bg-muted/75 px-3 py-1.5 font-medium text-foreground text-sm shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color] hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:min-h-10 sm:px-3.5 sm:py-2"
+              chipClassName="flex min-h-8 min-w-14 items-center gap-1.5 rounded-lg border border-border/60 bg-muted/75 px-2.5 py-1 font-medium text-label text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,transform] duration-150 hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:px-3"
               disabled={providerDisabled}
               onChange={(next) => {
                 setProvider(next)

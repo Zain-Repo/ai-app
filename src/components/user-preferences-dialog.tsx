@@ -127,7 +127,7 @@ export function UserPreferencesDialog({
       ) : null}
 
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-lg">
-        <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
+        <DialogHeader className="border-b border-border/70 px-4 py-3.5 pr-12 sm:px-5">
           <DialogTitle>User preferences</DialogTitle>
           <DialogDescription>
             Set the defaults used when you start a new conversation.
@@ -135,7 +135,7 @@ export function UserPreferencesDialog({
         </DialogHeader>
 
         <form onSubmit={save}>
-          <div className="divide-y divide-border/70 px-5 sm:px-6">
+          <div className="divide-y divide-border/70 px-4 sm:px-5">
             <PreferenceField
               description="Used for new conversations. Existing chats keep their current model."
               htmlFor="preference-model"
@@ -313,7 +313,7 @@ export function UserPreferencesDialog({
             </fieldset>
           </div>
 
-          <DialogFooter className="items-stretch border-t border-border/70 bg-muted/20 px-5 py-4 sm:items-center sm:px-6">
+          <DialogFooter className="items-stretch border-t border-border/70 bg-muted/20 px-4 py-3.5 sm:items-center sm:px-5">
             <div className="min-h-5 flex-1 text-xs" aria-live="polite">
               {loading ? (
                 <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -380,7 +380,7 @@ function PreferenceField({
   label: string
 }) {
   return (
-    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-center sm:gap-6">
+    <div className="grid gap-2.5 py-3.5 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:gap-5">
       <div>
         <label className="text-sm font-medium" htmlFor={htmlFor}>
           {label}

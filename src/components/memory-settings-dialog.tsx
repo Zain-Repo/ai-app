@@ -60,7 +60,7 @@ export function MemorySettingsDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
+        <DialogHeader className="border-b border-border/70 px-4 py-3.5 pr-12 sm:px-5">
           <DialogTitle>Memory</DialogTitle>
           <DialogDescription>
             Control what Dev3 remembers across conversations. Recalled memories
@@ -173,7 +173,7 @@ function MemorySettingsContent() {
     return (
       <div
         aria-live="polite"
-        className="flex min-h-48 items-center justify-center gap-2 px-5 py-6 text-sm text-muted-foreground sm:px-6"
+        className="flex min-h-44 items-center justify-center gap-2 px-4 py-5 text-body text-muted-foreground sm:px-5"
       >
         <Spinner className="size-4" /> Loading memory settings
       </div>
@@ -182,7 +182,7 @@ function MemorySettingsContent() {
 
   return (
     <>
-      <div className="border-b border-border/70 px-5 py-4 sm:px-6">
+      <div className="border-b border-border/70 px-4 py-3.5 sm:px-5">
         <div className="flex items-center justify-between gap-6">
           <div className="min-w-0">
             <label className="text-sm font-medium" htmlFor="memory-enabled">
@@ -208,7 +208,7 @@ function MemorySettingsContent() {
         </div>
       </div>
 
-      <div className="max-h-[min(28rem,calc(100svh-15rem))] overflow-y-auto px-5 py-4 sm:px-6">
+      <div className="max-h-[min(28rem,calc(100svh-14rem))] overflow-y-auto px-4 py-3.5 sm:px-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium">Saved memories</h2>
           <span className="text-xs text-muted-foreground">
@@ -217,7 +217,7 @@ function MemorySettingsContent() {
         </div>
 
         {settings.memories.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-center">
             <HugeiconsIcon
               aria-hidden="true"
               className="mx-auto size-5 text-muted-foreground"
@@ -241,7 +241,7 @@ function MemorySettingsContent() {
               const inputId = `memory-${memory._id}-content`
               return (
                 <li
-                  className="rounded-2xl border border-border/70 px-3 py-3"
+                  className="rounded-xl border border-border/70 px-3 py-2.5"
                   key={memory._id}
                 >
                   {editing ? (
@@ -383,7 +383,7 @@ function MemorySettingsContent() {
       </div>
 
       {settings.memories.length > 0 ? (
-        <div className="flex items-center justify-end border-t border-border/70 bg-muted/20 px-5 py-4 sm:px-6">
+        <div className="flex items-center justify-end border-t border-border/70 bg-muted/20 px-4 py-3.5 sm:px-5">
           <AlertDialog
             open={clearOpen}
             onOpenChange={(nextOpen) => {
@@ -465,7 +465,7 @@ class MemorySettingsErrorBoundary extends Component<
 
     return (
       <div
-        className="flex min-h-48 flex-col items-center justify-center px-5 py-6 text-center sm:px-6"
+        className="flex min-h-44 flex-col items-center justify-center px-4 py-5 text-center sm:px-5"
         role="alert"
       >
         <HugeiconsIcon

@@ -1,16 +1,16 @@
 # Interface typography and compact control refresh
 
-The application interface now uses a cleaner Inter-based type system and a
-more restrained set of compact control dimensions while preserving the
-existing layout, behavior, dark theme, and cinematic landing-page display
-headings.
+The application interface now uses a cleaner Inter-based body type system,
+restrained Raleway headings, and more compact control dimensions while
+preserving existing behavior, dark-theme semantics, and cinematic
+landing-page display headings.
 
 ## Implementation
 
-- Replaced Outfit with self-hosted Inter for application body text and UI
-  headings. Raleway remains limited to the large cinematic landing headings.
-- Added semantic typography roles for 16/20px medium titles, 13/16px medium
-  labels, and 14/20px regular body text.
+- Replaced Outfit with self-hosted Inter for application body text. Raleway is
+  used selectively for compact interface headings and cinematic display text.
+- Added semantic typography roles, now tuned to 13/18px small text, 15/19px
+  titles, 12.5/16px labels, and 13.5/20px body text.
 - Updated light-theme default text to the requested `#333333` equivalent and
   subtle text to the visually equivalent, WCAG AA-safe `#767676`. Existing
   dark-theme foreground tokens remain unchanged.
@@ -57,3 +57,31 @@ The signed-in chat workspace was not available for live visual inspection in
 this environment. Shared primitive behavior is covered by focused component
 tests, and the public landing and sign-in surfaces were exercised in both
 light and dark themes where applicable.
+
+## Compact workspace density follow-up
+
+The chat workspace and its supporting overlays received a second density pass
+so more content fits comfortably without making controls feel cramped.
+
+- Reduced the shared small, title, label, and body typography roles and paired
+  Inter body copy with restrained semibold Raleway headings.
+- Tightened shared dialogs, alert dialogs, sheets, drawers, tabs, empty states,
+  and sidebar widths, spacing, corner radii, and control heights.
+- Reduced chat header, message-stream, composer, markdown, project-workspace,
+  and user-message spacing. User messages now render with one visual surface
+  instead of a nested double bubble.
+- Compacted the settings navigation, provider connection flow, archived-chat
+  dialog, memory dialog, and user-preferences dialog.
+- Preserved 16px mobile composer input text to avoid iOS focus zoom, keyboard
+  navigation and focus styling, semantic labels, and reduced-motion behavior.
+
+### Follow-up validation
+
+- All 261 Vitest tests across 59 files passed.
+- TypeScript type checking and scoped ESLint passed.
+- The production client and SSR build passed with only the existing
+  `chat-sidebar.test.tsx` route-discovery warning.
+- The public landing and Clerk sign-in surfaces rendered without a Vite error
+  overlay during browser smoke testing. Authenticated chat surfaces remained
+  unavailable because the chat route redirected to sign-in.
+- `git diff --check` passed after the focused diff review.

@@ -1723,13 +1723,13 @@ function ChatWorkspace() {
   return (
     <SidebarProvider className="chat-workspace-shell h-svh overflow-hidden">
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
-        <SidebarHeader className="gap-3 border-b border-sidebar-border/50 p-3.5">
+        <SidebarHeader className="gap-2 border-b border-sidebar-border/50 p-2.5">
           <a
             aria-label="Dev3 home"
-            className="flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             href="/chat"
           >
-            <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#0B0D12] p-1.5 shadow-sm ring-1 ring-sidebar-border/70">
+            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#0B0D12] p-1.5 shadow-sm ring-1 ring-sidebar-border/70">
               <Dev3Mark className="size-full" mode="dark" />
             </span>
             <span className="min-w-0">
@@ -1749,7 +1749,7 @@ function ChatWorkspace() {
             onVoiceActivate={() => void activateVoice()}
           />
           <Button
-            className="h-9 w-full justify-start rounded-xl px-2.5 text-sidebar-foreground shadow-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="h-8 w-full justify-start rounded-lg px-2.5 text-sidebar-foreground shadow-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={() =>
               open({ mode: "chat-new", projectId: search.projectId })
             }
@@ -1776,7 +1776,7 @@ function ChatWorkspace() {
             />
             <SidebarInput
               aria-label="Search recent chats"
-              className="h-9 rounded-xl border-sidebar-border/60 bg-background/55 pl-8 transition-colors focus-visible:bg-background"
+              className="h-8 rounded-lg border-sidebar-border/60 bg-background/55 pl-8 transition-colors focus-visible:bg-background"
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search chats"
               value={searchQuery}
@@ -1785,7 +1785,7 @@ function ChatWorkspace() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="rounded-xl px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
+                className="rounded-lg px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
                 isActive={search.mode === "library"}
                 onClick={() => void open({ mode: "library" })}
               >
@@ -1795,7 +1795,7 @@ function ChatWorkspace() {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
-        <SidebarContent className="gap-0 px-2 py-3">
+        <SidebarContent className="gap-0 px-2 py-2">
           <SidebarGroup className="p-1.5">
             <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
               Projects
@@ -1822,7 +1822,7 @@ function ChatWorkspace() {
                     return (
                       <SidebarMenuItem key={project._id}>
                         <SidebarMenuButton
-                          className="rounded-xl px-2.5 pr-14 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
+                          className="rounded-lg px-2.5 pr-14 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
                           isActive={isActive}
                           render={
                             <button
@@ -1937,7 +1937,7 @@ function ChatWorkspace() {
               ) : null}
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup className="p-1.5 pt-3">
+          <SidebarGroup className="p-1.5 pt-2">
             <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
               Recent chats
             </SidebarGroupLabel>
@@ -1961,7 +1961,7 @@ function ChatWorkspace() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="gap-2.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2.5">
+        <SidebarFooter className="gap-1.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2">
           {conversationId ? (
             <Select
               aria-label="Chat memory mode"
@@ -2636,7 +2636,7 @@ function ChatWorkspace() {
                 userMessageBubbleColor={preferences?.userMessageBubbleColor}
                 targetMessageId={search.messageId}
               />
-              <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-8 pb-4 sm:px-6">
+              <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-6 pb-3 sm:px-5">
                 <div className="mx-auto w-full max-w-3xl">
                   {selected?.status === "archived" ? (
                     <p className="mb-2 text-center text-xs text-muted-foreground">
@@ -2806,16 +2806,16 @@ function ProjectWorkspace({
       }}
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <main className="mx-auto w-full max-w-5xl px-5 py-8 md:px-8 md:py-12">
-          <header className="mb-8 flex items-center gap-3">
-            <Folder aria-hidden="true" className="size-7 stroke-[1.6]" />
-            <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+        <main className="mx-auto w-full max-w-5xl px-5 py-6 md:px-7 md:py-8">
+          <header className="mb-6 flex items-center gap-2.5">
+            <Folder aria-hidden="true" className="size-6 stroke-[1.6]" />
+            <h1 className="font-heading text-xl font-semibold tracking-tight md:text-2xl">
               {project.name}
             </h1>
           </header>
 
           <button
-            className="mb-8 flex min-h-16 w-full items-center gap-4 rounded-2xl border bg-card px-5 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="mb-6 flex min-h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             onClick={onNewChat}
             type="button"
           >
@@ -2825,22 +2825,22 @@ function ProjectWorkspace({
               icon={Add01Icon}
               strokeWidth={2}
             />
-            <span className="text-base text-muted-foreground">
+            <span className="text-body text-muted-foreground">
               New chat in {project.name}
             </span>
           </button>
 
           <Tabs onValueChange={setActiveTab} value={activeTab}>
             <div className="mb-5 flex items-center justify-between gap-3">
-              <TabsList className="h-10 gap-2 bg-transparent p-0">
+              <TabsList className="h-8 gap-1.5 bg-transparent p-0">
                 <TabsTrigger
-                  className="h-10 flex-none rounded-full px-4 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
                   value="chats"
                 >
                   Chats
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-10 flex-none rounded-full px-4 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
                   value="sources"
                 >
                   Sources
@@ -2877,7 +2877,7 @@ function ProjectWorkspace({
                 <div className="divide-y">
                   {conversations.map((conversation) => (
                     <button
-                      className="group flex w-full items-center gap-4 px-3 py-4 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                      className="group flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
                       key={conversation._id}
                       onClick={() => onOpenChat(conversation._id)}
                       type="button"
@@ -2886,7 +2886,7 @@ function ProjectWorkspace({
                         <span className="block truncate text-sm font-semibold">
                           {conversation.title}
                         </span>
-                        <span className="mt-1 block truncate text-sm text-muted-foreground">
+                        <span className="mt-0.5 block truncate text-body text-muted-foreground">
                           Continue this conversation
                         </span>
                       </span>
@@ -3042,8 +3042,8 @@ function MessageAreaContent({
     <MessageScrollerProvider>
       <MessageScroller>
         <MessageScrollerViewport>
-          <MessageScrollerContent className="chat-message-stream mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-            <MessageGroup className="gap-6 sm:gap-8">
+          <MessageScrollerContent className="chat-message-stream mx-auto w-full max-w-3xl px-4 py-5 sm:px-5 sm:py-6">
+            <MessageGroup className="gap-5 sm:gap-6">
               {messages.map((message) => {
                 const isUser = message.role === "user"
                 const isStreaming = message.status === "streaming"

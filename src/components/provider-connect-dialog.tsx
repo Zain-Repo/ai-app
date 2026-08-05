@@ -351,8 +351,8 @@ export function ProviderConnectDialog({
 
       <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] max-w-2xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <div className="border-b border-border/70 bg-[linear-gradient(135deg,var(--muted),transparent_55%)]">
-          <DialogHeader className="px-6 pt-6 pr-16 pb-4">
-            <div className="mb-3 grid size-9 place-items-center rounded-xl bg-foreground text-background shadow-sm">
+          <DialogHeader className="px-5 pt-4.5 pr-14 pb-3.5">
+            <div className="mb-2 grid size-8 place-items-center rounded-lg bg-foreground text-background shadow-sm">
               <HugeiconsIcon
                 aria-hidden="true"
                 className="size-[18px]"
@@ -360,16 +360,14 @@ export function ProviderConnectDialog({
                 strokeWidth={1.8}
               />
             </div>
-            <DialogTitle className="text-xl tracking-tight">
-              Connect an AI provider
-            </DialogTitle>
+            <DialogTitle>Connect an AI provider</DialogTitle>
             <DialogDescription className="max-w-lg leading-relaxed">
               Connect an account once, then choose its available models in the
               chat composer.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 pb-5">
+          <div className="px-5 pb-4">
             <label className="sr-only" htmlFor="provider-search">
               Search providers
             </label>
@@ -382,7 +380,7 @@ export function ProviderConnectDialog({
               />
               <Input
                 autoComplete="off"
-                className="h-11 appearance-none rounded-xl border-border/70 bg-background/85 pr-10 pl-10 shadow-sm backdrop-blur placeholder:text-muted-foreground/80 focus-visible:bg-background [&::-webkit-search-cancel-button]:hidden"
+                className="h-9 appearance-none rounded-lg border-border/70 bg-background/85 pr-9 pl-9 shadow-sm backdrop-blur placeholder:text-muted-foreground/80 focus-visible:bg-background [&::-webkit-search-cancel-button]:hidden"
                 id="provider-search"
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search providers or connection types"
@@ -408,11 +406,11 @@ export function ProviderConnectDialog({
           </div>
         </div>
 
-        <div className="overflow-y-auto px-6 py-2">
+        <div className="overflow-y-auto px-5 py-2">
           {!hasSearchResults ? (
             <div className="grid min-h-56 place-items-center py-10 text-center">
               <div>
-                <div className="mx-auto mb-3 grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
+                <div className="mx-auto mb-2.5 grid size-9 place-items-center rounded-lg bg-muted text-muted-foreground">
                   <HugeiconsIcon
                     aria-hidden="true"
                     className="size-5"
@@ -433,7 +431,7 @@ export function ProviderConnectDialog({
               {showCodex || showCursor || showOpenRouter ? (
                 <section
                   aria-labelledby="recommended-provider-heading"
-                  className="py-5"
+                  className="py-4"
                 >
                   <div className="mb-1 flex items-center justify-between gap-3 px-1">
                     <h3
@@ -453,9 +451,9 @@ export function ProviderConnectDialog({
                         type="button"
                         disabled={pending}
                         onClick={() => void connectCodex()}
-                        className="group flex min-h-20 w-full items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                        className="group flex min-h-16 w-full items-center gap-2.5 px-1 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
                       >
-                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground text-background shadow-sm">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-foreground text-background shadow-sm">
                           <HugeiconsIcon
                             aria-hidden="true"
                             className="size-5"
@@ -505,9 +503,9 @@ export function ProviderConnectDialog({
                         type="button"
                         disabled={pending}
                         onClick={() => void connectCursor()}
-                        className="group flex min-h-20 w-full items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                        className="group flex min-h-16 w-full items-center gap-2.5 px-1 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
                       >
-                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted font-heading text-xs font-semibold shadow-sm">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted font-heading text-xs font-semibold shadow-sm">
                           CU
                         </span>
                         <span className="min-w-0 flex-1">
@@ -545,11 +543,11 @@ export function ProviderConnectDialog({
                           type="button"
                           disabled={pending}
                           onClick={() => void connectOpenRouter()}
-                          className="group flex min-h-20 w-full items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
+                          className="group flex min-h-16 w-full items-center gap-2.5 px-1 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
                         >
                           <span
                             aria-hidden="true"
-                            className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground font-heading text-[11px] font-semibold text-background shadow-sm"
+                            className="grid size-9 shrink-0 place-items-center rounded-lg bg-foreground font-heading text-[11px] font-semibold text-background shadow-sm"
                           >
                             OR
                           </span>
@@ -651,8 +649,8 @@ export function ProviderConnectDialog({
                   aria-labelledby="openai-provider-heading"
                   className="py-5"
                 >
-                  <div className="flex items-start gap-3 px-1">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-background shadow-sm">
+                  <div className="flex items-start gap-2.5 px-1">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-background shadow-sm">
                       <HugeiconsIcon
                         aria-hidden="true"
                         className="size-5"
@@ -680,7 +678,7 @@ export function ProviderConnectDialog({
                         <Input
                           aria-label="OpenAI API key"
                           autoComplete="off"
-                          className="h-9 rounded-xl"
+                          className="h-9 rounded-lg"
                           onChange={(event) => setOpenAiKey(event.target.value)}
                           placeholder={
                             openAi?.status === "connected"
@@ -708,12 +706,12 @@ export function ProviderConnectDialog({
               {showFal ? (
                 <section
                   aria-labelledby="fal-provider-heading"
-                  className="py-5"
+                  className="py-4"
                 >
-                  <div className="flex items-start gap-3 px-1">
+                  <div className="flex items-start gap-2.5 px-1">
                     <span
                       aria-hidden="true"
-                      className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-background font-heading text-xs font-semibold shadow-sm"
+                      className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-background font-heading text-xs font-semibold shadow-sm"
                     >
                       fal
                     </span>
@@ -743,7 +741,7 @@ export function ProviderConnectDialog({
                         <Input
                           aria-label="Fal API key"
                           autoComplete="off"
-                          className="h-9 rounded-xl"
+                          className="h-9 rounded-lg"
                           onChange={(event) => setFalKey(event.target.value)}
                           placeholder={
                             fal?.status === "connected"
@@ -769,7 +767,7 @@ export function ProviderConnectDialog({
               {filteredProviders.length > 0 ? (
                 <section
                   aria-labelledby="direct-provider-heading"
-                  className="py-5"
+                  className="py-4"
                 >
                   <div className="mb-1 flex items-center gap-2 px-1">
                     <HugeiconsIcon
@@ -793,7 +791,7 @@ export function ProviderConnectDialog({
                       >
                         <span
                           aria-hidden="true"
-                          className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted font-heading text-[11px] font-semibold tracking-tight"
+                          className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted font-heading text-[11px] font-semibold tracking-tight"
                         >
                           {provider.mark}
                         </span>

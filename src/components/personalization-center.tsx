@@ -297,16 +297,16 @@ export function PersonalizationCenter({
           {notice}
         </p>
         <Tabs
-          className="grid min-h-0 grid-cols-[4rem_minmax(0,1fr)] gap-0 sm:grid-cols-[13.5rem_minmax(0,1fr)]"
+          className="grid min-h-0 grid-cols-[3.75rem_minmax(0,1fr)] gap-0 sm:grid-cols-[12rem_minmax(0,1fr)]"
           defaultValue="defaults"
           orientation="vertical"
         >
           <aside className="flex min-h-0 flex-col border-r border-border/70 bg-muted/25">
-            <div className="flex items-start justify-center gap-3 border-b border-border/70 p-2.5 sm:justify-start sm:p-3.5">
+            <div className="flex items-start justify-center gap-2.5 border-b border-border/70 p-2 sm:justify-start sm:p-3">
               <DialogClose
                 render={
                   <Button
-                    className="shrink-0 rounded-xl"
+                    className="shrink-0 rounded-lg"
                     size="icon"
                     variant="outline"
                   />
@@ -328,14 +328,14 @@ export function PersonalizationCenter({
             </div>
             <nav
               aria-label="Settings navigation"
-              className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:p-3"
+              className="min-h-0 flex-1 overflow-y-auto px-2 py-2.5 sm:p-2.5"
             >
               <TabsList
                 aria-label="Settings sections"
                 className="h-auto w-full flex-col justify-start gap-1 rounded-none bg-transparent p-0"
               >
                 <TabsTrigger
-                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="defaults"
                 >
                   <HugeiconsIcon
@@ -346,7 +346,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">General</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="memory"
                 >
                   <HugeiconsIcon
@@ -357,7 +357,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">Saved memory</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="history"
                 >
                   <HugeiconsIcon
@@ -368,7 +368,7 @@ export function PersonalizationCenter({
                   <span className="sr-only sm:not-sr-only">History</span>
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-10 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-3 data-active:bg-background data-active:shadow-xs"
+                  className="h-8 w-full flex-none justify-center rounded-lg px-0 sm:justify-start sm:px-2.5 data-active:bg-background data-active:shadow-xs"
                   value="processing"
                 >
                   <HugeiconsIcon
@@ -382,7 +382,7 @@ export function PersonalizationCenter({
             </nav>
           </aside>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-8 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            className="h-full min-h-0 min-w-0 space-y-6 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
             value="defaults"
           >
             <SettingsPanelHeader
@@ -391,11 +391,11 @@ export function PersonalizationCenter({
             />
             <section
               aria-labelledby="providers-settings-heading"
-              className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-muted/45 p-4"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/45 p-3.5"
             >
               <div className="min-w-0">
                 <h2
-                  className="text-base font-medium"
+                  className="text-title font-semibold"
                   id="providers-settings-heading"
                 >
                   AI providers
@@ -420,7 +420,7 @@ export function PersonalizationCenter({
               </Button>
             </section>
             <section aria-labelledby="defaults-heading" className="space-y-4">
-              <h2 className="text-base font-medium" id="defaults-heading">
+              <h2 className="text-title font-semibold" id="defaults-heading">
                 Conversation defaults
               </h2>
               <PreferenceSelect label="Default model">
@@ -567,7 +567,7 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
             value="memory"
           >
             <SettingsPanelHeader
@@ -577,7 +577,7 @@ export function PersonalizationCenter({
             <section aria-labelledby="memory-heading">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-medium" id="memory-heading">
+                  <h2 className="text-title font-semibold" id="memory-heading">
                     Memory library
                   </h2>
                   <p className="text-xs text-muted-foreground">
@@ -955,7 +955,7 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
             value="history"
           >
             <SettingsPanelHeader
@@ -963,10 +963,10 @@ export function PersonalizationCenter({
               title="History"
             />
             <section aria-labelledby="history-heading">
-              <h2 className="text-base font-medium" id="history-heading">
+              <h2 className="text-title font-semibold" id="history-heading">
                 Chat history memory
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-body text-muted-foreground">
                 History summaries are separate from saved memory and only
                 created after you enable this setting.
               </p>
@@ -986,7 +986,7 @@ export function PersonalizationCenter({
                   </span>
                 </span>
               </label>
-              <p className="text-sm">
+              <p className="text-body">
                 {personalization
                   ? `${personalization.pendingJobs} pending jobs, ${personalization.failedJobs} failed jobs.`
                   : "Loading history status"}
@@ -1001,7 +1001,7 @@ export function PersonalizationCenter({
             </section>
           </TabsContent>
           <TabsContent
-            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6"
+            className="h-full min-h-0 min-w-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-4.5"
             value="processing"
           >
             <SettingsPanelHeader
@@ -1009,11 +1009,11 @@ export function PersonalizationCenter({
               title="Processing"
             />
             <section aria-labelledby="processing-heading">
-              <h2 className="text-base font-medium" id="processing-heading">
+              <h2 className="text-title font-semibold" id="processing-heading">
                 Memory processing
               </h2>
               {personalization?.processing ? (
-                <div className="mt-3 rounded-lg border p-3 text-sm">
+                <div className="mt-3 rounded-lg border p-3 text-body">
                   <p>
                     <strong>
                       {personalization.processing.provider === "openai"
@@ -1111,11 +1111,11 @@ function SettingsPanelHeader({
   title: string
 }) {
   return (
-    <header className="sticky top-0 z-10 -mx-5 -mt-5 border-b border-border/70 bg-popover/95 px-5 py-5 backdrop-blur-sm sm:-mx-7 sm:-mt-6 sm:px-7 sm:py-6">
-      <h2 className="font-heading text-lg font-medium tracking-tight">
+    <header className="sticky top-0 z-10 -mx-4 -mt-4 border-b border-border/70 bg-popover/95 px-4 py-4 backdrop-blur-sm sm:-mx-5 sm:-mt-4.5 sm:px-5 sm:py-4.5">
+      <h2 className="font-heading text-title font-semibold tracking-tight">
         {title}
       </h2>
-      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-1 max-w-2xl text-body leading-relaxed text-muted-foreground">
         {description}
       </p>
     </header>
@@ -1130,7 +1130,7 @@ function PreferenceSelect({
   label: string
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium sm:grid-cols-[11rem_1fr] sm:items-center">
+    <label className="grid gap-2 text-body font-medium sm:grid-cols-[10rem_1fr] sm:items-center">
       <span>{label}</span>
       {children}
     </label>
