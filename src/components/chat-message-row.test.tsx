@@ -62,7 +62,7 @@ describe("ChatMessageRow", () => {
       </ChatMessageRow>
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy message" }))
+    fireEvent.click(screen.getByRole("button", { name: "Copy response" }))
     fireEvent.click(screen.getByRole("button", { name: "Retry response" }))
     expect(onCopy).toHaveBeenCalledOnce()
     expect(onRetry).toHaveBeenCalledOnce()

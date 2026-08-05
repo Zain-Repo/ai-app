@@ -168,7 +168,7 @@ describe("optional chat features", () => {
     )
   })
 
-  it("shows copy actions only for completed assistant text responses", () => {
+  it("shows copy actions for user messages and terminal assistant text", () => {
     const messages = [
       {
         _id: "assistant-complete",
@@ -217,8 +217,9 @@ describe("optional chat features", () => {
     )
 
     expect(view.getAllByRole("button", { name: "Copy response" })).toHaveLength(
-      1
+      2
     )
+    expect(view.getByRole("button", { name: "Copy message" })).toBeTruthy()
   })
 
   it("focuses the message opened from Library", () => {

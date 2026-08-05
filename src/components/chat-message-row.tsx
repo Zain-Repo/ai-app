@@ -97,7 +97,9 @@ export function ChatMessageRow({
         {isUser || message.content ? (
           <MessageAction
             disabled={actionsDisabled}
-            label={copied ? "Copied" : "Copy message"}
+            label={
+              copied ? "Copied" : isUser ? "Copy message" : "Copy response"
+            }
             onClick={onCopy}
             tooltip={copied ? "Copied" : "Copy"}
           >
