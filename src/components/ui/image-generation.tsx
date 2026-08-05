@@ -113,12 +113,15 @@ export function ImageGeneration({
       )
 
       // This is an estimated wait indicator, so it stops short of completion
-      // until the backend delivers the generated image.
-      if (!reduceMotion) {
-        setProgress(
+      // until the backend delivers the generated image. Reduced-motion users
+      // receive the same estimate in discrete, non-animated steps.
+      const minimumProgress = reduceMotion ? 12 : 6
+      setProgress(
+        Math.max(
+          minimumProgress,
           Math.min(MAX_ESTIMATED_PROGRESS, (elapsed / DURATION_MS) * 100)
         )
-      }
+      )
     }
 
     updateGeneration()

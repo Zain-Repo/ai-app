@@ -17,7 +17,8 @@ instead of appearing abruptly.
 - Paused nonessential looping animation while the component is outside the
   viewport or the document is hidden.
 - Preserved the full status and progress semantics for assistive technology and
-  disabled transitions for reduced-motion users.
+  disabled transitions for reduced-motion users while retaining discrete
+  progress updates.
 - Extended the focused component test to cover startup, staged copy, completion,
   progress semantics, and preservation of the mounted preview.
 
@@ -28,8 +29,8 @@ instead of appearing abruptly.
 
 ## Validation
 
-- Focused Vitest: 1 test passed.
-- Full Vitest suite: 262 tests across 59 files passed.
+- Focused Vitest: 2 tests passed.
+- Full Vitest suite: 263 tests across 59 files passed.
 - TypeScript type checking passed.
 - Scoped ESLint and Prettier checks passed.
 - Production client and SSR builds passed.

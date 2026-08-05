@@ -5,13 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ImageGeneration } from "./image-generation"
 
+const motionPreferences = vi.hoisted(() => ({ reduceMotion: false }))
+
 vi.mock("motion/react", async (importOriginal) => {
   const motion = await importOriginal<Record<string, unknown>>()
-  return { ...motion, useInView: () => true }
+  return {
+    ...motion,
+    useInView: () => true,
+    useReducedMotion: () => motionPreferences.reduceMotion,
+  }
 })
 
 beforeEach(() => {
   vi.useFakeTimers()
+  motionPreferences.reduceMotion = false
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -65,5 +72,24 @@ describe("ImageGeneration", () => {
       "100"
     )
     expect(screen.getByText("Image preview")).toBeTruthy()
+  })
+
+  it("advances estimated progress without transitions for reduced motion", () => {
+    motionPreferences.reduceMotion = true
+    render(
+      <ImageGeneration>
+        <div>Image preview</div>
+      </ImageGeneration>
+    )
+
+    act(() => vi.advanceTimersByTime(3_000))
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "12"
+    )
+
+    act(() => vi.advanceTimersByTime(6_000))
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "20"
+    )
   })
 })
