@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import { WorkspaceHistoryPartialNotice } from "@/components/workspace-history-partial-notice"
 import type { WorkspaceOutputMode } from "@/lib/workspace-product"
 
 type ArchivedChatsDialogProps = {
@@ -51,11 +52,12 @@ export function ArchivedChatsDialog({
   outputMode,
   trigger,
 }: ArchivedChatsDialogProps) {
-  const archived = useQuery(api.conversations.listRecent, {
+  const archivedHistory = useQuery(api.conversations.listWorkspaceRecent, {
     limit: 30,
     outputMode,
     status: "archived",
   })
+  const archived = archivedHistory?.conversations
   const unarchiveConversation = useMutation(api.conversations.unarchive)
   const removeConversation = useMutation(api.conversations.remove)
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
@@ -132,6 +134,11 @@ export function ArchivedChatsDialog({
         </DialogHeader>
 
         <div className="max-h-[min(28rem,calc(100svh-9rem))] overflow-y-auto px-4 py-3.5 sm:px-5">
+          <WorkspaceHistoryPartialNotice
+            className="mb-3"
+            items={copy.items}
+            partial={Boolean(archivedHistory?.isPartial)}
+          />
           {archived === undefined ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner className="size-4" />

@@ -61,46 +61,51 @@ describe("projects and conversations", () => {
     const projectId = await owner.mutation(api.projects.create, {
       name: "Memory race project",
     })
-    const { conversationId, messageId, profileId } = await t.run(async (ctx) => {
-      const connectionId = await ctx.db.insert("providerConnections", {
-        ownerId,
-        provider: "openrouter",
-        authMethod: "oauth",
-        status: "connected",
-        scopes: [],
-        updatedAt: 1,
-      })
-      const createdProfileId = await ctx.db.insert("memoryProcessingProfiles", {
-        ownerId,
-        providerConnectionId: connectionId,
-        provider: "openrouter",
-        extractionModel: "openai/gpt-4o-mini",
-        embeddingModel: "openai/text-embedding-3-small",
-        dimensions: 1536,
-        policyRevision: 1,
-        status: "active",
-        updatedAt: 1,
-      })
-      const createdConversationId = await ctx.db.insert("conversations", {
-        ownerId,
-        projectId,
-        status: "active",
-        title: "Project capture",
-        memoryMode: "standard",
-        updatedAt: 1,
-      })
-      const createdMessageId = await ctx.db.insert("messages", {
-        conversationId: createdConversationId,
-        role: "user",
-        content: "Remember this project detail.",
-        status: "complete",
-      })
-      return {
-        conversationId: createdConversationId,
-        messageId: createdMessageId,
-        profileId: createdProfileId,
+    const { conversationId, messageId, profileId } = await t.run(
+      async (ctx) => {
+        const connectionId = await ctx.db.insert("providerConnections", {
+          ownerId,
+          provider: "openrouter",
+          authMethod: "oauth",
+          status: "connected",
+          scopes: [],
+          updatedAt: 1,
+        })
+        const createdProfileId = await ctx.db.insert(
+          "memoryProcessingProfiles",
+          {
+            ownerId,
+            providerConnectionId: connectionId,
+            provider: "openrouter",
+            extractionModel: "openai/gpt-4o-mini",
+            embeddingModel: "openai/text-embedding-3-small",
+            dimensions: 1536,
+            policyRevision: 1,
+            status: "active",
+            updatedAt: 1,
+          }
+        )
+        const createdConversationId = await ctx.db.insert("conversations", {
+          ownerId,
+          projectId,
+          status: "active",
+          title: "Project capture",
+          memoryMode: "standard",
+          updatedAt: 1,
+        })
+        const createdMessageId = await ctx.db.insert("messages", {
+          conversationId: createdConversationId,
+          role: "user",
+          content: "Remember this project detail.",
+          status: "complete",
+        })
+        return {
+          conversationId: createdConversationId,
+          messageId: createdMessageId,
+          profileId: createdProfileId,
+        }
       }
-    })
+    )
     const beforeRemoval = await t.run(async (ctx) => await ctx.db.get(ownerId))
     expect(beforeRemoval).toMatchObject({
       memoryHistoryRevision: 1,
@@ -113,7 +118,9 @@ describe("projects and conversations", () => {
       memoryHistoryRevision: 2,
       memoryRevision: 3,
     })
-    expect((await t.run((ctx) => ctx.db.get(conversationId)))?.projectId).toBeUndefined()
+    expect(
+      (await t.run((ctx) => ctx.db.get(conversationId)))?.projectId
+    ).toBeUndefined()
 
     await expect(
       t.mutation(internal.memoryCapture.commitCandidates, {
@@ -659,14 +666,17 @@ describe("projects and conversations", () => {
 
     const titles = async (args: {
       limit?: number
-      outputMode?: "image" | "text"
+      outputMode: "image" | "text"
       projectId?: string
       status?: "active" | "archived"
       unassignedOnly?: boolean
-    }) =>
-      (await owner.query(api.conversations.listRecent, args)).map(
-        (conversation) => conversation.title
+    }) => {
+      const history = await owner.query(
+        api.conversations.listWorkspaceRecent,
+        args
       )
+      return history.conversations.map((conversation) => conversation.title)
+    }
 
     await expect(titles({ outputMode: "text" })).resolves.toEqual([
       "Legacy unassigned",
@@ -701,6 +711,39 @@ describe("projects and conversations", () => {
     await expect(
       titles({ outputMode: "image", status: "archived" })
     ).resolves.toEqual(["Image archived"])
+  })
+
+  it("marks workspace history as partial when the transitional scan cap is reached", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|workspace-cap-owner"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 300; index += 1) {
+        await ctx.db.insert("conversations", {
+          ownerId,
+          status: "active",
+          title: `Newer text ${index}`,
+          updatedAt: 1_000 - index,
+          outputMode: "text",
+        })
+      }
+      await ctx.db.insert("conversations", {
+        ownerId,
+        status: "active",
+        title: "Older image",
+        updatedAt: 1,
+        outputMode: "image",
+      })
+    })
+
+    await expect(
+      owner.query(api.conversations.listWorkspaceRecent, {
+        limit: 30,
+        outputMode: "image",
+        unassignedOnly: true,
+      })
+    ).resolves.toEqual({ conversations: [], isPartial: true })
   })
 
   it("archives, lists archived, restores, and deletes owned chats", async () => {

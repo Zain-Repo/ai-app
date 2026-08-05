@@ -73,6 +73,11 @@ const conversationValidator = v.object({
   updatedAt: v.number(),
 })
 
+const workspaceHistoryResultValidator = v.object({
+  conversations: v.array(conversationValidator),
+  isPartial: v.boolean(),
+})
+
 const messageValidator = v.object({
   _id: v.id("messages"),
   _creationTime: v.number(),
@@ -1425,15 +1430,12 @@ export const remove = mutation({
 export const listRecent = query({
   args: {
     limit: v.optional(v.number()),
-    outputMode: v.optional(outputModeValidator),
     projectId: v.optional(v.string()),
     status: v.optional(v.union(v.literal("active"), v.literal("archived"))),
     unassignedOnly: v.optional(v.boolean()),
   },
   returns: v.array(conversationValidator),
   handler: async (ctx, args) => {
-    // Compound workspace indexes stay staged until their production backfills
-    // complete, so this deploy filters through indexes that are already active.
     const user = await getCurrentUser(ctx)
     const requestedLimit = args.limit ?? MAX_CONVERSATIONS
     const limit = Number.isFinite(requestedLimit)
@@ -1447,27 +1449,71 @@ export const listRecent = query({
       const project = await ctx.db.get(projectId)
       if (!project || project.ownerId !== user._id) return []
 
-      const projectConversations = ctx.db
+      return await ctx.db
         .query("conversations")
         .withIndex("by_project_id_and_status_and_updated_at", (indexQuery) =>
           indexQuery.eq("projectId", project._id).eq("status", status)
         )
         .order("desc")
+        .take(limit)
+    }
 
-      if (args.outputMode === undefined) {
-        const projectPage = await projectConversations
-          .filter((filterQuery) =>
-            filterQuery.eq(filterQuery.field("ownerId"), user._id)
-          )
-          .paginate({
-            cursor: null,
-            maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
-            numItems: limit,
-          })
-        return projectPage.page.slice(0, limit)
-      }
+    if (args.unassignedOnly) {
+      return await ctx.db
+        .query("conversations")
+        .withIndex("by_owner_status_updated_at", (indexQuery) =>
+          indexQuery.eq("ownerId", user._id).eq("status", status)
+        )
+        .filter((filterQuery) =>
+          filterQuery.eq(filterQuery.field("projectId"), undefined)
+        )
+        .order("desc")
+        .take(limit)
+    }
 
-      const projectPage = await projectConversations
+    return await ctx.db
+      .query("conversations")
+      .withIndex("by_owner_status_updated_at", (indexQuery) =>
+        indexQuery.eq("ownerId", user._id).eq("status", status)
+      )
+      .order("desc")
+      .take(limit)
+  },
+})
+
+export const listWorkspaceRecent = query({
+  args: {
+    limit: v.optional(v.number()),
+    outputMode: outputModeValidator,
+    projectId: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("active"), v.literal("archived"))),
+    unassignedOnly: v.optional(v.boolean()),
+  },
+  returns: workspaceHistoryResultValidator,
+  handler: async (ctx, args) => {
+    // Compound workspace indexes stay staged until their production backfills
+    // complete. Transitional queries cap reads and report when that cap means
+    // the returned history may be incomplete.
+    const user = await getCurrentUser(ctx)
+    const requestedLimit = args.limit ?? MAX_CONVERSATIONS
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_CONVERSATIONS))
+      : MAX_CONVERSATIONS
+    const status = args.status ?? "active"
+
+    if (args.projectId) {
+      const projectId = ctx.db.normalizeId("projects", args.projectId)
+      if (!projectId) return { conversations: [], isPartial: false }
+      const project = await ctx.db.get(projectId)
+      if (!project || project.ownerId !== user._id)
+        return { conversations: [], isPartial: false }
+
+      const page = await ctx.db
+        .query("conversations")
+        .withIndex("by_project_id_and_status_and_updated_at", (indexQuery) =>
+          indexQuery.eq("projectId", project._id).eq("status", status)
+        )
+        .order("desc")
         .filter((filterQuery) =>
           filterQuery.and(
             filterQuery.eq(filterQuery.field("ownerId"), user._id),
@@ -1484,29 +1530,29 @@ export const listRecent = query({
           maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
           numItems: limit,
         })
-      return projectPage.page.slice(0, limit)
+      const conversations = page.page.slice(0, limit)
+      return {
+        conversations,
+        isPartial: conversations.length < limit && !page.isDone,
+      }
     }
 
     if (args.unassignedOnly) {
-      const unassignedConversations = ctx.db
+      const page = await ctx.db
         .query("conversations")
         .withIndex("by_owner_status_updated_at", (indexQuery) =>
           indexQuery.eq("ownerId", user._id).eq("status", status)
         )
         .order("desc")
-
-      const unassignedPage = await unassignedConversations
         .filter((filterQuery) =>
           filterQuery.and(
             filterQuery.eq(filterQuery.field("projectId"), undefined),
-            args.outputMode === undefined
-              ? true
-              : args.outputMode === "image"
-                ? filterQuery.eq(filterQuery.field("outputMode"), "image")
-                : filterQuery.or(
-                    filterQuery.eq(filterQuery.field("outputMode"), "text"),
-                    filterQuery.eq(filterQuery.field("outputMode"), undefined)
-                  )
+            args.outputMode === "image"
+              ? filterQuery.eq(filterQuery.field("outputMode"), "image")
+              : filterQuery.or(
+                  filterQuery.eq(filterQuery.field("outputMode"), "text"),
+                  filterQuery.eq(filterQuery.field("outputMode"), undefined)
+                )
           )
         )
         .paginate({
@@ -1514,20 +1560,19 @@ export const listRecent = query({
           maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
           numItems: limit,
         })
-      return unassignedPage.page.slice(0, limit)
+      const conversations = page.page.slice(0, limit)
+      return {
+        conversations,
+        isPartial: conversations.length < limit && !page.isDone,
+      }
     }
 
-    const recentConversations = ctx.db
+    const page = await ctx.db
       .query("conversations")
       .withIndex("by_owner_status_updated_at", (indexQuery) =>
         indexQuery.eq("ownerId", user._id).eq("status", status)
       )
       .order("desc")
-
-    if (args.outputMode === undefined)
-      return await recentConversations.take(limit)
-
-    const recentPage = await recentConversations
       .filter((filterQuery) =>
         args.outputMode === "image"
           ? filterQuery.eq(filterQuery.field("outputMode"), "image")
@@ -1541,7 +1586,11 @@ export const listRecent = query({
         maximumRowsRead: MAX_WORKSPACE_HISTORY_ROWS_READ,
         numItems: limit,
       })
-    return recentPage.page.slice(0, limit)
+    const conversations = page.page.slice(0, limit)
+    return {
+      conversations,
+      isPartial: conversations.length < limit && !page.isDone,
+    }
   },
 })
 

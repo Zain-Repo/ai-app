@@ -50,6 +50,7 @@ import {
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
+import { WorkspaceHistoryPartialNotice } from "@/components/workspace-history-partial-notice"
 import {
   Context,
   ContextContent,
@@ -715,8 +716,8 @@ function ChatWorkspace() {
   )
   const outputMode = getWorkspaceOutputMode(workspace)
   const copy = workspaceCopy[workspace]
-  const projectConversations = useQuery(
-    api.conversations.listRecent,
+  const projectHistory = useQuery(
+    api.conversations.listWorkspaceRecent,
     search.projectId
       ? {
           limit: 30,
@@ -725,6 +726,7 @@ function ChatWorkspace() {
         }
       : "skip"
   )
+  const projectConversations = projectHistory?.conversations
   const projectSources = useQuery(
     api.projects.listSources,
     search.mode === "project" && search.projectId
@@ -737,11 +739,12 @@ function ChatWorkspace() {
       ? { projectId: search.projectId }
       : "skip"
   )
-  const recentConversations = useQuery(api.conversations.listRecent, {
+  const recentHistory = useQuery(api.conversations.listWorkspaceRecent, {
     limit: 30,
     outputMode,
     unassignedOnly: true,
   })
+  const recentConversations = recentHistory?.conversations
   const activeProjectId = resolveActiveProjectId(
     conversationId,
     selected?.projectId,
@@ -2119,6 +2122,11 @@ function ChatWorkspace() {
                   />
                 )}
               </SidebarMenu>
+              <WorkspaceHistoryPartialNotice
+                className="mx-1.5 mt-2 bg-sidebar-accent/50 text-sidebar-foreground/65"
+                items={copy.projectCollection.toLowerCase()}
+                partial={Boolean(recentHistory?.isPartial)}
+              />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -2262,6 +2270,7 @@ function ChatWorkspace() {
                 embeddingConnections={connections}
                 embeddingProfile={projectEmbeddingProfile}
                 conversations={projectConversations}
+                historyPartial={Boolean(projectHistory?.isPartial)}
                 onConnectEmbeddingProvider={() => setConnectorOpen(true)}
                 onNewChat={() =>
                   open({ mode: "chat-new", projectId: selectedProject._id })
@@ -2941,6 +2950,7 @@ function ProjectWorkspace({
   embeddingActionPending,
   embeddingConnections,
   embeddingProfile,
+  historyPartial,
   onConnectEmbeddingProvider,
   onNewChat,
   onOpenChat,
@@ -2957,6 +2967,7 @@ function ProjectWorkspace({
   embeddingActionPending: boolean
   embeddingConnections: readonly ProjectEmbeddingConnection[] | undefined
   embeddingProfile: ProjectEmbeddingProfile | null | undefined
+  historyPartial: boolean
   onConnectEmbeddingProvider: () => void
   onNewChat: () => void
   onOpenChat: (slug: string) => void
@@ -3051,6 +3062,11 @@ function ProjectWorkspace({
               </Button>
             </div>
             <TabsContent value="chats">
+              <WorkspaceHistoryPartialNotice
+                className="mb-3"
+                items={copy.projectCollection.toLowerCase()}
+                partial={historyPartial}
+              />
               {conversations === undefined ? (
                 <ChatStatus loading message={copy.projectLoading} />
               ) : conversations.length === 0 ? (

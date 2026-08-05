@@ -28,6 +28,9 @@ The feature deploy leaves the three compound indexes staged and filters
 workspace history through the existing owner/status and project/status
 indexes. Filtered queries cap each transitional scan at 300 rows so accounts
 with a long opposite-workspace history cannot exceed an unbounded read budget.
+If that cap is reached before the requested result count, the query marks the
+history as partial and the affected UI surfaces a temporary availability note
+instead of silently presenting the list as complete.
 This lets Convex backfill the new indexes asynchronously without a blocking or
 unsafe deployment dependency.
 

@@ -51,4 +51,6 @@ the requirement and opens the existing provider connection flow.
   Image so image prompts can opt out of memory reads and writes.
 - Removed the same-deploy dependency on newly added Convex indexes; the feature
   now uses already-deployed indexes with a 300-row transitional scan cap until
-  the staged backfills complete.
+  the staged backfills complete. When the cap prevents a complete result, the
+  server marks the history as partial and recent, project, and archived views
+  display a temporary availability notice.
