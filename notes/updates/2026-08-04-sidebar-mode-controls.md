@@ -4,6 +4,13 @@ The chat sidebar now places the text/image output selector and voice action in a
 
 The large logo block was removed to give the navigation a quieter top edge, and the New chat action now uses the same restrained sidebar-navigation treatment. The account menu remains anchored at the bottom. The per-conversation memory selector also remains in the footer because it is a separate chat-specific setting and was not part of the referenced controls.
 
+## Compact sizing follow-up
+
+Reduced the closed mode selector to a 32-pixel compact control with smaller type,
+icon, radius, and spacing. The open menu is now 256 pixels wide with tighter
+padding and 44-pixel option rows, preserving the descriptions and usable target
+sizes while removing excess visual weight.
+
 ## Affected areas
 
 - `src/components/sidebar-mode-controls.tsx`
@@ -18,6 +25,11 @@ The large logo block was removed to give the navigation a quieter top edge, and 
 - The production client and SSR build passed.
 - Scoped ESLint and Prettier passed for the changed TypeScript and TSX files.
 - `git diff --check` passed.
+- Compact sizing follow-up: all 261 Vitest tests across 59 files, TypeScript,
+  scoped ESLint and Prettier, and the production client/SSR build passed. The
+  build retained the existing warning that `src/routes/chat-sidebar.test.tsx`
+  is not a route.
+- The compact sizing follow-up was mirrored to the Dev3 Engineering Notes page.
 
 ## Limitations
 

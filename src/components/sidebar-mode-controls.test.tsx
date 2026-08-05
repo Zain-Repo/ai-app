@@ -43,8 +43,10 @@ describe("sidebar mode controls", () => {
     )
 
     expect(await screen.findByText("Create, learn, and explore")).toBeTruthy()
+    expect(screen.getByRole("menu").className).toContain("w-64")
     const imageOption = screen.getByRole("menuitemradio", { name: /Image/ })
     expect(imageOption.textContent).toContain("Generate and refine images")
+    expect(imageOption.className).toContain("min-h-11")
 
     fireEvent.click(imageOption)
 

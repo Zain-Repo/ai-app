@@ -34,6 +34,7 @@ import type { UserMessageBubbleColor } from "@/lib/user-message-bubble-color"
 type Props = {
   models: Array<{ label: string; value: string }>
   onOpenChange: (open: boolean) => void
+  onOpenProviders: () => void
   open: boolean
 }
 
@@ -96,7 +97,12 @@ function getMemoryProvenance(item: MemoryProvenance) {
   return labels
 }
 
-export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
+export function PersonalizationCenter({
+  models,
+  onOpenChange,
+  onOpenProviders,
+  open,
+}: Props) {
   const personalization = useQuery(api.memories.getPersonalization)
   const connections = useQuery(api.providerConnections.listMine)
   const saved = useQuery(api.users.getPreferences)
@@ -157,6 +163,9 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
     (personalization?.items.length ?? 0) +
       (personalization?.legacyMemories.length ?? 0) >
     0
+  const connectedProviderCount =
+    connections?.filter((connection) => connection.status === "connected")
+      .length ?? 0
 
   function report(text: string) {
     setNotice(text)
@@ -273,9 +282,9 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
     >
       <DialogContent className="max-h-[calc(100svh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-border/70 px-5 py-4 pr-14 sm:px-6">
-          <DialogTitle>Personalization</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Control defaults, saved memory, history, and memory processing.
+            Manage providers, conversation defaults, and memory.
           </DialogDescription>
         </DialogHeader>
         <p aria-live="polite" className="sr-only" role="status">
@@ -283,15 +292,45 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
         </p>
         <Tabs className="gap-0" defaultValue="defaults">
           <TabsList
-            aria-label="Personalization sections"
+            aria-label="Settings sections"
             className="mx-5 mt-4 w-auto sm:mx-6"
           >
-            <TabsTrigger value="defaults">Defaults</TabsTrigger>
+            <TabsTrigger value="defaults">General</TabsTrigger>
             <TabsTrigger value="memory">Saved memory</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="processing">Processing</TabsTrigger>
           </TabsList>
-          <TabsContent className="px-5 py-5 sm:px-6" value="defaults">
+          <TabsContent className="space-y-8 px-5 py-5 sm:px-6" value="defaults">
+            <section
+              aria-labelledby="providers-settings-heading"
+              className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-muted/45 p-4"
+            >
+              <div className="min-w-0">
+                <h2
+                  className="text-base font-medium"
+                  id="providers-settings-heading"
+                >
+                  AI providers
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {connections === undefined
+                    ? "Loading provider connections"
+                    : connectedProviderCount === 0
+                      ? "Connect an account or API key to use its models."
+                      : `${connectedProviderCount} provider${connectedProviderCount === 1 ? "" : "s"} connected`}
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  onOpenChange(false)
+                  onOpenProviders()
+                }}
+                type="button"
+                variant="outline"
+              >
+                Manage providers
+              </Button>
+            </section>
             <section aria-labelledby="defaults-heading" className="space-y-4">
               <h2 className="text-base font-medium" id="defaults-heading">
                 Conversation defaults
@@ -529,7 +568,9 @@ export function PersonalizationCenter({ models, onOpenChange, open }: Props) {
                       </p>
                     ) : null}
                     <AlertDialogFooter>
-                      <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel disabled={busy}>
+                        Cancel
+                      </AlertDialogCancel>
                       <AlertDialogAction
                         disabled={busy}
                         onClick={() => void clearAllSavedMemories()}

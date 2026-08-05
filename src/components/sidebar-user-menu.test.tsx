@@ -71,7 +71,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenPersonalization={vi.fn()}
+        onOpenSettings={vi.fn()}
       />
     )
 
@@ -99,7 +99,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenPersonalization={vi.fn()}
+        onOpenSettings={vi.fn()}
       />
     )
 
@@ -126,7 +126,7 @@ describe("sidebar user menu", () => {
         desktopAvailable={false}
         onOpenAppUpdates={vi.fn()}
         onOpenArchivedChats={vi.fn()}
-        onOpenPersonalization={vi.fn()}
+        onOpenSettings={vi.fn()}
       />
     )
 
@@ -141,5 +141,26 @@ describe("sidebar user menu", () => {
 
     expect(githubProfile.createGitHubProfileCustomPage).not.toHaveBeenCalled()
     expect(clerk.openUserProfile).toHaveBeenCalledWith()
+  })
+
+  it("opens settings from the account menu", async () => {
+    const onOpenSettings = vi.fn()
+    render(
+      <SidebarUserMenu
+        desktopAvailable={false}
+        onOpenAppUpdates={vi.fn()}
+        onOpenArchivedChats={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />
+    )
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open account menu for Ada Lovelace",
+      })
+    )
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }))
+
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 })

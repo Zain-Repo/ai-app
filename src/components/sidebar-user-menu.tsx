@@ -1,10 +1,10 @@
 import { useClerk, useUser } from "@clerk/tanstack-react-start"
 import {
   AccountSetting02Icon,
-  AiBrain01Icon,
   Archive02Icon,
   Logout01Icon,
   Moon02Icon,
+  Settings02Icon,
   Sun03Icon,
   SystemUpdate02Icon,
   UnfoldMoreIcon,
@@ -34,7 +34,7 @@ type SidebarUserMenuProps = {
   name?: string | null
   onOpenAppUpdates: () => void
   onOpenArchivedChats: () => void
-  onOpenPersonalization: () => void
+  onOpenSettings: () => void
 }
 
 function getUserInitials(name?: string | null, email?: string | null) {
@@ -74,7 +74,7 @@ function SidebarUserMenu({
   name: fallbackName,
   onOpenAppUpdates,
   onOpenArchivedChats,
-  onOpenPersonalization,
+  onOpenSettings,
 }: SidebarUserMenuProps) {
   const { openUserProfile, signOut } = useClerk()
   const { user } = useUser()
@@ -184,13 +184,13 @@ function SidebarUserMenu({
           />
           Archived chats
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onOpenPersonalization}>
+        <DropdownMenuItem onClick={onOpenSettings}>
           <HugeiconsIcon
             aria-hidden="true"
-            icon={AiBrain01Icon}
+            icon={Settings02Icon}
             strokeWidth={1.8}
           />
-          Personalization
+          Settings
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

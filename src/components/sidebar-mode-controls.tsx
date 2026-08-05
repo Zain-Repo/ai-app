@@ -50,28 +50,24 @@ export function SidebarModeControls({
   return (
     <div
       aria-label="Chat controls"
-      className="flex min-w-0 items-center justify-between gap-2"
+      className="flex min-w-0 items-center justify-between gap-1.5"
       role="group"
     >
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`Choose output mode. Current mode: ${activeMode.label}`}
-          className="group flex min-w-0 items-center gap-1 rounded-xl px-2.5 py-2 text-left text-base font-semibold tracking-tight text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/30 disabled:cursor-not-allowed disabled:opacity-50 data-popup-open:bg-sidebar-accent"
+          className="group flex h-8 min-w-0 items-center gap-1 rounded-lg px-2 text-left text-sm font-medium tracking-tight text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/30 disabled:cursor-not-allowed disabled:opacity-50 data-popup-open:bg-sidebar-accent"
           disabled={disabled}
         >
           <span className="truncate">{activeMode.label}</span>
           <HugeiconsIcon
             aria-hidden="true"
-            className="size-4 shrink-0 text-sidebar-foreground/55 transition-transform duration-150 group-data-popup-open:rotate-180"
+            className="size-3.5 shrink-0 text-sidebar-foreground/55 transition-transform duration-150 group-data-popup-open:rotate-180"
             icon={ArrowDown01Icon}
             strokeWidth={1.8}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="w-72 p-1.5"
-          sideOffset={6}
-        >
+        <DropdownMenuContent align="start" className="w-64 p-1" sideOffset={4}>
           <DropdownMenuRadioGroup
             onValueChange={(value) => {
               if (isSidebarOutputMode(value)) onModeChange(value)
@@ -79,28 +75,28 @@ export function SidebarModeControls({
             value={mode}
           >
             <DropdownMenuRadioItem
-              className="min-h-14 items-start rounded-xl py-2.5 pr-10 pl-3"
+              className="min-h-11 items-start rounded-lg py-1.5 pr-9 pl-2.5"
               value="text"
             >
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="font-medium text-foreground">
                   {outputModes.text.label}
                 </span>
-                <span className="text-xs leading-4 text-muted-foreground">
+                <span className="text-[11px] leading-3.5 text-muted-foreground">
                   {outputModes.text.description}
                 </span>
               </span>
             </DropdownMenuRadioItem>
             {hasImageProvider ? (
               <DropdownMenuRadioItem
-                className="min-h-14 items-start rounded-xl py-2.5 pr-10 pl-3"
+                className="min-h-11 items-start rounded-lg py-1.5 pr-9 pl-2.5"
                 value="image"
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="font-medium text-foreground">
                     {outputModes.image.label}
                   </span>
-                  <span className="text-xs leading-4 text-muted-foreground">
+                  <span className="text-[11px] leading-3.5 text-muted-foreground">
                     {outputModes.image.description}
                   </span>
                 </span>
@@ -112,7 +108,7 @@ export function SidebarModeControls({
 
       <Button
         aria-label="Start voice mode"
-        className="shrink-0 rounded-xl text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-3.5"
         onClick={() => {
           setOpenMobile(false)
           onVoiceActivate()

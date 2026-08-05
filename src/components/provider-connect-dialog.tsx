@@ -331,21 +331,23 @@ export function ProviderConnectDialog({
         }
       }}
     >
-      <Button
-        aria-haspopup="dialog"
-        size="sm"
-        variant="outline"
-        onClick={() => setOpen(true)}
-      >
-        <HugeiconsIcon
-          aria-hidden="true"
-          icon={AiNetworkIcon}
-          strokeWidth={1.8}
-        />
-        {connections?.some((connection) => connection.status === "connected")
-          ? "Providers"
-          : "Connect provider"}
-      </Button>
+      {controlledOpen === undefined ? (
+        <Button
+          aria-haspopup="dialog"
+          size="sm"
+          variant="outline"
+          onClick={() => setOpen(true)}
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={AiNetworkIcon}
+            strokeWidth={1.8}
+          />
+          {connections?.some((connection) => connection.status === "connected")
+            ? "Providers"
+            : "Connect provider"}
+        </Button>
+      ) : null}
 
       <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] max-w-2xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <div className="border-b border-border/70 bg-[linear-gradient(135deg,var(--muted),transparent_55%)]">

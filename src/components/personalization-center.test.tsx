@@ -148,15 +148,23 @@ afterEach(cleanup)
 
 describe("PersonalizationCenter", () => {
   it("initializes controlled defaults and manages memory, history, and processing", async () => {
+    const onOpenChange = vi.fn()
+    const onOpenProviders = vi.fn()
     render(
       <PersonalizationCenter
         models={[{ label: "GPT 5", value: "gpt-5" }]}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
+        onOpenProviders={onOpenProviders}
         open
       />
     )
-    expect(screen.getByRole("tab", { name: "Defaults" })).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy()
+    expect(screen.getByRole("tab", { name: "General" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Saved memory" })).toBeTruthy()
+    expect(screen.getByText("1 provider connected")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Manage providers" }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenProviders).toHaveBeenCalledOnce()
     expect(screen.getByLabelText("Language")).toHaveProperty("value", "en")
     expect(screen.getByRole("radio", { name: "Sky" })).toHaveProperty(
       "checked",
@@ -293,6 +301,7 @@ describe("PersonalizationCenter", () => {
       <PersonalizationCenter
         models={[{ label: "GPT 5", value: "gpt-5" }]}
         onOpenChange={vi.fn()}
+        onOpenProviders={vi.fn()}
         open
       />
     )
@@ -310,10 +319,10 @@ describe("PersonalizationCenter", () => {
         name: "Clear all saved memories?",
       })
     ).toBeTruthy()
-    fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }))
-    await waitFor(() =>
-      expect(screen.queryByRole("alertdialog")).toBeNull()
+    fireEvent.click(
+      within(confirmation).getByRole("button", { name: "Cancel" })
     )
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
     expect(document.activeElement).toBe(clearSavedMemoryButton)
 
     fireEvent.click(clearSavedMemoryButton)
@@ -334,6 +343,7 @@ describe("PersonalizationCenter", () => {
       <PersonalizationCenter
         models={[{ label: "GPT 5", value: "gpt-5" }]}
         onOpenChange={vi.fn()}
+        onOpenProviders={vi.fn()}
         open
       />
     )
@@ -346,9 +356,7 @@ describe("PersonalizationCenter", () => {
     expect(
       screen.getByText(/Saved memory is off\. You can still review/i)
     ).toBeTruthy()
-    expect(
-      screen.getByText("Keep project examples concise")
-    ).toBeTruthy()
+    expect(screen.getByText("Keep project examples concise")).toBeTruthy()
 
     fireEvent.click(savedMemorySwitch)
     await waitFor(() =>

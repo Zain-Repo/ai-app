@@ -724,7 +724,7 @@ function ChatWorkspace() {
     "creating" | "failed" | "idle"
   >("idle")
   const [searchQuery, setSearchQuery] = useState("")
-  const [personalizationOpen, setPersonalizationOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [archivedOpen, setArchivedOpen] = useState(false)
   const [connectorOpen, setConnectorOpen] = useState(false)
   const [projectActionFailed, setProjectActionFailed] = useState(false)
@@ -1994,15 +1994,15 @@ function ChatWorkspace() {
             name={viewer?.name}
             onOpenAppUpdates={openDesktopUpdaterDialog}
             onOpenArchivedChats={() => setArchivedOpen(true)}
-            onOpenPersonalization={() => setPersonalizationOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
-          {personalizationOpen ? (
+          {settingsOpen ? (
             <OptionalChatFeatureBoundary
               fallback={
-                <Dialog open onOpenChange={setPersonalizationOpen}>
+                <Dialog open onOpenChange={setSettingsOpen}>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Personalization unavailable</DialogTitle>
+                      <DialogTitle>Settings unavailable</DialogTitle>
                       <DialogDescription>
                         Close this window and try again after the app finishes
                         updating.
@@ -2014,7 +2014,11 @@ function ChatWorkspace() {
             >
               <PersonalizationCenter
                 models={currentCatalog}
-                onOpenChange={setPersonalizationOpen}
+                onOpenChange={setSettingsOpen}
+                onOpenProviders={() => {
+                  setSettingsOpen(false)
+                  setConnectorOpen(true)
+                }}
                 open
               />
             </OptionalChatFeatureBoundary>
@@ -2621,7 +2625,7 @@ function ChatWorkspace() {
                 conversationId={selected?._id}
                 messages={conversationId ? messages : []}
                 name={viewer?.name}
-                onManageMemory={() => setPersonalizationOpen(true)}
+                onManageMemory={() => setSettingsOpen(true)}
                 onAction={(value) => {
                   void send(
                     value,
