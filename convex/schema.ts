@@ -345,7 +345,10 @@ export default defineSchema({
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
     errorCode: v.optional(v.literal("insufficient_credits")),
-  }).index("by_conversation", ["conversationId"]),
+    scheduledGenerationId: v.optional(v.id("_scheduled_functions")),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_branch", ["branchId"]),
 
   memories: defineTable({
     ownerId: v.id("users"),

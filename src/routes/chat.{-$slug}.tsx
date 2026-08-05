@@ -49,7 +49,6 @@ import {
 
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
-import { AiResponseActions } from "@/components/ai-response-actions"
 import { AiSuggestedActions } from "@/components/ai-suggested-actions"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
@@ -1933,6 +1932,171 @@ function ChatWorkspace() {
       throw new Error("Message could not be sent")
     }
   }
+
+  const copyMessage = async (message: ChatMessage) => {
+    if (await copyMessageText(message.content)) {
+      setCopiedMessageId(message._id)
+      setActionAnnouncement("Message copied.")
+      window.setTimeout(
+        () =>
+          setCopiedMessageId((current) =>
+            current === message._id ? null : current
+          ),
+        1_500
+      )
+    } else {
+      setActionAnnouncement("Message could not be copied.")
+    }
+  }
+
+  const beginEditingMessage = (message: ChatMessage) => {
+    if (editingMessageId !== message._id)
+      draftBeforeEditRef.current = composerValue
+    setEditingMessageId(message._id)
+    setComposerValue(message.content)
+    setActionAnnouncement("Editing message.")
+  }
+
+  const cancelEditingMessage = () => {
+    setEditingMessageId(null)
+    setComposerValue(draftBeforeEditRef.current)
+    setActionAnnouncement("Editing cancelled.")
+  }
+
+  const retryAssistantMessage = async (
+    message: ChatMessage,
+    alternateModel?: string
+  ) => {
+    if (!conversationId || !selected) return
+    const sourceIndex = messages?.findIndex((item) => item._id === message._id)
+    if (sourceIndex === undefined || sourceIndex < 0) return
+    const selectedRetryModel = alternateModel
+      ? providerModels.find((model) => model.value === alternateModel)
+      : undefined
+    const modelSettings = selectedRetryModel
+      ? {
+          model: selectedRetryModel.value,
+          ...(selectedRetryModel.defaultReasoningEffort
+            ? { reasoningEffort: selectedRetryModel.defaultReasoningEffort }
+            : {}),
+          ...(message.provider === "openrouter"
+            ? { routingProvider: "auto" }
+            : {}),
+        }
+      : undefined
+    setMessageActionPending(true)
+    setActionAnnouncement("Retrying response.")
+    try {
+      await retryResponse({
+        assistantMessageId: message._id,
+        conversationId,
+        ...(selected.activeBranchId
+          ? { expectedActiveBranchId: selected.activeBranchId }
+          : {}),
+        ...(modelSettings ? { modelSettings } : {}),
+      })
+      if (message.provider === "codex") {
+        const model = modelSettings?.model ?? message.model
+        if (!model) throw new Error("Codex model is unavailable")
+        await generateDesktopResponse({
+          conversationId,
+          model,
+          ...((modelSettings?.reasoningEffort ?? message.reasoningEffort)
+            ? {
+                effort:
+                  modelSettings?.reasoningEffort ?? message.reasoningEffort,
+              }
+            : {}),
+          messages: (messages ?? [])
+            .slice(0, sourceIndex)
+            .filter(
+              (item) =>
+                item.status === "complete" &&
+                (item.role === "assistant" || item.role === "user")
+            )
+            .map((item) => ({
+              content: item.content,
+              role: item.role as "assistant" | "user",
+            })),
+        })
+      }
+      setActionAnnouncement("Response retried.")
+    } catch {
+      setActionAnnouncement("Response could not be retried.")
+    } finally {
+      setMessageActionPending(false)
+    }
+  }
+
+  const chooseResponseBranch = async (branchId: Id<"conversationBranches">) => {
+    if (!conversationId || !selected) return
+    setMessageActionPending(true)
+    try {
+      await selectResponseBranch({
+        branchId,
+        conversationId,
+        ...(selected.activeBranchId
+          ? { expectedActiveBranchId: selected.activeBranchId }
+          : {}),
+      })
+      setActionAnnouncement("Response branch selected.")
+    } catch {
+      setActionAnnouncement("Response branch could not be selected.")
+    } finally {
+      setMessageActionPending(false)
+    }
+  }
+
+  const stopActiveResponse = async () => {
+    if (!conversationId) return
+    const assistant = messages?.findLast(
+      (message) =>
+        message.role === "assistant" &&
+        (message.status === "pending" || message.status === "streaming")
+    )
+    if (!assistant) {
+      setActionAnnouncement("Response is still starting.")
+      return
+    }
+    setStoppingMessageId(assistant._id)
+    stoppedConversationIdsRef.current.add(conversationId)
+    try {
+      await stopResponse({
+        assistantMessageId: assistant._id,
+        conversationId,
+      })
+      const desktopRequest = desktopRequestRef.current
+      const desktop = getDesktopApi()
+      if (
+        desktopRequest?.conversationId === conversationId &&
+        desktop?.codex.cancel
+      )
+        await desktop.codex.cancel(desktopRequest.requestId)
+      setActionAnnouncement("Response stopped.")
+    } catch {
+      setActionAnnouncement("Response could not be stopped.")
+    } finally {
+      setStoppingMessageId(null)
+    }
+  }
+
+  const runningAssistant = messages?.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      (message.status === "pending" || message.status === "streaming")
+  )
+  const generationState =
+    stoppingMessageId !== null
+      ? ("stopping" as const)
+      : runningAssistant
+        ? ("generating" as const)
+        : sendState === "sending"
+          ? ("submitting" as const)
+          : ("idle" as const)
+  const chatActionsDisabled =
+    generationState !== "idle" ||
+    messageActionPending ||
+    selected?.status === "archived"
 
   const renderConversation = (conversation: Doc<"conversations">) => (
     <SidebarMenuItem key={conversation._id}>
