@@ -98,6 +98,13 @@ export const FAL_IMAGE_MODELS = [
     description: "Cost-efficient, low-latency generation and local edits",
   },
   {
+    id: "google/nano-banana-2-lite",
+    editEndpoint: "google/nano-banana-2-lite/edit",
+    editInput: "image_urls",
+    description:
+      "Efficiency-focused Nano Banana 2 Lite with fast local edits and 14 aspect ratios",
+  },
+  {
     id: "fal-ai/nano-banana-2",
     editEndpoint: "fal-ai/nano-banana-2/edit",
     editInput: "image_urls",
@@ -108,6 +115,13 @@ export const FAL_IMAGE_MODELS = [
     editEndpoint: "fal-ai/nano-banana-pro/edit",
     editInput: "image_urls",
     description: "Google's reasoning-powered, high-fidelity image generation",
+  },
+  {
+    id: "fal-ai/gemini-3-pro-image-preview",
+    editEndpoint: "fal-ai/gemini-3-pro-image-preview/edit",
+    editInput: "image_urls",
+    description:
+      "Google's state-of-the-art high-fidelity generation up to 4K resolution",
   },
   {
     id: "fal-ai/gpt-image-1.5",
@@ -121,6 +135,14 @@ export const FAL_IMAGE_MODELS = [
     editEndpoint: "openai/gpt-image-2/edit",
     editInput: "image_urls",
     description: "OpenAI's latest quality-first model with advanced typography",
+  },
+  {
+    id: "microsoft/mai-image-2.5",
+    editEndpoint: "microsoft/mai-image-2.5/edit",
+    editInput: "image_urls",
+    maxReferences: 1,
+    description:
+      "Microsoft's photorealistic generation and editing with pixel-level control",
   },
   {
     id: "fal-ai/recraft/v3/text-to-image",

@@ -291,6 +291,25 @@ const falCapabilities: ImageModelCapability[] = [
       seed: true,
     },
   }),
+  buildFalCapability("google/nano-banana-2-lite", {
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: [
+        ...extendedRatios,
+        { value: "8:1", label: "Ultra-wide 8:1", width: 8, height: 1 },
+        { value: "1:8", label: "Ultra-tall 1:8", width: 1, height: 8 },
+      ],
+      default: "auto",
+    },
+    multiplicity: fourImageMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
+      seed: true,
+    },
+  }),
   buildFalCapability("fal-ai/nano-banana-2", {
     dimensions: {
       parameter: "aspect_ratio",
@@ -343,6 +362,38 @@ const falCapabilities: ImageModelCapability[] = [
         { value: "4K", label: "4K" },
       ],
       default: "2K",
+    },
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
+      seed: true,
+    },
+  }),
+  buildFalCapability("fal-ai/gemini-3-pro-image-preview", {
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: commonRatios,
+      default: "1:1",
+    },
+    resolutions: {
+      parameter: "resolution",
+      options: [
+        { value: "1K", label: "1K" },
+        { value: "2K", label: "2K" },
+        { value: "4K", label: "4K" },
+      ],
+      default: "1K",
+    },
+    multiplicity: {
+      kind: "imagesPerRequest",
+      parameter: "num_images",
+      providerMin: 1,
+      providerMax: 4,
+      appMax: IMAGE_STUDIO_APP_MAX_OUTPUTS,
+      default: 1,
+      sendParameter: true,
     },
     references: { max: IMAGE_STUDIO_MAX_REFERENCES },
     options: {
@@ -409,6 +460,23 @@ const falCapabilities: ImageModelCapability[] = [
         { value: "high", label: "High" },
       ],
       defaultQuality: "high",
+    },
+  }),
+  buildFalCapability("microsoft/mai-image-2.5", {
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: [
+        { value: "auto", label: "Auto", width: 1, height: 1 },
+        ...commonRatios,
+      ],
+      default: "auto",
+    },
+    multiplicity: fourImageMultiplicity,
+    references: { max: 1 },
+    options: {
+      defaultOutputFormat: "png",
+      outputFormats,
+      outputFormatParameter: true,
     },
   }),
   buildFalCapability("fal-ai/recraft/v3/text-to-image", {
