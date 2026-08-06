@@ -490,7 +490,7 @@ export function ImageWorkspace({
             </span>
           </label>
 
-          {capability ? (
+          {capability && config ? (
             <>
               <ReferenceStrip
                 disabled={archived || disabled || isSubmitting}
@@ -501,7 +501,7 @@ export function ImageWorkspace({
               <div className="hidden lg:block">
                 <ImageSettings
                   capability={capability}
-                  config={config!}
+                  config={config}
                   disabled={archived || disabled || isSubmitting}
                   onChange={changeSettings}
                 />
@@ -511,8 +511,8 @@ export function ImageWorkspace({
                   <span>
                     Image settings
                     <span className="ml-2 font-normal text-muted-foreground">
-                      {config!.dimension} · {config!.count}{" "}
-                      {config!.count === 1 ? "image" : "images"}
+                      {config.dimension} · {config.count}{" "}
+                      {config.count === 1 ? "image" : "images"}
                     </span>
                   </span>
                   <ChevronDown
@@ -523,14 +523,14 @@ export function ImageWorkspace({
                 <div className="mt-5">
                   <ImageSettings
                     capability={capability}
-                    config={config!}
+                    config={config}
                     disabled={archived || disabled || isSubmitting}
                     onChange={changeSettings}
                   />
                 </div>
               </details>
             </>
-          ) : capabilityState === "loading" ? (
+          ) : capabilityState === "loading" || capability ? (
             <div
               className="flex items-center gap-2 py-5 text-sm text-muted-foreground"
               role="status"
