@@ -1,12 +1,14 @@
 import {
-  Check,
-  FileText,
-  Link,
-  RefreshCw,
-  Search,
-  Trash2,
-  TriangleAlert,
-} from "lucide-react"
+  Alert02Icon,
+  CheckmarkCircle02Icon,
+  CircleArrowReload01Icon,
+  Delete02Icon,
+  File02Icon,
+  HierarchyIcon,
+  Link01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useMemo, useState } from "react"
 
 import type { Id } from "../../convex/_generated/dataModel"
@@ -22,17 +24,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-  AttachmentTrigger,
-} from "@/components/ui/attachment"
 import {
   Empty,
   EmptyDescription,
@@ -254,7 +245,7 @@ function SourceIndexingProgress({
       aria-label={
         isWorking ? "Preparing source for semantic search" : "Source pipeline"
       }
-      className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground"
+      className="grid gap-1 text-[13px] text-muted-foreground"
       role={isWorking ? "status" : undefined}
     >
       <span
@@ -267,7 +258,12 @@ function SourceIndexingProgress({
         }
       >
         {extractionComplete ? (
-          <Check aria-hidden="true" className="size-3" />
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="size-3"
+            icon={CheckmarkCircle02Icon}
+            strokeWidth={1.8}
+          />
         ) : (
           <span
             aria-hidden="true"
@@ -280,7 +276,6 @@ function SourceIndexingProgress({
         )}
         Extract text
       </span>
-      <span aria-hidden="true" className="h-px w-4 bg-border" />
       <span
         className={
           embeddingComplete
@@ -291,7 +286,12 @@ function SourceIndexingProgress({
         }
       >
         {embeddingComplete ? (
-          <Check aria-hidden="true" className="size-3" />
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="size-3"
+            icon={CheckmarkCircle02Icon}
+            strokeWidth={1.8}
+          />
         ) : (
           <span
             aria-hidden="true"
@@ -329,6 +329,9 @@ export function ProjectSourcesPanel({
   const [pendingRemoval, setPendingRemoval] = useState<
     ProjectSourceItem | undefined
   >()
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const selectedConnectionId = profile?.providerConnectionId
   const profileConnection = connections?.find(
     (connection) => connection.connectionId === selectedConnectionId
@@ -341,6 +344,11 @@ export function ProjectSourcesPanel({
     (connection) => connection.connectionId === pendingConnectionId
   )
   const summary = getProjectEmbeddingSummary(sources)
+  const selectedCount = sources.filter((source) =>
+    selectedSourceIds.has(source._id)
+  ).length
+  const allSourcesSelected =
+    sources.length > 0 && selectedCount === sources.length
 
   const chooseConnection = (value: string) => {
     const connection = embeddingConnections.find(
@@ -354,32 +362,57 @@ export function ProjectSourcesPanel({
     void onPinProvider(connection.connectionId)
   }
 
+  const toggleSourceSelection = (sourceId: string) => {
+    setSelectedSourceIds((current) => {
+      const next = new Set(current)
+      if (next.has(sourceId)) next.delete(sourceId)
+      else next.add(sourceId)
+      return next
+    })
+  }
+
+  const toggleAllSources = () => {
+    setSelectedSourceIds(
+      allSourcesSelected
+        ? new Set()
+        : new Set(sources.map((source) => source._id))
+    )
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-7">
       <section
         aria-labelledby="project-search-heading"
-        className="rounded-2xl bg-muted/35 p-4 ring-1 ring-border/70"
+        className="rounded-lg border border-border/80 bg-muted/20 p-4"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-background text-primary ring-1 ring-border/70">
-              <Search aria-hidden="true" className="size-4" />
+        <div className="grid gap-5 lg:grid-cols-[minmax(16rem,1fr)_minmax(18rem,1.15fr)_auto] lg:items-center">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-[5px] border border-border bg-background text-foreground">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="size-[18px]"
+                icon={Search01Icon}
+                strokeWidth={1.8}
+              />
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2
-                  className="text-sm font-semibold"
+                  className="text-[15px] font-semibold"
                   id="project-search-heading"
                 >
                   Semantic search
                 </h2>
                 {profile ? (
-                  <Badge variant="outline">
+                  <Badge
+                    className="rounded-[5px] bg-background"
+                    variant="outline"
+                  >
                     {providerLabel(profile.provider)} pinned
                   </Badge>
                 ) : null}
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                 {profileNeedsAuthentication
                   ? "Reconnect the pinned provider before indexing can continue."
                   : summary}
@@ -387,28 +420,56 @@ export function ProjectSourcesPanel({
             </div>
           </div>
 
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+          {profile ? (
+            <div className="flex min-w-0 items-center gap-3 lg:justify-center">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="size-5 shrink-0 text-foreground/75"
+                icon={HierarchyIcon}
+                strokeWidth={1.7}
+              />
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Model</p>
+                <p className="mt-0.5 truncate text-sm text-foreground/70">
+                  {profile.model}
+                  {" · "}
+                  index revision {profile.revision}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed text-muted-foreground lg:text-center">
+              Select a provider to index sources using your connected account.
+            </p>
+          )}
+
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             {embeddingConnections.length ? (
-              <NativeSelect
-                aria-label="Embedding provider"
-                className="min-w-40 flex-1 sm:flex-none"
-                disabled={actionPending || sources.length === 0}
-                onChange={(event) => chooseConnection(event.target.value)}
-                value={selectedConnectionId ?? ""}
-              >
-                <NativeSelectOption disabled value="">
-                  Choose provider
-                </NativeSelectOption>
-                {embeddingConnections.map((connection) => (
-                  <NativeSelectOption
-                    key={connection.connectionId}
-                    value={connection.connectionId}
-                  >
-                    {connection.displayName ??
-                      providerLabel(connection.provider)}
+              <label className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  Provider
+                </span>
+                <NativeSelect
+                  aria-label="Embedding provider"
+                  className="min-w-40 flex-1 lg:flex-none [&_select]:rounded-[5px] [&_select]:border-border [&_select]:bg-background"
+                  disabled={actionPending || sources.length === 0}
+                  onChange={(event) => chooseConnection(event.target.value)}
+                  value={selectedConnectionId ?? ""}
+                >
+                  <NativeSelectOption disabled value="">
+                    Choose provider
                   </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                  {embeddingConnections.map((connection) => (
+                    <NativeSelectOption
+                      key={connection.connectionId}
+                      value={connection.connectionId}
+                    >
+                      {connection.displayName ??
+                        providerLabel(connection.provider)}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </label>
             ) : null}
             {!embeddingConnections.length || profileNeedsAuthentication ? (
               <Button
@@ -417,6 +478,7 @@ export function ProjectSourcesPanel({
                 size="sm"
                 type="button"
                 variant="outline"
+                className="rounded-[5px]"
               >
                 {profileNeedsAuthentication
                   ? "Reconnect provider"
@@ -427,24 +489,22 @@ export function ProjectSourcesPanel({
         </div>
 
         {!profile && canIndex ? (
-          <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+          <p className="mt-4 border-t pt-4 text-xs text-muted-foreground">
             Select a provider to index these sources using your connected
             account. The provider remains pinned until you explicitly re-index.
-          </p>
-        ) : null}
-        {profile ? (
-          <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-            Model {profile.model}
-            {" \u00b7 "}
-            index revision {profile.revision}
           </p>
         ) : null}
         {actionError ? (
           <p
             aria-live="polite"
-            className="mt-3 flex items-start gap-2 text-xs text-destructive"
+            className="mt-4 flex items-start gap-2 border-t pt-4 text-xs text-destructive"
           >
-            <TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5" />
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="mt-0.5 size-3.5"
+              icon={Alert02Icon}
+              strokeWidth={1.8}
+            />
             {actionError}
           </p>
         ) : null}
@@ -460,99 +520,204 @@ export function ProjectSourcesPanel({
           </EmptyHeader>
         </Empty>
       ) : (
-        <AttachmentGroup
-          aria-label="Project sources"
-          className="flex-col gap-2 overflow-visible py-0"
-        >
-          {sources.map((source) => {
-            const effectiveStatus = getProjectSourceEmbeddingStatus(source)
-            const status = statusPresentation[effectiveStatus]
-            const statusDescription = statusDescriptions[effectiveStatus]
-            const isWorking = ["queued", "extracting", "indexing"].includes(
-              effectiveStatus
-            )
-            const attachmentState = getAttachmentState(effectiveStatus)
-            const sourceDetails =
-              source.kind === "file" && source.size !== undefined
-                ? formatFileSize(source.size)
-                : "Link"
-            return (
-              <Attachment
-                aria-busy={isWorking}
-                className="w-full rounded-xl px-1"
-                key={source._id}
-                state={attachmentState}
-              >
-                <AttachmentMedia>
-                  {source.kind === "file" ? (
-                    <>
-                      <FileText aria-hidden="true" className="size-4" />
-                      {isWorking ? (
-                        <span
-                          aria-hidden="true"
-                          className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded-full bg-primary/15"
-                        >
-                          <span className="absolute inset-y-0 left-0 w-1/2 animate-[source-scan_1.8s_ease-in-out_infinite] rounded-full bg-primary" />
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Link aria-hidden="true" className="size-4" />
-                  )}
-                </AttachmentMedia>
-                <AttachmentContent className="py-2">
-                  <AttachmentTitle>{source.name}</AttachmentTitle>
-                  <AttachmentDescription>
-                    {isWorking
-                      ? status.label
-                      : `${sourceDetails} · ${formatProjectDate(source.createdAt)}`}
-                  </AttachmentDescription>
-                  <SourceIndexingProgress status={effectiveStatus} />
-                  {statusDescription ? (
-                    <span className="mt-1 block text-xs text-destructive">
-                      {statusDescription}
-                    </span>
-                  ) : null}
-                </AttachmentContent>
-                <AttachmentActions className="pr-2">
-                  <Badge variant={status.tone}>
-                    {isWorking ? <Spinner aria-hidden="true" /> : null}
-                    {status.label}
-                  </Badge>
-                  {isRetryableProjectEmbeddingStatus(effectiveStatus) &&
-                  profile ? (
-                    <AttachmentAction
-                      aria-label={`Retry indexing ${source.name}`}
-                      disabled={actionPending || profileNeedsAuthentication}
-                      onClick={() => void onRetryIndexing(source._id)}
-                      title="Retry indexing"
-                      type="button"
+        <div className="overflow-hidden border-y border-border">
+          <div className="overflow-x-auto">
+            <table
+              aria-label="Project sources"
+              className="w-full min-w-[58rem] table-fixed border-collapse"
+            >
+              <colgroup>
+                <col className="w-12" />
+                <col className="w-[26%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[25%]" />
+                <col className="w-[13%]" />
+                <col className="w-16" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-4 py-3 font-normal">
+                    <input
+                      aria-label="Select all project sources"
+                      checked={allSourcesSelected}
+                      className="size-4 rounded-[4px] border-border accent-foreground"
+                      onChange={toggleAllSources}
+                      type="checkbox"
+                    />
+                  </th>
+                  {[
+                    "Source",
+                    "Size",
+                    "Added",
+                    "Processing",
+                    "Status",
+                    "Actions",
+                  ].map((label) => (
+                    <th
+                      className="px-3 py-3 text-sm font-medium text-muted-foreground"
+                      key={label}
+                      scope="col"
                     >
-                      <RefreshCw aria-hidden="true" />
-                    </AttachmentAction>
-                  ) : null}
-                  <AttachmentAction
-                    aria-label={`Remove ${source.name}`}
-                    disabled={actionPending}
-                    onClick={() => setPendingRemoval(source)}
-                    title="Remove source"
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" />
-                  </AttachmentAction>
-                </AttachmentActions>
-                {source.url ? (
-                  <AttachmentTrigger
-                    aria-label={`Open ${source.name}`}
-                    render={
-                      <a href={source.url} rel="noreferrer" target="_blank" />
-                    }
-                  />
-                ) : null}
-              </Attachment>
-            )
-          })}
-        </AttachmentGroup>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sources.map((source) => {
+                  const effectiveStatus =
+                    getProjectSourceEmbeddingStatus(source)
+                  const status = statusPresentation[effectiveStatus]
+                  const statusDescription = statusDescriptions[effectiveStatus]
+                  const isWorking = [
+                    "queued",
+                    "extracting",
+                    "indexing",
+                  ].includes(effectiveStatus)
+                  const attachmentState = getAttachmentState(effectiveStatus)
+                  const sourceSize =
+                    source.kind === "file" && source.size !== undefined
+                      ? formatFileSize(source.size)
+                      : "Link"
+                  const sourceSelected = selectedSourceIds.has(source._id)
+
+                  return (
+                    <tr
+                      aria-busy={isWorking}
+                      aria-selected={sourceSelected}
+                      className="border-b border-border/80 transition-colors last:border-b-0 hover:bg-muted/20 aria-selected:bg-muted/30"
+                      data-slot="attachment"
+                      data-state={attachmentState}
+                      key={source._id}
+                    >
+                      <td className="px-4 py-4 align-middle">
+                        <input
+                          aria-label={`Select ${source.name}`}
+                          checked={sourceSelected}
+                          className="size-4 rounded-[4px] border-border accent-foreground"
+                          onChange={() => toggleSourceSelection(source._id)}
+                          type="checkbox"
+                        />
+                      </td>
+                      <td className="px-3 py-4 align-middle">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="grid size-10 shrink-0 place-items-center rounded-[5px] border border-border bg-background text-foreground/80">
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              className="size-[18px]"
+                              icon={
+                                source.kind === "file" ? File02Icon : Link01Icon
+                              }
+                              strokeWidth={1.8}
+                            />
+                          </span>
+                          <div className="min-w-0">
+                            {source.url ? (
+                              <a
+                                className="block truncate text-[15px] font-medium text-foreground underline-offset-4 hover:underline focus-visible:rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                href={source.url}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                {source.name}
+                              </a>
+                            ) : (
+                              <span className="block truncate text-[15px] font-medium text-foreground">
+                                {source.name}
+                              </span>
+                            )}
+                            {isWorking ? (
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {status.label}
+                              </span>
+                            ) : null}
+                            {statusDescription ? (
+                              <span className="mt-1 block text-xs leading-relaxed text-destructive">
+                                {statusDescription}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-4 text-sm text-muted-foreground">
+                        {sourceSize}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-muted-foreground">
+                        <time
+                          dateTime={new Date(source.createdAt).toISOString()}
+                        >
+                          {formatProjectDate(source.createdAt)}
+                        </time>
+                      </td>
+                      <td className="px-3 py-4 align-middle">
+                        <SourceIndexingProgress status={effectiveStatus} />
+                      </td>
+                      <td className="px-3 py-4 align-middle">
+                        <Badge
+                          className={
+                            status.tone === "success"
+                              ? "h-5 rounded-[5px] bg-[#edf3ec] px-2 text-[10px] font-semibold tracking-[0.08em] text-[#346538] uppercase shadow-none dark:bg-[#223127] dark:text-[#a8c9ad]"
+                              : "h-5 rounded-[5px] px-2 text-[10px] font-semibold tracking-[0.08em] uppercase"
+                          }
+                          variant={status.tone}
+                        >
+                          {isWorking ? <Spinner aria-hidden="true" /> : null}
+                          {status.label}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-4 align-middle">
+                        <div className="flex items-center justify-end gap-1">
+                          {isRetryableProjectEmbeddingStatus(effectiveStatus) &&
+                          profile ? (
+                            <Button
+                              aria-label={`Retry indexing ${source.name}`}
+                              className="rounded-[5px]"
+                              disabled={
+                                actionPending || profileNeedsAuthentication
+                              }
+                              onClick={() => void onRetryIndexing(source._id)}
+                              size="icon-xs"
+                              title="Retry indexing"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={CircleArrowReload01Icon}
+                                strokeWidth={1.8}
+                              />
+                            </Button>
+                          ) : null}
+                          <Button
+                            aria-label={`Remove ${source.name}`}
+                            className="rounded-[5px]"
+                            disabled={actionPending}
+                            onClick={() => setPendingRemoval(source)}
+                            size="icon-xs"
+                            title="Remove source"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={Delete02Icon}
+                              strokeWidth={1.8}
+                            />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-border/80 px-0 py-3 text-[13px] text-muted-foreground">
+            {selectedCount ? `${selectedCount} selected · ` : ""}
+            Showing {sources.length} of {sources.length} sources
+          </p>
+        </div>
       )}
 
       <AlertDialog

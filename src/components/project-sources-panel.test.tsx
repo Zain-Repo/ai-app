@@ -135,6 +135,33 @@ describe("project source embeddings", () => {
     expect(retry).toHaveBeenCalledWith(source._id)
   })
 
+  it("renders the source ledger and keeps row selection usable", () => {
+    const view = render(
+      <ProjectSourcesPanel
+        connections={[openAiConnection]}
+        onConnectProvider={vi.fn()}
+        onPinProvider={vi.fn()}
+        onRemoveSource={vi.fn()}
+        onRetryIndexing={vi.fn()}
+        profile={{
+          providerConnectionId: openAiConnection.connectionId,
+          model: "text-embedding-3-small",
+          provider: "openai",
+          revision: 1,
+        }}
+        sources={[{ ...source, indexStatus: "ready" }]}
+      />
+    )
+
+    expect(view.getByRole("table", { name: "Project sources" })).toBeTruthy()
+    expect(view.getByRole("columnheader", { name: "Source" })).toBeTruthy()
+    expect(view.getByRole("columnheader", { name: "Processing" })).toBeTruthy()
+    expect(view.getByText("Showing 1 of 1 sources")).toBeTruthy()
+
+    fireEvent.click(view.getByRole("checkbox", { name: "Select brief.md" }))
+    expect(view.getByText(/1 selected · Showing 1 of 1 sources/)).toBeTruthy()
+  })
+
   it("shows the extraction and embedding pipeline while a source is processing", () => {
     const view = render(
       <ProjectSourcesPanel

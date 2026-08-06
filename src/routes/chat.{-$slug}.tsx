@@ -4,6 +4,7 @@ import {
   AiBrain01Icon,
   ArrowLeft01Icon,
   Archive02Icon,
+  BubbleChatIcon,
   Cancel01Icon,
   Delete02Icon,
   Edit02Icon,
@@ -11,6 +12,7 @@ import {
   FolderAddIcon,
   Link01Icon,
   MoreHorizontalIcon,
+  RefreshIcon,
   Search01Icon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons"
@@ -73,6 +75,8 @@ import { ProviderConnectDialog } from "@/components/provider-connect-dialog"
 import { ProjectContextProgress } from "@/components/project-context-progress"
 import {
   getEmbeddingConnections,
+  getProjectSourceEmbeddingStatus,
+  isRetryableProjectEmbeddingStatus,
   ProjectSourcesPanel,
 } from "@/components/project-sources-panel"
 import type {
@@ -3518,6 +3522,18 @@ function ProjectWorkspace({
           MAX_PROJECT_SOURCE_FILES,
           Math.max(0, MAX_PROJECT_SOURCES - sources.length)
         )
+  const retryableSourceIds = (sources ?? [])
+    .filter((source) =>
+      isRetryableProjectEmbeddingStatus(getProjectSourceEmbeddingStatus(source))
+    )
+    .map((source) => source._id)
+
+  const retryAvailableSources = async () => {
+    for (const sourceId of retryableSourceIds) {
+      await onRetrySource(sourceId)
+    }
+  }
+
   return (
     <UploadThingDropzone
       disabled={!remainingFiles}
@@ -3530,60 +3546,81 @@ function ProjectWorkspace({
       }}
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <main className="mx-auto w-full max-w-5xl px-5 py-6 md:px-7 md:py-8">
-          <header className="mb-6 flex items-center gap-2.5">
-            <Folder aria-hidden="true" className="size-6 stroke-[1.6]" />
-            <h1 className="font-heading text-xl font-semibold tracking-tight md:text-2xl">
+        <main className="mr-auto w-full max-w-[89.5rem] px-5 py-8 md:px-8 md:py-12 lg:px-[60px]">
+          <header className="mb-8">
+            <h1 className="font-heading text-[1.75rem] font-semibold tracking-[-0.035em] md:text-[2rem]">
               {project.name}
             </h1>
           </header>
 
           <button
-            className="mb-6 flex min-h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="mb-9 flex min-h-[60px] w-full items-center gap-3 rounded-[5px] border border-border bg-background px-4 text-left transition-colors duration-200 hover:bg-muted/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             onClick={onNewChat}
             type="button"
           >
             <HugeiconsIcon
               aria-hidden="true"
-              className="size-5 shrink-0 text-muted-foreground"
-              icon={Add01Icon}
-              strokeWidth={2}
+              className="size-5 shrink-0 text-foreground"
+              icon={BubbleChatIcon}
+              strokeWidth={1.8}
             />
-            <span className="text-body text-muted-foreground">
+            <span className="text-base text-muted-foreground">
               New {copy.item} in {project.name}
             </span>
           </button>
 
           <Tabs onValueChange={setActiveTab} value={activeTab}>
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <TabsList className="h-8 gap-1.5 bg-transparent p-0">
+            <div className="mb-7 flex min-h-14 items-center justify-between gap-3 border-b border-border">
+              <TabsList className="h-9 gap-7 p-0" variant="line">
                 <TabsTrigger
-                  className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  className="h-9 flex-none px-0 text-[15px]"
                   value="chats"
                 >
                   {copy.projectCollection}
                 </TabsTrigger>
                 <TabsTrigger
-                  className="h-8 flex-none rounded-lg px-3 data-active:border-border! data-active:bg-card data-active:shadow-sm"
+                  className="h-9 flex-none px-0 text-[15px]"
                   value="sources"
                 >
                   Sources
                 </TabsTrigger>
               </TabsList>
-              <Button
-                disabled={!remainingFiles}
-                onClick={() => document.getElementById(inputId)?.click()}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={Upload04Icon}
-                  strokeWidth={1.8}
-                />
-                {remainingFiles ? "Add files" : "Source limit reached"}
-              </Button>
+              {activeTab === "sources" ? (
+                <div className="flex items-center gap-2 pb-3">
+                  <Button
+                    aria-label="Retry available source indexing"
+                    className="size-10 rounded-[5px]"
+                    disabled={
+                      embeddingActionPending || retryableSourceIds.length === 0
+                    }
+                    onClick={() => void retryAvailableSources()}
+                    size="icon-lg"
+                    title="Retry available sources"
+                    type="button"
+                    variant="outline"
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={RefreshIcon}
+                      strokeWidth={1.8}
+                    />
+                  </Button>
+                  <Button
+                    className="h-10 rounded-[5px] bg-foreground px-4 text-sm text-background hover:bg-foreground/85"
+                    disabled={!remainingFiles}
+                    onClick={() => document.getElementById(inputId)?.click()}
+                    size="lg"
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Upload04Icon}
+                      strokeWidth={1.8}
+                    />
+                    {remainingFiles ? "Add files" : "Source limit reached"}
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <TabsContent value="chats">
               <WorkspaceHistoryPartialNotice
