@@ -47,7 +47,7 @@ function OutputCard({
     return (
       <button
         aria-label={`Open generated image ${output.ordinal + 1}`}
-        className="group relative min-h-48 overflow-hidden rounded-2xl bg-muted text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="group relative min-h-48 overflow-hidden rounded-lg border bg-muted/30 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         onClick={() => onOpen(output)}
         type="button"
       >
@@ -57,7 +57,7 @@ function OutputCard({
           loading="lazy"
           src={output.url}
         />
-        <span className="absolute right-2 bottom-2 grid size-8 place-items-center rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+        <span className="absolute right-2 bottom-2 grid size-8 place-items-center rounded-md bg-background/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <Expand aria-hidden="true" className="size-4" />
         </span>
       </button>
@@ -67,7 +67,7 @@ function OutputCard({
   return (
     <div
       aria-label={`Output ${output.ordinal + 1}: ${output.status}`}
-      className="grid min-h-48 place-items-center rounded-2xl border bg-muted/25 p-5 text-center"
+      className="grid min-h-48 place-items-center rounded-lg border bg-muted/30 p-5 text-center"
       role="status"
     >
       <div>
@@ -115,13 +115,13 @@ export function GenerationSet({
   const created = new Date(generation.createdAt)
 
   return (
-    <article className="border-b px-4 py-7 sm:px-6 lg:px-8">
-      <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <article className="border-t py-8 first:border-t-0">
+      <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="line-clamp-2 text-sm leading-relaxed font-medium">
+          <p className="line-clamp-2 text-sm leading-relaxed font-medium text-foreground">
             {generation.prompt}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1.5 text-xs text-muted-foreground">
             {generation.model} · {generation.config.dimension}
             {generation.config.resolution
               ? ` · ${generation.config.resolution}`
@@ -133,7 +133,7 @@ export function GenerationSet({
             })}`}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-1">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             aria-label="Copy prompt"
             onClick={() =>
@@ -182,8 +182,8 @@ export function GenerationSet({
       <div
         className={
           generation.outputs.length === 1
-            ? "grid max-w-2xl grid-cols-1"
-            : "grid grid-cols-1 gap-3 sm:grid-cols-2"
+            ? "grid max-w-2xl grid-cols-1 gap-4"
+            : "grid grid-cols-1 gap-4 sm:grid-cols-2"
         }
       >
         {generation.outputs.map((output) => (
@@ -197,14 +197,17 @@ export function GenerationSet({
 
       {generation.status === "partial" ? (
         <p
-          className="mt-3 text-xs text-amber-700 dark:text-amber-300"
+          className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
           role="status"
         >
           The provider returned fewer images than requested. Completed outputs
           were saved.
         </p>
       ) : generation.status === "failed" ? (
-        <p className="mt-3 text-xs text-destructive" role="alert">
+        <p
+          className="mt-4 rounded-lg bg-destructive/8 px-3 py-2 text-xs leading-relaxed text-destructive"
+          role="alert"
+        >
           This generation could not be completed. Your prompt and settings are
           ready to retry.
         </p>
@@ -224,7 +227,7 @@ export function GenerationSet({
           {selectedOutput?.url ? (
             <img
               alt={generation.prompt}
-              className="max-h-[70svh] w-full rounded-2xl bg-muted object-contain"
+              className="max-h-[70svh] w-full rounded-lg bg-muted/30 object-contain"
               src={selectedOutput.url}
             />
           ) : null}
