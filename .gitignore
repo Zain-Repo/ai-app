@@ -12,6 +12,7 @@ out
 .vinxi
 __unconfig*
 todos.json
+.superdesign/tmp/
 
 # typescript
 *.tsbuildinfo
