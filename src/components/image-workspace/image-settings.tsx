@@ -53,7 +53,7 @@ export function ImageSettings({
         <div className="grid grid-cols-3 gap-2">
           {capability.dimensions.options.map((option) => (
             <label
-              className="group cursor-pointer rounded-xl border bg-background p-2.5 text-center transition-colors hover:bg-muted/60 has-checked:border-primary has-checked:bg-primary/5"
+              className="group cursor-pointer rounded-lg border bg-background p-2.5 text-center transition-colors hover:bg-muted/60 has-checked:border-foreground/40 has-checked:bg-muted/40"
               key={option.value}
             >
               <input
@@ -66,7 +66,7 @@ export function ImageSettings({
               />
               <span
                 aria-hidden="true"
-                className="mx-auto mb-2 block max-h-7 min-h-3 min-w-3 rounded-[3px] border border-current text-muted-foreground group-has-checked:text-primary"
+                className="mx-auto mb-2 block max-h-7 min-h-3 min-w-3 rounded-[3px] border border-current text-muted-foreground group-has-checked:text-foreground"
                 style={{
                   aspectRatio: `${option.width} / ${option.height}`,
                   width: `${Math.max(
@@ -254,7 +254,7 @@ export function ImageSettings({
             </label>
           ) : null}
           {capability.options.promptExpansion ? (
-            <label className="col-span-2 flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm">
+            <label className="col-span-2 flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
               <span>
                 <span className="block font-medium">Enhance prompt</span>
                 <span className="block text-xs text-muted-foreground">

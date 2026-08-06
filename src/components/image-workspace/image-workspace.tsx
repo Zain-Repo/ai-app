@@ -360,21 +360,22 @@ export function ImageWorkspace({
       <aside className="z-10 border-b bg-background lg:min-h-0 lg:border-r lg:border-b-0">
         <div className="grid gap-5 p-4 sm:p-5 lg:h-full lg:overflow-y-auto lg:p-6">
           <header>
-            <p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">
+            <p className="text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
               Image studio
             </p>
-            <h1 className="mt-1 font-heading text-xl font-semibold tracking-tight">
+            <h1 className="mt-2 font-heading text-2xl font-light tracking-tight text-foreground">
               Create an image
             </h1>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              Compose, compare, and continue from every output in one thread.
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Describe a scene, choose a model, and shape the result in one
+              quiet workspace.
             </p>
           </header>
 
           {providers.length ? (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border">
+              <label className="grid gap-1.5 bg-background p-3">
+                <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                   Provider
                 </span>
                 <NativeSelect
@@ -383,6 +384,7 @@ export function ImageWorkspace({
                     onProviderChange(event.target.value as ImageProvider)
                   }
                   value={provider}
+                  className="w-full"
                 >
                   {providers.map((option) => (
                     <NativeSelectOption key={option.value} value={option.value}>
@@ -391,14 +393,15 @@ export function ImageWorkspace({
                   ))}
                 </NativeSelect>
               </label>
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              <label className="grid gap-1.5 bg-background p-3">
+                <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                   Model
                 </span>
                 <NativeSelect
                   disabled={isSubmitting || !models.length}
                   onChange={(event) => onModelChange(event.target.value)}
                   value={modelId}
+                  className="w-full"
                 >
                   {models.map((model) => (
                     <NativeSelectOption key={model.value} value={model.value}>
@@ -409,13 +412,13 @@ export function ImageWorkspace({
               </label>
             </div>
           ) : (
-            <div className="rounded-2xl border bg-muted/25 p-4">
+            <div className="rounded-xl border bg-muted/30 p-4">
               <p className="text-sm font-medium">Connect an image provider</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 Dev3 supports OpenRouter and fal image models.
               </p>
               <Button
-                className="mt-3"
+                className="mt-3 rounded-lg"
                 onClick={onConnectProvider}
                 size="sm"
                 type="button"
@@ -429,7 +432,7 @@ export function ImageWorkspace({
 
           {provider === "openrouter" && routingOptions.length ? (
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                 Route
               </span>
               <NativeSelect
@@ -438,6 +441,7 @@ export function ImageWorkspace({
                   onRoutingProviderChange(event.target.value)
                 }
                 value={capabilityRoutingProvider ?? "auto"}
+                className="w-full"
               >
                 {routingOptions.map((option) => (
                   <NativeSelectOption key={option.value} value={option.value}>
@@ -460,12 +464,12 @@ export function ImageWorkspace({
           ) : null}
 
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
               Prompt
             </span>
             <Textarea
               aria-describedby="image-prompt-help"
-              className="min-h-32 resize-y rounded-2xl bg-muted/20 leading-relaxed"
+              className="min-h-32 rounded-[14px] border-border/70 bg-muted/30 leading-relaxed"
               disabled={archived || disabled}
               maxLength={8_000}
               onChange={(event) => setPrompt(event.target.value)}
@@ -506,7 +510,7 @@ export function ImageWorkspace({
                   onChange={changeSettings}
                 />
               </div>
-              <details className="group rounded-2xl border p-4 lg:hidden">
+              <details className="group rounded-xl border bg-muted/20 p-4 lg:hidden">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
                   <span>
                     Image settings
@@ -543,7 +547,7 @@ export function ImageWorkspace({
             </div>
           ) : capabilityState === "failed" ? (
             <p
-              className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive"
               role="alert"
             >
               {capabilityError}
@@ -561,7 +565,7 @@ export function ImageWorkspace({
           ) : null}
           {validationNotice ? (
             <p
-              className="text-xs text-amber-700 dark:text-amber-300"
+              className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
               role="status"
             >
               {validationNotice}
@@ -569,7 +573,7 @@ export function ImageWorkspace({
           ) : null}
           {submissionError ? (
             <p
-              className="text-xs leading-relaxed text-destructive"
+              className="rounded-lg bg-destructive/8 px-3 py-2 text-xs leading-relaxed text-destructive"
               role="alert"
             >
               {submissionError}
@@ -581,9 +585,9 @@ export function ImageWorkspace({
             </p>
           ) : null}
 
-          <div className="sticky bottom-0 -mx-4 mt-auto border-t bg-background/95 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6">
+          <div className="sticky bottom-0 -mx-4 mt-auto border-t bg-background/95 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6">
             <Button
-              className="h-11 w-full"
+              className="h-11 w-full rounded-lg"
               disabled={!canGenerate}
               onClick={() => void generate()}
               type="button"
@@ -603,7 +607,7 @@ export function ImageWorkspace({
       </aside>
 
       <main
-        className="min-h-0 flex-1 overflow-y-auto bg-muted/15"
+        className="min-h-0 flex-1 overflow-y-auto"
         aria-label="Generated images"
       >
         {conversationId && generations === undefined ? (
@@ -620,30 +624,33 @@ export function ImageWorkspace({
             </span>
           </div>
         ) : generations?.length || legacyGenerations.length ? (
-          <div className="mx-auto w-full max-w-6xl">
+          <div className="mx-auto w-full max-w-6xl px-4 py-2 sm:px-6 lg:px-10">
+            <p className="py-5 text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
+              Recent generations
+            </p>
             {legacyGenerations.map((generation, index) => (
               <article
-                className="border-b px-4 py-7 sm:px-6 lg:px-8"
+                className="border-t py-8 first:border-t-0"
                 key={`${generation.createdAt}-${index}`}
               >
-                <header className="mb-4">
-                  <p className="line-clamp-2 text-sm leading-relaxed font-medium">
+                <header className="mb-5 max-w-2xl">
+                  <p className="line-clamp-2 text-sm leading-relaxed font-medium text-foreground">
                     {generation.prompt}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-1.5 text-xs text-muted-foreground">
                     {generation.model} · Earlier generation
                   </p>
                 </header>
                 <div
                   className={
                     generation.images.length === 1
-                      ? "grid max-w-2xl grid-cols-1"
-                      : "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                      ? "grid max-w-2xl grid-cols-1 gap-4"
+                      : "grid grid-cols-1 gap-4 sm:grid-cols-2"
                   }
                 >
                   {generation.images.map((image) => (
                     <div
-                      className="group relative overflow-hidden rounded-2xl bg-muted"
+                      className="group relative overflow-hidden rounded-lg border bg-muted/30"
                       key={image.url}
                     >
                       <img
@@ -654,7 +661,7 @@ export function ImageWorkspace({
                       />
                       <Button
                         aria-label={`Download ${image.name}`}
-                        className="absolute right-2 bottom-2 bg-background/90 opacity-0 shadow-sm group-focus-within:opacity-100 group-hover:opacity-100"
+                        className="absolute right-2 bottom-2 rounded-md bg-background/90 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
                         render={<a download={image.name} href={image.url} />}
                         size="icon-sm"
                         variant="outline"
@@ -681,15 +688,18 @@ export function ImageWorkspace({
         ) : (
           <div className="grid min-h-[55svh] place-items-center px-6 py-16 text-center">
             <div className="max-w-sm">
-              <span className="mx-auto grid size-12 place-items-center rounded-2xl border bg-background shadow-sm">
-                <ImageIcon aria-hidden="true" className="size-5 text-primary" />
+              <span className="mx-auto grid size-12 place-items-center rounded-full border bg-muted/40">
+                <ImageIcon
+                  aria-hidden="true"
+                  className="size-5 text-muted-foreground"
+                />
               </span>
-              <h2 className="mt-4 font-heading text-lg font-semibold">
+              <h2 className="mt-5 font-heading text-xl font-light tracking-tight">
                 Your generations will appear here
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Describe a scene, choose the model-specific format, and create
-                up to four comparable outputs at once.
+                Describe a scene, set your format, and generate. Every output is
+                kept in this thread so you can reuse or refine it.
               </p>
             </div>
           </div>
