@@ -273,6 +273,13 @@
 }
 
 @layer components {
+  .image-workspace {
+    --primary: #737384;
+    --primary-foreground: #ffffff;
+    --ring: #8e8ea0;
+    --radius: 0.3125rem;
+  }
+
   .app-view {
     animation: app-view-enter 320ms var(--ease-interface) both;
   }
