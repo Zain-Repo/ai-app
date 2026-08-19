@@ -4,6 +4,11 @@ import type { Doc } from "./_generated/dataModel"
 import { internalMutation, internalQuery } from "./_generated/server"
 import { buildMemoryContext } from "./memoryPolicy"
 import {
+  buildMemoryRetrievalQueries,
+  deduplicateRetrievedMemory,
+  normalizeMemoryLexicalQuery,
+} from "./memoryRetrievalPolicy"
+import {
   estimateMemoryTokens,
   getMemoryScopeKey,
   MAX_RETRIEVED_MEMORY_ITEMS,
@@ -39,14 +44,20 @@ const retrievalContextValidator = v.union(
     profileRevision: v.number(),
     ownerId: v.id("users"),
     searchScopes: v.array(v.string()),
-    query: v.string(),
+    queries: v.array(v.string()),
   }),
   v.null()
 )
 
 type ContextMemory = Pick<
   Doc<"memoryItems">,
-  "_id" | "canonicalKey" | "category" | "content" | "pinned" | "scope" | "updatedAt"
+  | "_id"
+  | "canonicalKey"
+  | "category"
+  | "content"
+  | "pinned"
+  | "scope"
+  | "updatedAt"
 >
 
 function selectScopedMemory(
@@ -61,7 +72,8 @@ function selectScopedMemory(
   )
   const sorted = [...items].sort(
     (left, right) =>
-      Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt
+      Number(right.pinned) - Number(left.pinned) ||
+      right.updatedAt - left.updatedAt
   )
   const seen = new Set<string>()
   const selected: ContextMemory[] = []
@@ -74,8 +86,7 @@ function selectScopedMemory(
       continue
     }
     const cost = estimateMemoryTokens(item.content)
-    if (selected.length >= maxItems || used + cost > budget)
-      continue
+    if (selected.length >= maxItems || used + cost > budget) continue
     seen.add(item.canonicalKey)
     selected.push(item)
     used += cost
@@ -135,22 +146,29 @@ export const buildAgentContext = internalQuery({
     ]
     const scoped = savedMemoryEnabled
       ? await Promise.all(
-          scopeKeys.map(async (scopeKey) =>
-            await ctx.db
-              .query("memoryItems")
-              .withIndex("by_owner_id_and_scope_key_and_status_and_updated_at", (q) =>
-                q.eq("ownerId", owner._id).eq("scopeKey", scopeKey).eq("status", "active")
-              )
-              .order("desc")
-              .take(100)
+          scopeKeys.map(
+            async (scopeKey) =>
+              await ctx.db
+                .query("memoryItems")
+                .withIndex(
+                  "by_owner_id_and_scope_key_and_status_and_updated_at",
+                  (q) =>
+                    q
+                      .eq("ownerId", owner._id)
+                      .eq("scopeKey", scopeKey)
+                      .eq("status", "active")
+                )
+                .order("desc")
+                .take(100)
           )
         )
       : []
-    const eligible = (args.preferLegacy || !savedMemoryEnabled ? [] : scoped.flat())
-      .filter(
-        (item) =>
-          item.confirmation === "confirmed"
-      )
+    const eligible = deduplicateRetrievedMemory(
+      (args.preferLegacy || !savedMemoryEnabled ? [] : scoped.flat()).filter(
+        (item) => item.confirmation === "confirmed"
+      ),
+      new Set()
+    )
     const core = eligible.filter((item) => item.category === "core_profile")
     const nonCore = eligible.filter(
       (item) =>
@@ -175,38 +193,35 @@ export const buildAgentContext = internalQuery({
     // invents a memoryItemId for a legacy row.
     const legacyByScope =
       !savedMemoryEnabled || (selected.length && !args.preferLegacy)
-      ? []
-      : await Promise.all(
-          scopeKeys.map(async (scopeKey) =>
-            await ctx.db
-              .query("memories")
-              .withIndex("by_owner_id_and_scope_key_and_key", (q) =>
-                q.eq("ownerId", owner._id).eq("scopeKey", scopeKey)
-              )
-              .take(100)
+        ? []
+        : await Promise.all(
+            scopeKeys.map(
+              async (scopeKey) =>
+                await ctx.db
+                  .query("memories")
+                  .withIndex("by_owner_id_and_scope_key_and_key", (q) =>
+                    q.eq("ownerId", owner._id).eq("scopeKey", scopeKey)
+                  )
+                  .take(100)
+            )
           )
-        )
     const legacy = legacyByScope
       .flat()
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .slice(0, MAX_RETRIEVED_MEMORY_ITEMS)
     const canUseHistory = owner.memoryHistoryEnabled
-    const summaries =
-      canUseHistory
-        ? (
-            await ctx.db
-              .query("conversationMemorySummaries")
-              .withIndex("by_conversation_id", (q) =>
-                q.eq("conversationId", conversation._id)
-              )
-              .take(1)
-          ).filter((summary) => summary.suppressedAt === undefined)
-        : []
+    const summaries = canUseHistory
+      ? (
+          await ctx.db
+            .query("conversationMemorySummaries")
+            .withIndex("by_conversation_id", (q) =>
+              q.eq("conversationId", conversation._id)
+            )
+            .take(1)
+        ).filter((summary) => summary.suppressedAt === undefined)
+      : []
     const historyQuery = currentMessage
-      ? currentMessage.content
-          .replace(/[^\p{L}\p{N}_ -]/gu, " ")
-          .trim()
-          .slice(0, 200)
+      ? normalizeMemoryLexicalQuery(currentMessage.content)
       : ""
     const matchingSummaries =
       canUseHistory && historyQuery
@@ -228,22 +243,20 @@ export const buildAgentContext = internalQuery({
       summaryProjectIds.map(async (projectId) => await ctx.db.get(projectId))
     )
     const summaryProjectById = new Map(
-      summaryProjects.filter((summaryProject) => summaryProject !== null).map(
-        (summaryProject) => [summaryProject._id, summaryProject]
-      )
+      summaryProjects
+        .filter((summaryProject) => summaryProject !== null)
+        .map((summaryProject) => [summaryProject._id, summaryProject])
     )
     const allowedHistory = matchingSummaries
-      .filter(
-        (summary) => {
-          if (summary.suppressedAt !== undefined) return false
-          if (summary.conversationId === conversation._id) return false
-          if (project?.memoryScope === "project_only")
-            return summary.projectId === project._id
-          if (!summary.projectId) return true
-          const summaryProject = summaryProjectById.get(summary.projectId)
-          return summaryProject?.memoryScope !== "project_only"
-        }
-      )
+      .filter((summary) => {
+        if (summary.suppressedAt !== undefined) return false
+        if (summary.conversationId === conversation._id) return false
+        if (project?.memoryScope === "project_only")
+          return summary.projectId === project._id
+        if (!summary.projectId) return true
+        const summaryProject = summaryProjectById.get(summary.projectId)
+        return summaryProject?.memoryScope !== "project_only"
+      })
       .slice(0, 2)
     const allSummaries = [...summaries, ...allowedHistory]
     let remainingHistoryBudget =
@@ -264,7 +277,10 @@ export const buildAgentContext = internalQuery({
       .join("\n")
     const referenceText = buildMemoryContext(
       selected
-        .filter((item) => item.category === "preference" || item.category === "workstyle")
+        .filter(
+          (item) =>
+            item.category === "preference" || item.category === "workstyle"
+        )
         .map((item) => item.content)
         .concat(
           legacy
@@ -274,13 +290,16 @@ export const buildAgentContext = internalQuery({
       [
         ...selected
           .filter(
-            (item) => item.category === "core_profile" || item.category === "fact"
+            (item) =>
+              item.category === "core_profile" || item.category === "fact"
           )
           .map((item) => item.content),
         ...legacy
           .filter((item) => item.kind === "fact")
           .map((item) => item.content),
-        ...(summaryText ? [`Conversation history summary: ${summaryText}`] : []),
+        ...(summaryText
+          ? [`Conversation history summary: ${summaryText}`]
+          : []),
       ]
     )
     const profile = await ctx.db
@@ -301,8 +320,8 @@ export const buildAgentContext = internalQuery({
         : !savedMemoryEnabled
           ? { degradedReason: "saved_memory_disabled" as const }
           : !processingAvailable
-          ? { degradedReason: "processing_unavailable" as const }
-          : {}),
+            ? { degradedReason: "processing_unavailable" as const }
+            : {}),
       referenceText,
       selectedMemoryItemIds: selected.map((item) => item._id),
       historySummaryIds: selectedSummaries.map((summary) => summary._id),
@@ -336,7 +355,10 @@ export const recordResponseReferences = internalMutation({
       return null
     }
     const now = Date.now()
-    for (const memoryItemId of args.memoryItemIds.slice(0, MAX_RETRIEVED_MEMORY_ITEMS)) {
+    for (const memoryItemId of args.memoryItemIds.slice(
+      0,
+      MAX_RETRIEVED_MEMORY_ITEMS
+    )) {
       const item = await ctx.db.get(memoryItemId)
       if (item?.ownerId !== args.ownerId || item.status !== "active") continue
       await ctx.db.patch(item._id, { lastUsedAt: now })
@@ -409,7 +431,9 @@ export const getRetrievalContext = internalQuery({
     }
     const credential = await ctx.db
       .query("providerCredentials")
-      .withIndex("by_connection_id", (q) => q.eq("connectionId", connection._id))
+      .withIndex("by_connection_id", (q) =>
+        q.eq("connectionId", connection._id)
+      )
       .unique()
     if (!credential) return null
     const project = conversation.projectId
@@ -420,17 +444,23 @@ export const getRetrievalContext = internalQuery({
     const includeUser = project?.memoryScope !== "project_only"
     const recentMessages = await ctx.db
       .query("messages")
-      .withIndex("by_conversation", (q) => q.eq("conversationId", conversation._id))
+      .withIndex("by_conversation", (q) =>
+        q.eq("conversationId", conversation._id)
+      )
       .order("desc")
       .take(12)
-    const query = recentMessages
-      .filter((message) => message.role === "user" && message.status === "complete")
+    const recentUserMessages = recentMessages
+      .filter(
+        (message) => message.role === "user" && message.status === "complete"
+      )
       .slice(0, 3)
       .reverse()
       .map((message) => message.content)
-      .join("\n")
-      .slice(0, 6_000)
-    if (!query) return null
+    const queries = buildMemoryRetrievalQueries(
+      currentMessage.content,
+      recentUserMessages
+    )
+    if (!queries.length) return null
     return {
       ciphertext: credential.ciphertext,
       iv: credential.iv,
@@ -443,10 +473,12 @@ export const getRetrievalContext = internalQuery({
           ? [`${owner._id}:user:profile:${profile.policyRevision}`]
           : []),
         ...(project
-          ? [`${owner._id}:project:${project._id}:profile:${profile.policyRevision}`]
+          ? [
+              `${owner._id}:project:${project._id}:profile:${profile.policyRevision}`,
+            ]
           : []),
       ],
-      query,
+      queries,
     }
   },
 })
@@ -456,11 +488,13 @@ export const hydrateSearchDocuments = internalQuery({
     ownerId: v.id("users"),
     profileId: v.id("memoryProcessingProfiles"),
     profileRevision: v.number(),
+    excludedMemoryItemIds: v.array(v.id("memoryItems")),
     searchDocumentIds: v.array(v.id("memorySearchDocuments")),
   },
   returns: v.array(
     v.object({
       memoryItemId: v.id("memoryItems"),
+      canonicalKey: v.string(),
       content: v.string(),
       category: v.union(
         v.literal("core_profile"),
@@ -468,9 +502,19 @@ export const hydrateSearchDocuments = internalQuery({
         v.literal("fact"),
         v.literal("workstyle")
       ),
+      scope: v.union(v.literal("user"), v.literal("project")),
     })
   ),
   handler: async (ctx, args) => {
+    const excludedCanonicalKeys = new Set<string>()
+    for (const memoryItemId of args.excludedMemoryItemIds.slice(
+      0,
+      MAX_RETRIEVED_MEMORY_ITEMS
+    )) {
+      const item = await ctx.db.get(memoryItemId)
+      if (item?.ownerId === args.ownerId)
+        excludedCanonicalKeys.add(item.canonicalKey)
+    }
     const results = []
     for (const searchDocumentId of args.searchDocumentIds.slice(0, 16)) {
       const document = await ctx.db.get(searchDocumentId)
@@ -490,14 +534,17 @@ export const hydrateSearchDocuments = internalQuery({
         item.confirmation !== "confirmed" ||
         item.sensitivity !== "normal" ||
         item.revision !== document.itemRevision ||
-        item.content !== document.content
+        item.content !== document.content ||
+        excludedCanonicalKeys.has(item.canonicalKey)
       ) {
         continue
       }
       results.push({
         memoryItemId: item._id,
+        canonicalKey: item.canonicalKey,
         content: item.content,
         category: item.category,
+        scope: item.scope,
       })
     }
     return results
@@ -512,30 +559,25 @@ export const lexicalSearchDocuments = internalQuery({
     scopeKeys: v.array(v.string()),
     query: v.string(),
   },
-  returns: v.array(v.id("memorySearchDocuments")),
+  returns: v.array(v.array(v.id("memorySearchDocuments"))),
   handler: async (ctx, args) => {
-    const phrase = args.query
-      .replace(/[^\p{L}\p{N}_ -]/gu, " ")
-      .trim()
-      .slice(0, 200)
+    const phrase = normalizeMemoryLexicalQuery(args.query)
     if (!phrase) return []
     const results = await Promise.all(
-      args.scopeKeys.slice(0, 2).map(async (scopeKey) =>
-        await ctx.db
-          .query("memorySearchDocuments")
-          .withSearchIndex("search_content", (q) =>
-            q
-              .search("content", phrase)
-              .eq("ownerId", args.ownerId)
-              .eq("scopeKey", scopeKey)
-              .eq("profileRevision", args.profileRevision)
-          )
-          .take(8)
+      args.scopeKeys.slice(0, 2).map(
+        async (scopeKey) =>
+          await ctx.db
+            .query("memorySearchDocuments")
+            .withSearchIndex("search_content", (q) =>
+              q
+                .search("content", phrase)
+                .eq("ownerId", args.ownerId)
+                .eq("scopeKey", scopeKey)
+                .eq("profileRevision", args.profileRevision)
+            )
+            .take(8)
       )
     )
-    return [...new Set(results.flat().map((document) => document._id))].slice(
-      0,
-      16
-    )
+    return results.map((documents) => documents.map((document) => document._id))
   },
 })

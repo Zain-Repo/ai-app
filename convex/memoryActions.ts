@@ -11,15 +11,26 @@ import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { env, internalAction } from "./_generated/server"
 import {
-  buildMemoryContext,
+  appendRetrievedMemoryContext,
   isSensitiveMemory,
   memoryExtractionInstructions,
   memoryExtractionSchema,
   parseMemoryExtraction,
 } from "./memoryPolicy"
-import { createProviderEmbeddings, ProviderEmbeddingError } from "./providerEmbeddings"
+import {
+  deduplicateRetrievedMemory,
+  fuseMemorySearchRankings,
+} from "./memoryRetrievalPolicy"
+import {
+  createProviderEmbeddings,
+  ProviderEmbeddingError,
+} from "./providerEmbeddings"
 import { decryptProviderToken } from "./providerCrypto"
-import { estimateMemoryTokens, MAX_RETRIEVED_MEMORY_ITEMS, MEMORY_CONTEXT_TOKEN_BUDGET } from "./memoryTypes"
+import {
+  estimateMemoryTokens,
+  MAX_RETRIEVED_MEMORY_ITEMS,
+  MEMORY_CONTEXT_TOKEN_BUDGET,
+} from "./memoryTypes"
 import {
   getMemoryCaptureStoragePlan,
   getMemoryV2RolloutMode,
@@ -63,9 +74,11 @@ export const processEmbedding = internalAction({
         env.PROVIDER_TOKEN_ENCRYPTION_KEY,
         context.provider
       )
-      const [embedding] = await createProviderEmbeddings(token, context.provider, [
-        context.content,
-      ])
+      const [embedding] = await createProviderEmbeddings(
+        token,
+        context.provider,
+        [context.content]
+      )
       await ctx.runMutation(internal.memoryCapture.applySearchDocuments, {
         ownerId: context.ownerId,
         profileId: context.profileId,
@@ -144,9 +157,11 @@ export const processCapture = internalAction({
         schema: memoryExtractionSchema,
         instructions: `${memoryExtractionInstructions}\nAllowed write scopes: ${
           context.allowsUserScope ? "user" : "project only"
-        }. Existing keys eligible for an explicit forget request: ${context.existingKeys
-          .map((item) => `${item.scope}:${item.key}`)
-          .join(", ") || "none"}.`,
+        }. Existing keys eligible for an explicit forget request: ${
+          context.existingKeys
+            .map((item) => `${item.scope}:${item.key}`)
+            .join(", ") || "none"
+        }.`,
         prompt: context.messageContent,
         maxOutputTokens: 900,
       })
@@ -156,7 +171,9 @@ export const processCapture = internalAction({
         context.existingKeys
       )
       const legacyCandidates = parsed.memories
-        .filter((candidate) => !isSensitiveMemory(candidate.key, candidate.content))
+        .filter(
+          (candidate) => !isSensitiveMemory(candidate.key, candidate.content)
+        )
         .map((candidate) => ({
           content: candidate.content,
           key: candidate.key,
@@ -247,7 +264,9 @@ export const processCapture = internalAction({
           documents: embeddable.map((item, index) => ({
             memoryItemId: item.memoryItemId,
             content: item.content,
-            contentHash: createHash("sha256").update(item.content).digest("hex"),
+            contentHash: createHash("sha256")
+              .update(item.content)
+              .digest("hex"),
             itemRevision: item.revision,
             embedding: embeddings[index] ?? [],
           })),
@@ -294,10 +313,7 @@ const agentContextValidator = v.object({
 type AgentContext = {
   memoryMode: "standard" | "read_only" | "off"
   degradedReason?:
-    | "saved_memory_disabled"
-    | "processing_unavailable"
-    | "project_only"
-    | "off"
+    "saved_memory_disabled" | "processing_unavailable" | "project_only" | "off"
   referenceText: string
   selectedMemoryItemIds: Id<"memoryItems">[]
   historySummaryIds: Id<"conversationMemorySummaries">[]
@@ -306,26 +322,15 @@ type AgentContext = {
 
 type HydratedSearchItem = {
   memoryItemId: Id<"memoryItems">
+  canonicalKey: string
   content: string
   category: "core_profile" | "preference" | "fact" | "workstyle"
+  scope: "user" | "project"
 }
 
-function reciprocalRankFusion<T extends string>(
-  lexicalIds: T[],
-  vectorIds: T[]
-) {
-  const ranks = new Map<T, number>()
-  for (const [index, id] of lexicalIds.entries())
-    ranks.set(id, (ranks.get(id) ?? 0) + 1 / (60 + index + 1))
-  for (const [index, id] of vectorIds.entries())
-    ranks.set(id, (ranks.get(id) ?? 0) + 1 / (60 + index + 1))
-  return [...ranks.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .map(([id]) => id)
-}
-
-// An action is required for Convex vector search. Callers can use this in
-// place of the lexical-only internal query; failures return the base context.
+// Convex vector search requires an action. Retrieval failures preserve the
+// deterministic direct-memory context so optional semantic recall cannot fail
+// a response.
 export const buildAgentContextWithRetrieval = internalAction({
   args: {
     ownerId: v.id("users"),
@@ -361,7 +366,7 @@ export const buildAgentContextWithRetrieval = internalAction({
         profileRevision: number
         ownerId: Id<"users">
         searchScopes: string[]
-        query: string
+        queries: string[]
       } | null = await ctx.runQuery(
         internal.memoryContext.getRetrievalContext,
         args
@@ -373,54 +378,67 @@ export const buildAgentContextWithRetrieval = internalAction({
         env.PROVIDER_TOKEN_ENCRYPTION_KEY,
         retrieval.provider
       )
-      const [queryEmbedding] = await createProviderEmbeddings(
+      const queryEmbeddings = await createProviderEmbeddings(
         token,
         retrieval.provider,
-        [retrieval.query]
+        retrieval.queries
       )
-      const vectorHits = await Promise.all(
-        retrieval.searchScopes.slice(0, 2).map(async (searchScope) =>
-          await ctx.vectorSearch("memorySearchDocuments", "by_embedding", {
-            vector: queryEmbedding,
-            limit: 8,
-            filter: (q) =>
-              q.eq("searchScope", searchScope),
-          })
+      const vectorRankings = await Promise.all(
+        queryEmbeddings.flatMap((queryEmbedding) =>
+          retrieval.searchScopes.slice(0, 2).map(
+            async (searchScope) =>
+              await ctx.vectorSearch("memorySearchDocuments", "by_embedding", {
+                vector: queryEmbedding,
+                limit: 8,
+                filter: (q) => q.eq("searchScope", searchScope),
+              })
+          )
         )
       )
-      const lexicalIds: Id<"memorySearchDocuments">[] = await ctx.runQuery(
-        internal.memoryContext.lexicalSearchDocuments,
-        {
-          ownerId: retrieval.ownerId,
-          profileId: retrieval.profileId,
-          profileRevision: retrieval.profileRevision,
-          scopeKeys: retrieval.searchScopes.map((scope) =>
-            scope
-              .slice(`${retrieval.ownerId}:`.length)
-              .replace(/:profile:\d+$/, "")
-          ),
-          query: retrieval.query,
-        }
+      const scopeKeys = retrieval.searchScopes.map((scope) =>
+        scope.slice(`${retrieval.ownerId}:`.length).replace(/:profile:\d+$/, "")
       )
-      const rankedIds = reciprocalRankFusion(
-        lexicalIds,
-        vectorHits.flat().map((hit) => hit._id)
-      )
+      const lexicalRankings = (
+        await Promise.all(
+          retrieval.queries.map(
+            async (query) =>
+              await ctx.runQuery(
+                internal.memoryContext.lexicalSearchDocuments,
+                {
+                  ownerId: retrieval.ownerId,
+                  profileId: retrieval.profileId,
+                  profileRevision: retrieval.profileRevision,
+                  scopeKeys,
+                  query,
+                }
+              )
+          )
+        )
+      ).flat()
+      const rankedIds = fuseMemorySearchRankings({
+        lexicalRankings,
+        vectorRankings: vectorRankings.map((ranking) =>
+          ranking.map((hit) => ({ id: hit._id, score: hit._score }))
+        ),
+      }).slice(0, 16)
       const hydrated: HydratedSearchItem[] = await ctx.runQuery(
         internal.memoryContext.hydrateSearchDocuments,
         {
           ownerId: retrieval.ownerId,
           profileId: retrieval.profileId,
           profileRevision: retrieval.profileRevision,
+          excludedMemoryItemIds: base.selectedMemoryItemIds,
           searchDocumentIds: rankedIds,
         }
       )
       const alreadySelected = new Set(base.selectedMemoryItemIds)
+      const candidates = deduplicateRetrievedMemory(hydrated, new Set())
       let remainingBudget = MEMORY_CONTEXT_TOKEN_BUDGET - base.budgetUsed
       const extra: HydratedSearchItem[] = []
-      for (const item of hydrated) {
+      for (const item of candidates) {
         if (
-          extra.length + base.selectedMemoryItemIds.length >= MAX_RETRIEVED_MEMORY_ITEMS ||
+          extra.length + base.selectedMemoryItemIds.length >=
+            MAX_RETRIEVED_MEMORY_ITEMS ||
           alreadySelected.has(item.memoryItemId)
         ) {
           continue
@@ -433,7 +451,8 @@ export const buildAgentContextWithRetrieval = internalAction({
       if (!extra.length || rolloutMode === "shadow") return base
       return {
         ...base,
-        referenceText: `${base.referenceText}${buildMemoryContext(
+        referenceText: appendRetrievedMemoryContext(
+          base.referenceText,
           extra
             .filter(
               (item) =>
@@ -442,10 +461,11 @@ export const buildAgentContextWithRetrieval = internalAction({
             .map((item) => item.content),
           extra
             .filter(
-              (item) => item.category === "core_profile" || item.category === "fact"
+              (item) =>
+                item.category === "core_profile" || item.category === "fact"
             )
             .map((item) => item.content)
-        )}`,
+        ),
         selectedMemoryItemIds: [
           ...base.selectedMemoryItemIds,
           ...extra.map((item) => item.memoryItemId),

@@ -25,6 +25,10 @@ import {
   ProviderEmbeddingError,
 } from "./providerEmbeddings"
 import {
+  getOpenRouterModelUrl,
+  parseOpenRouterModelSupportsTools,
+} from "./providerOAuth"
+import {
   buildProjectRetrievalContext,
   chunkProjectSourceText,
   isPdfProjectSource,
@@ -49,6 +53,11 @@ import {
   runTerminalCommandTool,
 } from "./terminalSandbox"
 import { finishTerminalRun, startTerminalRun } from "./terminalPolicy"
+import {
+  classifyOpenRouterAttachment,
+  decodeOpenRouterTextAttachment,
+  resolveOpenRouterAttachmentMediaType,
+} from "../shared/openrouter-attachments"
 import type { StoredTerminalRun } from "./terminalPolicy"
 import {
   RENDER_UI_TOOL_NAME,
@@ -76,15 +85,11 @@ const MAX_PROJECT_PDF_PAGES = 250
 const MAX_PROJECT_PDF_IMAGE_PIXELS = 16_777_216
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
+const MAX_OPENROUTER_MODEL_METADATA_BYTES = 512 * 1024
+const OPENROUTER_MODEL_METADATA_TIMEOUT_MS = 5_000
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 4
 const MAX_IMAGE_RESPONSE_JSON_BYTES = MAX_IMAGE_BASE64_LENGTH * 4 + 1024 * 1024
-const IMAGE_TYPES = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-])
 const GENERATED_IMAGE_EXTENSIONS = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
@@ -217,6 +222,232 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+const OPENROUTER_ERROR_TYPES = new Set([
+  "authentication",
+  "content_policy_violation",
+  "context_length_exceeded",
+  "invalid_prompt",
+  "invalid_request",
+  "max_tokens_exceeded",
+  "payment_required",
+  "permission_denied",
+  "provider_overloaded",
+  "provider_unavailable",
+  "rate_limit_exceeded",
+  "refusal",
+  "server",
+  "string_too_long",
+  "timeout",
+  "token_limit_exceeded",
+  "unmapped",
+])
+
+type ProviderFailureCode =
+  | "authentication"
+  | "insufficient_credits"
+  | "rate_limited"
+  | "request_blocked"
+  | "invalid_request"
+  | "provider_unavailable"
+  | "generation_failed"
+
+type ProviderFailure = {
+  code: ProviderFailureCode
+  errorType?: string
+  needsAuthentication: boolean
+  safeMessage: string
+  status?: number
+}
+
+export function getSafeProviderFailureMessage(
+  code: ProviderFailureCode,
+  provider?: "openrouter" | "openai" | "fal"
+) {
+  const label =
+    provider === "openrouter"
+      ? "OpenRouter"
+      : provider === "openai"
+        ? "OpenAI"
+        : provider === "fal"
+          ? "Fal"
+          : "The provider"
+  switch (code) {
+    case "authentication":
+      return `${label} authentication failed. Reconnect the provider and try again.`
+    case "insufficient_credits":
+      return `${label} rejected the request because the account has insufficient credit.`
+    case "rate_limited":
+      return `${label} rate limit was reached. Try again shortly.`
+    case "request_blocked":
+      return `${label} blocked this request because of permissions or content policy. Review the request or provider settings and try again.`
+    case "invalid_request":
+      return `${label} rejected this request. Choose a compatible model or adjust the input and try again.`
+    case "provider_unavailable":
+      return `${label} is temporarily unavailable. Try again shortly or choose another model.`
+    case "generation_failed":
+      return `${label} could not complete this response. Try again or choose another model.`
+  }
+}
+
+function readHttpStatus(value: unknown) {
+  const status =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d{3}$/.test(value)
+        ? Number(value)
+        : undefined
+  return status !== undefined && status >= 400 && status <= 599
+    ? status
+    : undefined
+}
+
+function readOpenRouterError(value: unknown) {
+  const error = isRecord(value) && isRecord(value.error) ? value.error : value
+  if (!isRecord(error)) return null
+  const metadata = isRecord(error.metadata) ? error.metadata : undefined
+  const rawErrorType = metadata?.error_type ?? error.error_type
+  const errorType =
+    typeof rawErrorType === "string" && OPENROUTER_ERROR_TYPES.has(rawErrorType)
+      ? rawErrorType
+      : undefined
+  const status = readHttpStatus(error.code)
+  return status !== undefined || errorType ? { errorType, status } : null
+}
+
+export function classifyProviderFailure(
+  cause: unknown,
+  provider?: "openrouter" | "openai" | "fal"
+): ProviderFailure {
+  const apiError = APICallError.isInstance(cause) ? cause : undefined
+  const structuredError =
+    provider === "openrouter"
+      ? (readOpenRouterError(apiError?.data) ?? readOpenRouterError(cause))
+      : null
+  const status =
+    apiError?.statusCode ??
+    structuredError?.status ??
+    (cause instanceof OpenRouterImageError || cause instanceof FalApiError
+      ? cause.statusCode
+      : undefined)
+  const errorType = structuredError?.errorType
+  const needsAuthentication = status === 401 || errorType === "authentication"
+
+  if (needsAuthentication)
+    return {
+      code: "authentication",
+      errorType,
+      needsAuthentication,
+      safeMessage: getSafeProviderFailureMessage("authentication", provider),
+      ...(status === undefined ? {} : { status }),
+    }
+  if (status === 402 || errorType === "payment_required")
+    return {
+      code: "insufficient_credits",
+      errorType,
+      needsAuthentication: false,
+      safeMessage: getSafeProviderFailureMessage(
+        "insufficient_credits",
+        provider
+      ),
+      ...(status === undefined ? {} : { status }),
+    }
+  if (status === 429 || errorType === "rate_limit_exceeded")
+    return {
+      code: "rate_limited",
+      errorType,
+      needsAuthentication: false,
+      safeMessage: getSafeProviderFailureMessage("rate_limited", provider),
+      ...(status === undefined ? {} : { status }),
+    }
+  if (
+    status === 403 ||
+    errorType === "permission_denied" ||
+    errorType === "content_policy_violation" ||
+    errorType === "refusal"
+  )
+    return {
+      code: "request_blocked",
+      errorType,
+      needsAuthentication: false,
+      safeMessage: getSafeProviderFailureMessage("request_blocked", provider),
+      ...(status === undefined ? {} : { status }),
+    }
+  if (
+    status === 400 ||
+    status === 404 ||
+    status === 413 ||
+    status === 422 ||
+    errorType === "context_length_exceeded" ||
+    errorType === "invalid_prompt" ||
+    errorType === "invalid_request" ||
+    errorType === "max_tokens_exceeded" ||
+    errorType === "string_too_long" ||
+    errorType === "token_limit_exceeded"
+  )
+    return {
+      code: "invalid_request",
+      errorType,
+      needsAuthentication: false,
+      safeMessage: getSafeProviderFailureMessage("invalid_request", provider),
+      ...(status === undefined ? {} : { status }),
+    }
+  if (
+    (status !== undefined && status >= 500) ||
+    errorType === "provider_overloaded" ||
+    errorType === "provider_unavailable" ||
+    errorType === "server" ||
+    errorType === "timeout" ||
+    errorType === "unmapped"
+  )
+    return {
+      code: "provider_unavailable",
+      errorType,
+      needsAuthentication: false,
+      safeMessage: getSafeProviderFailureMessage(
+        "provider_unavailable",
+        provider
+      ),
+      ...(status === undefined ? {} : { status }),
+    }
+  return {
+    code: "generation_failed",
+    errorType,
+    needsAuthentication: false,
+    safeMessage: getSafeProviderFailureMessage("generation_failed", provider),
+    ...(status === undefined ? {} : { status }),
+  }
+}
+
+export async function loadOpenRouterModelSupportsTools(
+  token: string,
+  model: string,
+  signal?: AbortSignal
+) {
+  try {
+    const response = await fetch(getOpenRouterModelUrl(model), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(OPENROUTER_MODEL_METADATA_TIMEOUT_MS, signal),
+    })
+    if (!response.ok) return false
+    const value = await readBoundedJson(
+      response,
+      MAX_OPENROUTER_MODEL_METADATA_BYTES,
+      "OpenRouter model metadata was invalid"
+    )
+    return parseOpenRouterModelSupportsTools(value) === true
+  } catch {
+    // Capability lookup must fail closed to universally supported plain text.
+    return false
+  }
+}
+
+export function selectOpenRouterTools<T extends Record<string, unknown>>(
+  supportsTools: boolean,
+  tools: T
+) {
+  return supportsTools ? tools : undefined
+}
+
 export function parseOpenRouterImageResponses(value: unknown) {
   if (!isRecord(value) || !Array.isArray(value.data))
     throw new Error("Provider returned an invalid image response")
@@ -264,7 +495,7 @@ export async function generateOpenRouterImage(
   )
   const inputReferences = (latestUserMessage?.attachments ?? []).flatMap(
     (attachment) =>
-      IMAGE_TYPES.has(attachment.contentType)
+      classifyOpenRouterAttachment(attachment) === "image"
         ? [
             {
               type: "image_url" as const,
@@ -324,7 +555,7 @@ export function getOpenRouterModelSettings(
   return {
     ...(messages.some((message) =>
       message.attachments?.some(
-        (attachment) => attachment.contentType === "application/pdf"
+        (attachment) => classifyOpenRouterAttachment(attachment) === "pdf"
       )
     )
       ? { plugins: [{ id: "file-parser" as const }] }
@@ -357,36 +588,39 @@ function getOpenAIOptions(
   }
 }
 
-function isTextAttachment(contentType: string) {
-  return (
-    contentType.startsWith("text/") ||
-    [
-      "application/javascript",
-      "application/json",
-      "application/ld+json",
-      "application/xml",
-    ].includes(contentType)
-  )
-}
-
 export async function inlineTextAttachments(
   messages: ProviderMessage[],
   read: (storageId: Id<"_storage">) => Promise<Blob | null>
 ) {
   let remaining = MAX_INLINE_TEXT_ATTACHMENT_CHARS
-  const hydrated: ProviderMessage[] = []
+  const hydrated: ProviderMessage[] = new Array(messages.length)
+  const latestUserIndex = messages.findLastIndex(
+    (message) => message.role === "user"
+  )
+  const processingOrder = [
+    ...(latestUserIndex < 0 ? [] : [latestUserIndex]),
+    ...messages
+      .map((_, index) => index)
+      .filter((index) => index !== latestUserIndex),
+  ]
 
-  for (const message of messages) {
+  for (const index of processingOrder) {
+    const message = messages[index]
     const attachments: NonNullable<ProviderMessage["attachments"]> = []
     const textFiles: string[] = []
     for (const attachment of message.attachments ?? []) {
-      if (!attachment.storageId || !isTextAttachment(attachment.contentType)) {
+      if (
+        !attachment.storageId ||
+        classifyOpenRouterAttachment(attachment) !== "text"
+      ) {
         attachments.push(attachment)
         continue
       }
 
       const blob = await read(attachment.storageId)
-      const text = blob ? await blob.text() : ""
+      const text = blob
+        ? decodeOpenRouterTextAttachment(await blob.arrayBuffer())
+        : ""
       const excerpt = text.slice(0, remaining)
       remaining -= excerpt.length
       textFiles.push(
@@ -395,11 +629,11 @@ export async function inlineTextAttachments(
         }\n--- END FILE ---`
       )
     }
-    hydrated.push({
+    hydrated[index] = {
       ...message,
       attachments,
       content: [message.content, ...textFiles].filter(Boolean).join("\n\n"),
-    })
+    }
   }
   return hydrated
 }
@@ -484,17 +718,17 @@ export function toModelPrompt(messages: ProviderMessage[]) {
         content: [
           { type: "text", text: message.content },
           ...message.attachments.map((attachment) =>
-            IMAGE_TYPES.has(attachment.contentType)
+            classifyOpenRouterAttachment(attachment) === "image"
               ? {
                   type: "image" as const,
                   image: new URL(attachment.url),
-                  mediaType: attachment.contentType,
+                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
                 }
               : {
                   type: "file" as const,
                   data: new URL(attachment.url),
                   filename: attachment.name,
-                  mediaType: attachment.contentType,
+                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
                 }
           ),
         ],
@@ -555,7 +789,7 @@ function projectIndexErrorCode(cause: unknown) {
   if (cause instanceof ProjectSourceExtractionError) return cause.code
   const status =
     cause instanceof ProviderEmbeddingError ? cause.statusCode : undefined
-  if (status === 401 || status === 403) return "needs_reauthentication" as const
+  if (status === 401) return "needs_reauthentication" as const
   if (status === 402) return "insufficient_credits" as const
   return "indexing_failed" as const
 }
@@ -808,7 +1042,7 @@ async function retrieveRelevantProjectSources(
     if (
       connectionId &&
       cause instanceof ProviderEmbeddingError &&
-      (cause.statusCode === 401 || cause.statusCode === 403)
+      cause.statusCode === 401
     )
       await ctx.runMutation(
         internal.providerConnections.markProviderNeedsAuthentication,
@@ -1025,7 +1259,9 @@ export const generate = internalAction({
             messages.findLast((message) => message.role === "user")
               ?.attachments ?? []
           ).flatMap((attachment) =>
-            IMAGE_TYPES.has(attachment.contentType) ? [attachment.url] : []
+            classifyOpenRouterAttachment(attachment) === "image"
+              ? [attachment.url]
+              : []
           )
           generated = await generateFalImage(
             token,
@@ -1157,12 +1393,21 @@ export const generate = internalAction({
         projectSourceContext
       )
       const prompt = toModelPrompt(messages)
-      const terminalSandbox = createTerminalSandboxSession({
-        conversationId: args.conversationId,
-        ...(context.projectId ? { projectId: context.projectId } : {}),
-        workerToken: env.TERMINAL_WORKER_TOKEN,
-        workerUrl: env.TERMINAL_WORKER_URL,
-      })
+      const supportsTools =
+        context.provider !== "openrouter" ||
+        (await loadOpenRouterModelSupportsTools(
+          token,
+          context.model,
+          abortController.signal
+        ))
+      const terminalSandbox = supportsTools
+        ? createTerminalSandboxSession({
+            conversationId: args.conversationId,
+            ...(context.projectId ? { projectId: context.projectId } : {}),
+            workerToken: env.TERMINAL_WORKER_TOKEN,
+            workerUrl: env.TERMINAL_WORKER_URL,
+          })
+        : null
       const generationPrompt = terminalSandbox
         ? {
             ...prompt,
@@ -1181,6 +1426,21 @@ export const generate = internalAction({
         context.provider === "openrouter"
           ? (() => {
               const openrouter = createUserOpenRouter(token)
+              const tools = selectOpenRouterTools(supportsTools, {
+                [RENDER_UI_TOOL_NAME]: renderUiTool,
+                ...(terminalSandbox
+                  ? { runTerminalCommand: runTerminalCommandTool }
+                  : {}),
+                ...(context.hasProjectLinks
+                  ? {
+                      webSearch: openrouter.tools.webSearch({
+                        maxResults: 5,
+                        searchPrompt:
+                          "Use the exact project source URLs when they answer the request.",
+                      }),
+                    }
+                  : {}),
+              })
               return streamText({
                 abortSignal: abortController.signal,
                 model: openrouter(
@@ -1193,21 +1453,7 @@ export const generate = internalAction({
                   )
                 ),
                 ...generationPrompt,
-                tools: {
-                  [RENDER_UI_TOOL_NAME]: renderUiTool,
-                  ...(terminalSandbox
-                    ? { runTerminalCommand: runTerminalCommandTool }
-                    : {}),
-                  ...(context.hasProjectLinks
-                    ? {
-                        webSearch: openrouter.tools.webSearch({
-                          maxResults: 5,
-                          searchPrompt:
-                            "Use the exact project source URLs when they answer the request.",
-                        }),
-                      }
-                    : {}),
-                },
+                ...(tools ? { tools } : {}),
                 ...terminalOptions,
                 timeout: 120_000,
               })
@@ -1403,36 +1649,38 @@ export const generate = internalAction({
         (await responseWasStopped())
       )
         return null
-      const apiError = APICallError.isInstance(cause) ? cause : undefined
-      const status =
-        apiError?.statusCode ??
-        (cause instanceof OpenRouterImageError || cause instanceof FalApiError
-          ? cause.statusCode
-          : undefined)
-      if (connectionId && (status === 401 || status === 403)) {
+      const failure = classifyProviderFailure(cause, provider)
+      const status = failure.status
+      if (connectionId && failure.needsAuthentication) {
         await ctx.runMutation(
           internal.providerConnections.markProviderNeedsAuthentication,
           { connectionId }
         )
       }
-      if (status === 402) errorCode = "insufficient_credits"
-      if (status) console.error("Provider request failed", { provider, status })
+      if (failure.code === "insufficient_credits")
+        errorCode = "insufficient_credits"
+      console.error("Provider request failed", {
+        provider,
+        code: failure.code,
+        ...(failure.errorType ? { errorType: failure.errorType } : {}),
+        ...(status === undefined ? {} : { status }),
+      })
       if (imageExecution) {
         await ctx.runMutation(internal.imageGenerations.failGeneration, {
           generationSetId: imageExecution.generationSetId,
           generationJobId: imageExecution.generationJobId,
           errorCode:
-            status === 402
+            failure.code === "insufficient_credits"
               ? "insufficient_credits"
-              : status === 429
+              : failure.code === "rate_limited"
                 ? "rate_limited"
-                : status && status >= 500
+                : failure.code === "provider_unavailable"
                   ? "provider_unavailable"
                   : "generation_failed",
           errorMessage:
-            status === 402
+            failure.code === "insufficient_credits"
               ? "The connected provider account has insufficient credit."
-              : status === 429
+              : failure.code === "rate_limited"
                 ? "The provider rate limit was reached."
                 : "The provider could not complete this image generation.",
         })
@@ -1454,13 +1702,13 @@ export const generate = internalAction({
       )
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
-        content,
+        content: failure.safeMessage,
         ...(errorCode ? { errorCode } : {}),
         failed: true,
         ...(reasoning.trim() ? { reasoningSteps: [reasoning.trim()] } : {}),
         ...(terminalRuns.length ? { terminalRuns } : {}),
       })
-      throw new Error("Provider response failed")
+      throw new Error(failure.safeMessage)
     } finally {
       clearInterval(cancellationPoll)
     }

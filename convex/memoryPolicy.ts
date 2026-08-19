@@ -265,6 +265,22 @@ export function buildMemoryContext(preferences: string[], relevant: string[]) {
   return `${header}${preferenceSection}${relevantSection}`
 }
 
+export function appendRetrievedMemoryContext(
+  existingContext: string,
+  preferences: string[],
+  relevant: string[]
+) {
+  if (!preferences.length && !relevant.length) return existingContext
+  if (!existingContext) return buildMemoryContext(preferences, relevant)
+  const preferenceSection = preferences.length
+    ? `\nPreferences:\n${preferences.map((item) => `- ${JSON.stringify(item)}`).join("\n")}`
+    : ""
+  const relevantSection = relevant.length
+    ? `\nRelevant facts:\n${relevant.map((item) => `- ${JSON.stringify(item)}`).join("\n")}`
+    : ""
+  return `${existingContext}\nRetrieved for the current request:${preferenceSection}${relevantSection}`
+}
+
 export function selectRelevantMemoryFacts(memories: RetrievedMemory[]) {
   const projectKeys = new Set(
     memories
