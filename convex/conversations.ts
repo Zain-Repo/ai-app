@@ -15,6 +15,10 @@ import { consumeDraftAttachments } from "./attachments"
 import { indexMessageAttachments, removeMessageAssets } from "./library"
 import { getMemorySearchScopes } from "./memories"
 import { isIndexableProjectSource } from "./projectEmbeddingPolicy"
+import {
+  assertValidProviderUsage,
+  providerUsageValidator,
+} from "../shared/provider-usage"
 import { buildProjectSourceContext, buildSystemPrompt } from "./systemPrompt"
 import { terminalRunValidator } from "./terminalPolicy"
 import { MAX_GENERATIVE_UI_PAYLOAD_LENGTH } from "../shared/generative-ui"
@@ -113,6 +117,7 @@ const messageValidator = v.object({
   reasoningEffort: v.optional(v.string()),
   reasoningSteps: v.optional(v.array(v.string())),
   contextTokens: v.optional(v.number()),
+  providerUsage: v.optional(providerUsageValidator),
   terminalRuns: v.optional(v.array(terminalRunValidator)),
   uiPayload: v.optional(v.string()),
   errorCode: v.optional(v.literal("insufficient_credits")),
@@ -1833,6 +1838,7 @@ export const finishOpenRouterResponse = internalMutation({
     failed: v.boolean(),
     attachments: v.optional(v.array(messageAttachmentValidator)),
     contextTokens: v.optional(v.number()),
+    providerUsage: v.optional(providerUsageValidator),
     reasoningSteps: v.optional(v.array(v.string())),
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
@@ -1846,12 +1852,15 @@ export const finishOpenRouterResponse = internalMutation({
       (!Number.isSafeInteger(args.contextTokens) || args.contextTokens < 0)
     )
       throw new Error("Response context usage is invalid")
+    if (args.providerUsage) assertValidProviderUsage(args.providerUsage)
     if (
       args.uiPayload &&
       args.uiPayload.length > MAX_GENERATIVE_UI_PAYLOAD_LENGTH
     )
       throw new Error("Generated interface is too large")
     const message = await ctx.db.get(args.assistantMessageId)
+    if (args.providerUsage && message?.provider !== "openrouter")
+      throw new Error("Provider usage does not match the response provider")
     let completed = false
     if (
       message?.role === "assistant" &&
@@ -1863,6 +1872,7 @@ export const finishOpenRouterResponse = internalMutation({
         ...(args.contextTokens === undefined
           ? {}
           : { contextTokens: args.contextTokens }),
+        ...(args.providerUsage ? { providerUsage: args.providerUsage } : {}),
         errorCode: args.errorCode,
         ...(args.reasoningSteps ? { reasoningSteps: args.reasoningSteps } : {}),
         ...(args.terminalRuns ? { terminalRuns: args.terminalRuns } : {}),
