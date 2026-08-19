@@ -30,6 +30,7 @@ import type * as memoryJobs from "../memoryJobs.js";
 import type * as memoryMigration from "../memoryMigration.js";
 import type * as memoryPolicy from "../memoryPolicy.js";
 import type * as memoryRetention from "../memoryRetention.js";
+import type * as memoryRetrievalPolicy from "../memoryRetrievalPolicy.js";
 import type * as memoryRolloutPolicy from "../memoryRolloutPolicy.js";
 import type * as memoryTypes from "../memoryTypes.js";
 import type * as migrations from "../migrations.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   memoryMigration: typeof memoryMigration;
   memoryPolicy: typeof memoryPolicy;
   memoryRetention: typeof memoryRetention;
+  memoryRetrievalPolicy: typeof memoryRetrievalPolicy;
   memoryRolloutPolicy: typeof memoryRolloutPolicy;
   memoryTypes: typeof memoryTypes;
   migrations: typeof migrations;

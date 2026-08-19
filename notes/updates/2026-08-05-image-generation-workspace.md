@@ -108,9 +108,10 @@ the resulting asset through the public Library query.
 - Authenticated Electron reproduction no longer emitted the null-config
   `dimension` exception after the workspace reloaded with the correction.
 - Library and image-generation suites passed all 8 tests; the full suite passed
-  all 326 tests; TypeScript, scoped ESLint, and the production client and SSR
-  builds passed. The corrected Convex functions were deployed to the configured
-  development environment.
+  all 329 tests; TypeScript and scoped ESLint passed. The production client
+  build passed, while the SSR build is currently blocked by an unrelated,
+  concurrent duplicate `Spinner` declaration in the chat route. The corrected
+  Convex functions were deployed to the configured development environment.
 
 ## Limitations
 
