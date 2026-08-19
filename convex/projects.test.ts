@@ -746,6 +746,55 @@ describe("projects and conversations", () => {
     ).resolves.toEqual({ conversations: [], isPartial: true })
   })
 
+  it("reports whether each workspace conversation is generating", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|generation-status-owner"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+
+    await t.run(async (ctx) => {
+      for (const [index, status] of [
+        "pending",
+        "streaming",
+        "complete",
+      ].entries()) {
+        const conversationId = await ctx.db.insert("conversations", {
+          ownerId,
+          status: "active",
+          title: `Conversation ${status}`,
+          updatedAt: index + 1,
+        })
+        const branchId = await ctx.db.insert("conversationBranches", {
+          conversationId,
+          createdAt: index + 1,
+        })
+        const messageId = await ctx.db.insert("messages", {
+          branchId,
+          content: status === "complete" ? "Done" : "",
+          conversationId,
+          role: "assistant",
+          status: status as "complete" | "pending" | "streaming",
+        })
+        await ctx.db.patch(branchId, { lastMessageId: messageId })
+        await ctx.db.patch(conversationId, { activeBranchId: branchId })
+      }
+    })
+
+    const history = await owner.query(api.conversations.listWorkspaceRecent, {
+      outputMode: "text",
+    })
+
+    expect(
+      history.conversations.map(({ isGenerating, title }) => ({
+        isGenerating,
+        title,
+      }))
+    ).toEqual([
+      { isGenerating: false, title: "Conversation complete" },
+      { isGenerating: true, title: "Conversation streaming" },
+      { isGenerating: true, title: "Conversation pending" },
+    ])
+  })
+
   it("archives, lists archived, restores, and deletes owned chats", async () => {
     const t = convexTest(schema, modules)
     const ada = t.withIdentity(identity("clerk|ada"))

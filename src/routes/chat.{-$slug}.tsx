@@ -370,12 +370,16 @@ export function ProjectConversationDisclosure({
 
 const SIDEBAR_CONVERSATION_LIMIT = 10
 
+type SidebarConversation = Doc<"conversations"> & {
+  isGenerating?: boolean
+}
+
 export function CappedConversationList({
   conversations,
   renderConversation,
 }: {
-  conversations: Doc<"conversations">[]
-  renderConversation: (conversation: Doc<"conversations">) => ReactNode
+  conversations: SidebarConversation[]
+  renderConversation: (conversation: SidebarConversation) => ReactNode
 }) {
   const [expanded, setExpanded] = useState(false)
   const visibleConversations = expanded
@@ -394,6 +398,27 @@ export function CappedConversationList({
             Show more
           </SidebarMenuButton>
         </SidebarMenuItem>
+      ) : null}
+    </>
+  )
+}
+
+export function SidebarConversationLabel({
+  isWorking,
+  title,
+}: {
+  isWorking: boolean
+  title: string
+}) {
+  return (
+    <>
+      <span className="min-w-0 flex-1 truncate">{title}</span>
+      {isWorking ? (
+        <Spinner
+          aria-label={`Agent working on ${title}`}
+          className="size-3.5 shrink-0 text-sidebar-foreground/60 motion-reduce:animate-none"
+          strokeWidth={1.5}
+        />
       ) : null}
     </>
   )
@@ -2246,7 +2271,7 @@ function ChatWorkspace() {
     messageActionPending ||
     selected?.status === "archived"
 
-  const renderConversation = (conversation: Doc<"conversations">) => (
+  const renderConversation = (conversation: SidebarConversation) => (
     <SidebarMenuItem key={conversation._id}>
       <SidebarMenuButton
         className="rounded-xl px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
@@ -2263,7 +2288,13 @@ function ChatWorkspace() {
           />
         }
       >
-        <span className="truncate">{conversation.title}</span>
+        <SidebarConversationLabel
+          isWorking={
+            conversation.isGenerating ||
+            (conversationId === conversation._id && generationState !== "idle")
+          }
+          title={conversation.title}
+        />
       </SidebarMenuButton>
       <DropdownMenu>
         <DropdownMenuTrigger
