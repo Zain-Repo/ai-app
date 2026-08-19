@@ -60,6 +60,15 @@ content height without an internal scrollbar. Expanded settings are capped to a
 viewport-relative, independently scrollable panel so they remain inside the app
 shell instead of pushing the composer below the screen.
 
+## Library validator compatibility fix (2026-08-19)
+
+The Library query return validator now includes the optional generation-set and
+generation-output lineage fields written by the image persistence workflow.
+Previously, Convex rejected a Library page containing any newer generated image,
+which caused the route error boundary to display "Library is temporarily
+unavailable." The regression test completes a real image generation and reads
+the resulting asset through the public Library query.
+
 ## Affected areas
 
 - Shared capability/config contract and validation
@@ -74,6 +83,7 @@ shell instead of pushing the composer below the screen.
   reference action
 - Image progress presentation and focused automated coverage
 - Image workspace capability/config readiness guard and regression coverage
+- Convex Library return validation and image-generation persistence coverage
 
 ## Validation
 
@@ -97,6 +107,11 @@ shell instead of pushing the composer below the screen.
   checks, and authenticated browser overflow checks at 1536 x 730.
 - Authenticated Electron reproduction no longer emitted the null-config
   `dimension` exception after the workspace reloaded with the correction.
+- Library and image-generation suites passed all 8 tests; the full suite passed
+  all 329 tests; TypeScript and scoped ESLint passed. The production client
+  build passed, while the SSR build is currently blocked by an unrelated,
+  concurrent duplicate `Spinner` declaration in the chat route. The corrected
+  Convex functions were deployed to the configured development environment.
 
 ## Limitations
 

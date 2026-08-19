@@ -21,6 +21,7 @@ import {
   ProjectConversationDisclosure,
   resolveActiveProjectId,
   resolveActiveWorkspace,
+  SidebarConversationLabel,
   toggleExpandedProject,
 } from "./chat.{-$slug}"
 import { getWorkspaceOutputMode } from "@/lib/workspace-product"
@@ -320,6 +321,22 @@ describe("sidebar conversation list", () => {
 
     expect(view.getByText("Chat 11")).toBeTruthy()
     expect(view.queryByRole("button", { name: "Show more" })).toBeNull()
+  })
+
+  it("shows an accessible reduced-motion loader while the agent is working", () => {
+    const view = render(
+      <SidebarConversationLabel isWorking={false} title="Fix library" />
+    )
+
+    expect(view.queryByRole("status")).toBeNull()
+
+    view.rerender(<SidebarConversationLabel isWorking title="Fix library" />)
+
+    const loader = view.getByRole("status", {
+      name: "Agent working on Fix library",
+    })
+    expect(loader.getAttribute("data-slot")).toBe("spinner")
+    expect(loader.getAttribute("class")).toContain("motion-reduce:animate-none")
   })
 })
 

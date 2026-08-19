@@ -82,8 +82,12 @@ const messageBranchNavigationValidator = v.object({
   nextBranchId: v.optional(v.id("conversationBranches")),
 })
 
+const workspaceHistoryConversationValidator = conversationValidator.extend({
+  isGenerating: v.boolean(),
+})
+
 const workspaceHistoryResultValidator = v.object({
-  conversations: v.array(conversationValidator),
+  conversations: v.array(workspaceHistoryConversationValidator),
   isPartial: v.boolean(),
 })
 
@@ -132,6 +136,37 @@ const optionalModelSettingsValidator = v.optional(
 type Conversation = Doc<"conversations">
 type Message = Doc<"messages">
 type Branch = Doc<"conversationBranches">
+
+async function addGenerationStatus(
+  ctx: Pick<QueryCtx, "db">,
+  conversations: Conversation[]
+) {
+  return await Promise.all(
+    conversations.map(async (conversation) => {
+      if (!conversation.activeBranchId)
+        return { ...conversation, isGenerating: false }
+
+      const activeBranch = await ctx.db.get(conversation.activeBranchId)
+      if (
+        !activeBranch ||
+        activeBranch.conversationId !== conversation._id ||
+        !activeBranch.lastMessageId
+      )
+        return { ...conversation, isGenerating: false }
+
+      const lastMessage = await ctx.db.get(activeBranch.lastMessageId)
+      const isGenerating = Boolean(
+        lastMessage &&
+        lastMessage.conversationId === conversation._id &&
+        lastMessage.branchId === activeBranch._id &&
+        lastMessage.role === "assistant" &&
+        (lastMessage.status === "pending" || lastMessage.status === "streaming")
+      )
+
+      return { ...conversation, isGenerating }
+    })
+  )
+}
 type DatabaseReader = Pick<QueryCtx, "db">
 
 function normalizeMessage(content: string) {
@@ -2085,7 +2120,7 @@ export const listWorkspaceRecent = query({
         })
       const conversations = page.page.slice(0, limit)
       return {
-        conversations,
+        conversations: await addGenerationStatus(ctx, conversations),
         isPartial: conversations.length < limit && !page.isDone,
       }
     }
@@ -2115,7 +2150,7 @@ export const listWorkspaceRecent = query({
         })
       const conversations = page.page.slice(0, limit)
       return {
-        conversations,
+        conversations: await addGenerationStatus(ctx, conversations),
         isPartial: conversations.length < limit && !page.isDone,
       }
     }
@@ -2141,7 +2176,7 @@ export const listWorkspaceRecent = query({
       })
     const conversations = page.page.slice(0, limit)
     return {
-      conversations,
+      conversations: await addGenerationStatus(ctx, conversations),
       isPartial: conversations.length < limit && !page.isDone,
     }
   },
