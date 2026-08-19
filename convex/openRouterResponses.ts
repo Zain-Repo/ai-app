@@ -48,6 +48,11 @@ import {
   runTerminalCommandTool,
 } from "./terminalSandbox"
 import { finishTerminalRun, startTerminalRun } from "./terminalPolicy"
+import {
+  classifyOpenRouterAttachment,
+  decodeOpenRouterTextAttachment,
+  resolveOpenRouterAttachmentMediaType,
+} from "../shared/openrouter-attachments"
 import type { StoredTerminalRun } from "./terminalPolicy"
 import {
   RENDER_UI_TOOL_NAME,
@@ -78,12 +83,6 @@ const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 4
 const MAX_IMAGE_RESPONSE_JSON_BYTES = MAX_IMAGE_BASE64_LENGTH * 4 + 1024 * 1024
-const IMAGE_TYPES = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-])
 const GENERATED_IMAGE_EXTENSIONS = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
@@ -263,7 +262,7 @@ export async function generateOpenRouterImage(
   )
   const inputReferences = (latestUserMessage?.attachments ?? []).flatMap(
     (attachment) =>
-      IMAGE_TYPES.has(attachment.contentType)
+      classifyOpenRouterAttachment(attachment) === "image"
         ? [
             {
               type: "image_url" as const,
@@ -323,7 +322,7 @@ export function getOpenRouterModelSettings(
   return {
     ...(messages.some((message) =>
       message.attachments?.some(
-        (attachment) => attachment.contentType === "application/pdf"
+        (attachment) => classifyOpenRouterAttachment(attachment) === "pdf"
       )
     )
       ? { plugins: [{ id: "file-parser" as const }] }
@@ -356,18 +355,6 @@ function getOpenAIOptions(
   }
 }
 
-function isTextAttachment(contentType: string) {
-  return (
-    contentType.startsWith("text/") ||
-    [
-      "application/javascript",
-      "application/json",
-      "application/ld+json",
-      "application/xml",
-    ].includes(contentType)
-  )
-}
-
 export async function inlineTextAttachments(
   messages: ProviderMessage[],
   read: (storageId: Id<"_storage">) => Promise<Blob | null>
@@ -379,13 +366,18 @@ export async function inlineTextAttachments(
     const attachments: NonNullable<ProviderMessage["attachments"]> = []
     const textFiles: string[] = []
     for (const attachment of message.attachments ?? []) {
-      if (!attachment.storageId || !isTextAttachment(attachment.contentType)) {
+      if (
+        !attachment.storageId ||
+        classifyOpenRouterAttachment(attachment) !== "text"
+      ) {
         attachments.push(attachment)
         continue
       }
 
       const blob = await read(attachment.storageId)
-      const text = blob ? await blob.text() : ""
+      const text = blob
+        ? decodeOpenRouterTextAttachment(await blob.arrayBuffer())
+        : ""
       const excerpt = text.slice(0, remaining)
       remaining -= excerpt.length
       textFiles.push(
@@ -483,17 +475,17 @@ export function toModelPrompt(messages: ProviderMessage[]) {
         content: [
           { type: "text", text: message.content },
           ...message.attachments.map((attachment) =>
-            IMAGE_TYPES.has(attachment.contentType)
+            classifyOpenRouterAttachment(attachment) === "image"
               ? {
                   type: "image" as const,
                   image: new URL(attachment.url),
-                  mediaType: attachment.contentType,
+                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
                 }
               : {
                   type: "file" as const,
                   data: new URL(attachment.url),
                   filename: attachment.name,
-                  mediaType: attachment.contentType,
+                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
                 }
           ),
         ],
@@ -1027,7 +1019,9 @@ export const generate = internalAction({
             messages.findLast((message) => message.role === "user")
               ?.attachments ?? []
           ).flatMap((attachment) =>
-            IMAGE_TYPES.has(attachment.contentType) ? [attachment.url] : []
+            classifyOpenRouterAttachment(attachment) === "image"
+              ? [attachment.url]
+              : []
           )
           generated = await generateFalImage(
             token,
