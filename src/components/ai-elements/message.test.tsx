@@ -83,6 +83,37 @@ describe("MessageResponse", () => {
     )
   })
 
+  it("renders backslash-delimited LaTeX from model-generated Markdown", async () => {
+    const { container } = render(
+      <MessageResponse>
+        {
+          "## Limits\n\n1. \\(\\displaystyle \\lim_{x \\to 2}(3x+4)\\)\n\n2. \\(\\displaystyle \\lim_{x \\to 3} \\frac{x^2-9}{x-3}\\)\n\n3. \\(\\displaystyle \\lim_{x \\to 0} \\frac{\\sin x}{x}\\)"
+        }
+      </MessageResponse>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex")).toHaveLength(3)
+    })
+    expect(container.querySelectorAll("math annotation")[0].textContent).toBe(
+      "\\displaystyle \\lim_{x \\to 2}(3x+4)"
+    )
+    expect(container.textContent).not.toContain("\\(")
+  })
+
+  it("preserves display semantics for backslash-bracket LaTeX", async () => {
+    const { container } = render(
+      <MessageResponse>{"\\[\\sum_{i=1}^{n} i\\]"}</MessageResponse>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector(".katex-display")).toBeTruthy()
+    })
+    expect(container.querySelector("math annotation")?.textContent).toBe(
+      "\\sum_{i=1}^{n} i"
+    )
+  })
+
   it("does not treat an unclosed currency amount as math", () => {
     const { container } = render(
       <MessageResponse>
