@@ -14,6 +14,7 @@ const OPENROUTER_TOKEN_URL = "https://openrouter.ai/api/v1/auth/keys"
 const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
 const OPENROUTER_MODELS_URL =
   "https://openrouter.ai/api/v1/models?output_modalities=all&sort=newest"
+const OPENROUTER_MODEL_URL = "https://openrouter.ai/api/v1/model"
 const OPENROUTER_MODEL_ENDPOINTS_URL = "https://openrouter.ai/api/v1/models"
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls"
@@ -359,12 +360,30 @@ export function isValidOpenRouterModelId(model: string) {
   )
 }
 
+export function getOpenRouterModelUrl(model: string) {
+  if (!isValidOpenRouterModelId(model)) {
+    throw new Error("Model is unavailable")
+  }
+  const parts = model.split("/")
+  return `${OPENROUTER_MODEL_URL}/${parts.map(encodeURIComponent).join("/")}`
+}
+
 export function getOpenRouterModelEndpointsUrl(model: string) {
   if (!isValidOpenRouterModelId(model)) {
     throw new Error("Model is unavailable")
   }
   const parts = model.split("/")
   return `${OPENROUTER_MODEL_ENDPOINTS_URL}/${parts.map(encodeURIComponent).join("/")}/endpoints`
+}
+
+export function parseOpenRouterModelSupportsTools(value: unknown) {
+  const model = isRecord(value) && isRecord(value.data) ? value.data : value
+  if (!isRecord(model)) return null
+  const supportedParameters = readOptionalStringArray(
+    model.supported_parameters,
+    64
+  )
+  return supportedParameters ? supportedParameters.includes("tools") : null
 }
 
 export function parseOpenRouterCreditStatus(
@@ -397,6 +416,15 @@ function readModalities(value: unknown) {
           typeof modality === "string" && modality.length <= 32
       )
     : []
+}
+
+function readOptionalStringArray(value: unknown, maximumLength: number) {
+  return Array.isArray(value) &&
+    value.every(
+      (item) => typeof item === "string" && item.length <= maximumLength
+    )
+    ? value
+    : undefined
 }
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
@@ -486,7 +514,10 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
       const architecture = isRecord(model.architecture)
         ? model.architecture
         : {}
-      const inputModalities = readModalities(architecture.input_modalities)
+      const inputModalities = readOptionalStringArray(
+        architecture.input_modalities,
+        32
+      )
       const outputModalities = readModalities(architecture.output_modalities)
       const contextLength =
         isFiniteNumber(model.context_length) && model.context_length > 0
@@ -510,10 +541,10 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
           value: model.id,
           label,
           outputMode,
-          inputModalities,
+          ...(inputModalities ? { inputModalities } : {}),
           ...(contextLength === undefined ? {} : { contextLength }),
           description: describeCapabilities(
-            inputModalities,
+            inputModalities ?? [],
             outputModalities,
             contextLengthLabel
           ),
@@ -851,7 +882,7 @@ export const listModels = action({
       signal: AbortSignal.timeout(15_000),
     })
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       await ctx.runMutation(
         internal.providerConnections.markOpenRouterNeedsAuthentication,
         {}
@@ -890,7 +921,7 @@ export const listModelEndpoints = action({
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     })
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       await ctx.runMutation(
         internal.providerConnections.markOpenRouterNeedsAuthentication,
         {}
@@ -927,7 +958,7 @@ export const getCreditStatus = action({
       signal: AbortSignal.timeout(15_000),
     })
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       await ctx.runMutation(
         internal.providerConnections.markOpenRouterNeedsAuthentication,
         {}

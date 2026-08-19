@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { api } from "./_generated/api"
 import {
+  getOpenRouterModelUrl,
   getOpenRouterModelEndpointsUrl,
   OPENAI_MODELS,
   isOpenRouterEndpointCatalog,
@@ -11,6 +12,7 @@ import {
   parseOpenAIModels,
   parseOpenRouterCreditStatus,
   parseOpenRouterEndpoints,
+  parseOpenRouterModelSupportsTools,
   parseOpenRouterModels,
   resolveRealtimeVoice,
 } from "./providerOAuth"
@@ -175,10 +177,53 @@ describe("OpenRouter model catalog", () => {
       ]).map((model) => model.value)
     ).toEqual(["openai/gpt-latest"])
   })
+
+  it("publishes input modalities only for a valid string array", () => {
+    const [missing, malformed] = parseOpenRouterModels([
+      {
+        id: "openai/missing-modalities",
+        name: "OpenAI: Missing modalities",
+        architecture: { output_modalities: ["text"] },
+      },
+      {
+        id: "openai/malformed-modalities",
+        name: "OpenAI: Malformed modalities",
+        architecture: {
+          input_modalities: ["text", 42],
+          output_modalities: ["text"],
+        },
+      },
+    ])
+
+    expect(missing).not.toHaveProperty("inputModalities")
+    expect(malformed).not.toHaveProperty("inputModalities")
+  })
+
+  it("reads tool support only from valid current model metadata", () => {
+    expect(
+      parseOpenRouterModelSupportsTools({
+        data: { supported_parameters: ["temperature", "tools"] },
+      })
+    ).toBe(true)
+    expect(
+      parseOpenRouterModelSupportsTools({
+        data: { supported_parameters: ["temperature"] },
+      })
+    ).toBe(false)
+    expect(
+      parseOpenRouterModelSupportsTools({
+        data: { supported_parameters: ["tools", 42] },
+      })
+    ).toBeNull()
+    expect(parseOpenRouterModelSupportsTools({ data: {} })).toBeNull()
+  })
 })
 
 describe("OpenRouter model endpoints", () => {
   it("builds endpoint URLs for canonical aliases and image models", () => {
+    expect(getOpenRouterModelUrl("~x-ai/grok-latest")).toBe(
+      "https://openrouter.ai/api/v1/model/~x-ai/grok-latest"
+    )
     expect(getOpenRouterModelEndpointsUrl("~x-ai/grok-latest")).toBe(
       "https://openrouter.ai/api/v1/models/~x-ai/grok-latest/endpoints"
     )
@@ -199,6 +244,7 @@ describe("OpenRouter model endpoints", () => {
       "openai~/gpt-image-1",
       "~/gpt-image-1",
     ]) {
+      expect(() => getOpenRouterModelUrl(model)).toThrow("Model is unavailable")
       expect(() => getOpenRouterModelEndpointsUrl(model)).toThrow(
         "Model is unavailable"
       )
