@@ -29,6 +29,7 @@ import { useImageGenerationDraft } from "@/hooks/use-image-generation-draft"
 import { GenerationSet } from "./generation-set"
 import type { GenerationOutput, GenerationSetView } from "./generation-set"
 import { ImageSettings } from "./image-settings"
+import { RecentGenerationsCarousel } from "./recent-generations-carousel"
 import { ReferenceStrip } from "./reference-strip"
 import type { ImageReference } from "./reference-strip"
 
@@ -703,17 +704,7 @@ export function ImageWorkspace({
                   className="size-3.5 text-muted-foreground"
                 />
               </div>
-              <div className="grid grid-cols-4 gap-2">
-                {Array.from({ length: 4 }, (_, index) => (
-                  <div
-                    aria-hidden="true"
-                    className="grid min-h-24 place-items-center rounded-md border bg-muted/10 text-muted-foreground sm:min-h-28"
-                    key={index}
-                  >
-                    <ImageIcon className="size-5" />
-                  </div>
-                ))}
-              </div>
+              <RecentGenerationsCarousel />
             </section>
           </>
         )}
