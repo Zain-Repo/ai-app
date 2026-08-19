@@ -69,6 +69,21 @@ which caused the route error boundary to display "Library is temporarily
 unavailable." The regression test completes a real image generation and reads
 the resulting asset through the public Library query.
 
+## Studio layout redesign (2026-08-19)
+
+The image workspace now follows a dedicated studio composition: a spacious
+prompt-led creation area stays beside a persistent results rail on wide
+viewports, then stacks into one scrollable column when the available workspace
+narrows. The main area includes model-aware controls, progressive advanced
+settings, supported style presets, and functional example prompts without
+introducing simulated generation options.
+
+The results rail emphasizes the current thread's newest generation while
+preserving preview, download, reuse, cancel, retry, and use-as-reference
+actions. Recent generated Library assets remain accessible in a compact rail
+carousel. The global sidebar retains its top Chat/Image workspace switcher and
+uses a stronger image-mode treatment for the New image action.
+
 ## Affected areas
 
 - Shared capability/config contract and validation
@@ -84,6 +99,8 @@ the resulting asset through the public Library query.
 - Image progress presentation and focused automated coverage
 - Image workspace capability/config readiness guard and regression coverage
 - Convex Library return validation and image-generation persistence coverage
+- Responsive image studio composition, compact generation results, and
+  image-mode sidebar treatment
 
 ## Validation
 
@@ -112,6 +129,10 @@ the resulting asset through the public Library query.
   build passed, while the SSR build is currently blocked by an unrelated,
   concurrent duplicate `Spinner` declaration in the chat route. The corrected
   Convex functions were deployed to the configured development environment.
+- Studio redesign validation passed 6 focused image-workspace tests, all 334
+  repository tests with a ten-second per-test timeout, TypeScript, scoped
+  ESLint, Prettier, the production client and SSR builds, and Git diff
+  whitespace checks.
 
 ## Limitations
 
@@ -121,3 +142,6 @@ the resulting asset through the public Library query.
 - The app intentionally supports raster PNG, JPEG, and WebP output only.
 - The rollback flag restores the legacy client composer; additive backend tables
   remain deployed and do not require rollback.
+- Browser-based authenticated layout inspection was blocked because the
+  available local browser sessions were signed out; automated component,
+  responsive CSS, type, build, and full-suite validation completed instead.

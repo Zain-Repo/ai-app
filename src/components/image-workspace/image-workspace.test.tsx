@@ -65,12 +65,15 @@ describe("ImageWorkspace", () => {
     const settingsButton = screen.getByRole("button", {
       name: "Settings",
     })
+    expect(screen.getByTestId("image-studio-create")).toBeTruthy()
+    expect(screen.getByTestId("image-studio-results")).toBeTruthy()
+    expect(screen.queryByText("Advanced settings")).toBeNull()
     await waitFor(() =>
       expect(settingsButton.hasAttribute("disabled")).toBe(false)
     )
 
     fireEvent.click(settingsButton)
-    expect(await screen.findByText("Aspect ratio")).toBeTruthy()
+    expect(await screen.findByText("Advanced settings")).toBeTruthy()
   })
 
   it("moves an inspiration prompt into the composer", async () => {

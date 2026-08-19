@@ -35,7 +35,11 @@ function lastVisibleSlide(emblaApi: NonNullable<CarouselApi>) {
   return visibleSlides.at(-1) ?? emblaApi.selectedScrollSnap()
 }
 
-export function RecentGenerationsCarousel() {
+export function RecentGenerationsCarousel({
+  layout = "wide",
+}: {
+  layout?: "rail" | "wide"
+}) {
   const { loadMore, results, status } = usePaginatedQuery(
     api.library.list,
     { category: "generated_image", search: undefined },
@@ -89,7 +93,11 @@ export function RecentGenerationsCarousel() {
     return (
       <div
         aria-label="Loading recent generations"
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4"
+        className={
+          layout === "rail"
+            ? "grid grid-cols-3 gap-2"
+            : "grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4"
+        }
         role="status"
       >
         {Array.from({ length: 4 }, (_, index) => (
@@ -130,7 +138,11 @@ export function RecentGenerationsCarousel() {
 
             return (
               <CarouselItem
-                className="basis-1/2 pl-2 sm:basis-1/3 xl:basis-1/4"
+                className={
+                  layout === "rail"
+                    ? "basis-1/3 pl-2"
+                    : "basis-1/2 pl-2 sm:basis-1/3 xl:basis-1/4"
+                }
                 key={generation._id}
               >
                 {isUnavailable ? (
@@ -164,7 +176,13 @@ export function RecentGenerationsCarousel() {
             )
           })}
           {status === "LoadingMore" ? (
-            <CarouselItem className="basis-1/2 pl-2 sm:basis-1/3 xl:basis-1/4">
+            <CarouselItem
+              className={
+                layout === "rail"
+                  ? "basis-1/3 pl-2"
+                  : "basis-1/2 pl-2 sm:basis-1/3 xl:basis-1/4"
+              }
+            >
               <div
                 className="grid min-h-24 place-items-center rounded-md border bg-muted/10 text-muted-foreground sm:min-h-28"
                 role="status"
