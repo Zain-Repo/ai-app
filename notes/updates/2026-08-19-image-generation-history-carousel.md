@@ -38,7 +38,10 @@ complete stored history to remain reachable without an unbounded database read.
 ## Validation
 
 - Focused Image workspace tests passed: 6 tests across 2 files.
-- Full Vitest suite passed: 329 tests across 74 files.
+- Full Vitest suite passed with a ten-second per-test timeout: 329 tests across
+  74 files. The default five-second run timed out only in the unrelated
+  Personalization Center suite; that suite passed all 3 tests with the same
+  ten-second timeout.
 - TypeScript type checking passed.
 - Scoped ESLint and Prettier checks passed.
 - Production client and SSR builds passed.

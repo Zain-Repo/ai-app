@@ -48,7 +48,8 @@ describe("desktop Codex conversations", () => {
 
     await authenticated.mutation(api.conversations.streamDesktopCodexResponse, {
       conversationId,
-      content: "Here is",
+      content: "",
+      reasoningSteps: ["I am checking the available models."],
     })
     expect(
       (
@@ -56,7 +57,11 @@ describe("desktop Codex conversations", () => {
           conversationId,
         })
       ).at(-1)
-    ).toMatchObject({ content: "Here is", status: "streaming" })
+    ).toMatchObject({
+      content: "",
+      reasoningSteps: ["I am checking the available models."],
+      status: "streaming",
+    })
 
     await authenticated.mutation(api.conversations.finishDesktopCodexResponse, {
       conversationId,

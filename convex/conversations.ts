@@ -1141,10 +1141,22 @@ async function getPendingDesktopCodexResponse(
   return { conversation, message: pending }
 }
 
+function normalizeDesktopCodexReasoningSteps(steps: string[] | undefined) {
+  const normalized = steps?.map((step) => step.trim())
+  if (
+    normalized &&
+    (normalized.length > 20 ||
+      normalized.some((step) => !step || step.length > 2_000))
+  )
+    throw new Error("Codex reasoning summary is invalid")
+  return normalized
+}
+
 export const streamDesktopCodexResponse = mutation({
   args: {
     conversationId: v.string(),
     content: v.string(),
+    reasoningSteps: v.optional(v.array(v.string())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1157,8 +1169,12 @@ export const streamDesktopCodexResponse = mutation({
       args.conversationId
     )
     if (message.status === "stopped") return null
+    const reasoningSteps = normalizeDesktopCodexReasoningSteps(
+      args.reasoningSteps
+    )
     await ctx.db.patch(message._id, {
       content: args.content,
+      ...(reasoningSteps ? { reasoningSteps } : {}),
       status: "streaming",
     })
     return null
@@ -1184,13 +1200,9 @@ export const finishDesktopCodexResponse = mutation({
     )
     if (message.status === "stopped") return null
     const content = normalizeMessage(args.content)
-    const reasoningSteps = args.reasoningSteps?.map((step) => step.trim())
-    if (
-      reasoningSteps &&
-      (reasoningSteps.length > 20 ||
-        reasoningSteps.some((step) => !step || step.length > 2_000))
+    const reasoningSteps = normalizeDesktopCodexReasoningSteps(
+      args.reasoningSteps
     )
-      throw new Error("Codex reasoning summary is invalid")
     await ctx.db.patch(message._id, {
       content,
       ...(reasoningSteps ? { reasoningSteps } : {}),
