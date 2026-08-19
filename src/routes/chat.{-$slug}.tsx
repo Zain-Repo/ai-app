@@ -53,6 +53,11 @@ import {
 
 import { api } from "../../convex/_generated/api"
 import type { Doc, Id } from "../../convex/_generated/dataModel"
+import {
+  classifyOpenRouterAttachment,
+  decodeOpenRouterTextAttachment,
+  getOpenRouterAttachmentCompatibilityError,
+} from "../../shared/openrouter-attachments"
 import { AiSuggestedActions } from "@/components/ai-suggested-actions"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
@@ -429,10 +434,13 @@ type CatalogModel = {
   label: string
   description?: string
   contextLength?: number
+  inputModalities?: string[]
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
 }
+
+class UserFacingSendError extends Error {}
 
 type LoadedCatalog = {
   connectionId: string
@@ -896,6 +904,7 @@ function ChatWorkspace() {
   const [sendState, setSendState] = useState<"failed" | "idle" | "sending">(
     "idle"
   )
+  const [sendError, setSendError] = useState("")
   const [composerValue, setComposerValue] = useState("")
   const [editingMessageId, setEditingMessageId] =
     useState<Id<"messages"> | null>(null)
@@ -1926,6 +1935,7 @@ function ChatWorkspace() {
     meta: { provider: string; settings: Record<string, string> },
     files: File[]
   ) => {
+    setSendError("")
     if (editingMessageId && conversationId && selected) {
       const sourceIndex =
         messages?.findIndex((message) => message._id === editingMessageId) ?? -1
@@ -1999,7 +2009,46 @@ function ChatWorkspace() {
           : []
 
       if (provider === "codex" && files.length)
-        throw new Error("Attachments are not available with Codex yet")
+        throw new UserFacingSendError(
+          "Attachments are not available with Codex yet"
+        )
+      if (provider === "openrouter" && files.length) {
+        const model = currentCatalog.find(
+          (candidate) => candidate.value === meta.settings.model
+        )
+        if (!model)
+          throw new UserFacingSendError(
+            "Choose the model again, then upload the file."
+          )
+        const compatibilityError = model.inputModalities
+          ? getOpenRouterAttachmentCompatibilityError(
+              files.map((file) => ({
+                contentType: file.type,
+                name: file.name,
+              })),
+              model.inputModalities,
+              model.label
+            )
+          : null
+        if (compatibilityError)
+          throw new UserFacingSendError(compatibilityError)
+        for (const file of files) {
+          if (
+            classifyOpenRouterAttachment({
+              contentType: file.type,
+              name: file.name,
+            }) !== "text"
+          )
+            continue
+          try {
+            decodeOpenRouterTextAttachment(await file.arrayBuffer())
+          } catch {
+            throw new UserFacingSendError(
+              `Save ${JSON.stringify(file.name)} as UTF-8 text, or remove it.`
+            )
+          }
+        }
+      }
       draftAttachmentIds = await uploadDraftFiles(files)
 
       let targetConversationId = conversationId
@@ -2060,7 +2109,7 @@ function ChatWorkspace() {
         })
       }
       setSendState("idle")
-    } catch {
+    } catch (cause) {
       await Promise.allSettled(
         draftAttachmentIds.map(
           async (draftAttachmentId) =>
@@ -2068,7 +2117,16 @@ function ChatWorkspace() {
         )
       )
       setSendState("failed")
-      throw new Error("Message could not be sent")
+      const message =
+        cause instanceof UserFacingSendError
+          ? cause.message
+          : "Your message was not saved. Try again."
+      setSendError(message)
+      throw new Error(
+        cause instanceof UserFacingSendError
+          ? cause.message
+          : "Message could not be sent"
+      )
     }
   }
 
@@ -3556,7 +3614,7 @@ function ChatWorkspace() {
                       aria-live="polite"
                       className="mt-2 text-center text-xs text-destructive"
                     >
-                      Your message was not saved. Try again.
+                      {sendError || "Your message was not saved. Try again."}
                     </p>
                   ) : null}
                   {projectActionFailed ? (
@@ -4102,10 +4160,13 @@ function MessageAreaContent({
                         message.content ||
                         "Codex could not complete this response."
                       ) : message.provider === "openai" ? (
+                        message.content ||
                         "OpenAI could not complete this response."
                       ) : message.provider === "fal" ? (
+                        message.content ||
                         "Fal could not complete this response."
                       ) : (
+                        message.content ||
                         "OpenRouter could not complete this response."
                       )
                     ) : isUser ? (
