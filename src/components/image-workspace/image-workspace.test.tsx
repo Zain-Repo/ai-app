@@ -22,6 +22,11 @@ vi.mock("convex/react", async (importOriginal) => ({
   ...(await importOriginal<typeof ConvexReact>()),
   useAction: () => loadCapabilityMock,
   useMutation: () => cancelGenerationMock,
+  usePaginatedQuery: () => ({
+    loadMore: vi.fn(),
+    results: [],
+    status: "Exhausted",
+  }),
   useQuery: () => undefined,
 }))
 
