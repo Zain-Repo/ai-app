@@ -21,7 +21,26 @@
   `.worktrees/coding-agent-workbench`, and unrelated UI files; those failures
   are not attributed to this feature.
 
-## Limitation
+## 2026-08-19 compatibility follow-up
 
-- Backslash-parenthesis and backslash-bracket delimiters are not configured;
-  the renderer supports the documented dollar-delimited Markdown math syntax.
+- Added shared renderer normalization for model-generated `\(...\)` inline math
+  and `\[...\]` display math while retaining the existing dollar-delimited
+  syntax.
+- Kept inline code, fenced code blocks, escaped delimiter pairs, and incomplete
+  delimiter pairs unchanged so examples and partial content are not interpreted
+  as live equations.
+
+### Validation
+
+- The focused math suites passed all 9 tests, including the reported ordered
+  list of limits and accessible KaTeX display output.
+- The complete suite passed all 363 tests across 77 files with a ten-second
+  per-test timeout.
+- TypeScript, scoped ESLint and Prettier checks, `git diff --check`, and the
+  production client and SSR builds passed. The build emitted the existing
+  non-route warning for `src/routes/chat-sidebar.test.tsx`.
+
+### Limitation
+
+- The compatibility layer recognizes paired parenthesis and bracket delimiters;
+  it does not infer unwrapped TeX expressions as math.
