@@ -17,10 +17,10 @@ export function AuthPage({
       <div className="app-auth-surface flex w-full max-w-md flex-col items-center">
         <a
           aria-label={desktop ? "Dev3 desktop access" : "Dev3 home"}
-          className="mb-7 flex items-center gap-2.5 rounded-xl font-heading text-sm font-semibold tracking-tight transition-opacity outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
+          className="mb-7 flex items-center gap-2.5 rounded-[5px] font-heading text-sm font-semibold tracking-tight transition-opacity outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
           href={desktop ? "/desktop" : "/"}
         >
-          <span className="grid size-9 place-items-center rounded-xl bg-[#0B0D12] p-1 ring-1 ring-border">
+          <span className="grid size-9 place-items-center rounded-[5px] bg-[#0B0D12] p-1 ring-1 ring-border">
             <Dev3Mark className="size-full" mode="dark" />
           </span>
           <span>

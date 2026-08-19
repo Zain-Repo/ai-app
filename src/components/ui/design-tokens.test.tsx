@@ -26,7 +26,7 @@ describe("interface design tokens", () => {
     expect(screen.getByText("Workspace").className).toContain("text-title")
     expect(screen.getByText("Memory").className).toContain("text-label")
     expect(screen.getByRole("button", { name: "Save" }).className).toContain(
-      "rounded-[10px]"
+      "rounded-[5px]"
     )
     expect(screen.getByRole("button", { name: "Save" }).className).toContain(
       "h-8"
