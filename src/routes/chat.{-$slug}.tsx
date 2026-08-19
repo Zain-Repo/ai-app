@@ -21,6 +21,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { createServerFn } from "@tanstack/react-start"
 import {
   Camera,
+  ChevronDown,
   FileText,
   Folder,
   FolderPlus,
@@ -2649,6 +2650,50 @@ function ChatWorkspace() {
                     (workspace === "image" ? "New image" : "New chat"))}
             </p>
           </div>
+          {workspace === "image" &&
+          search.mode !== "library" &&
+          search.mode !== "project" &&
+          search.mode !== "project-new" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    className="ml-auto h-9 max-w-56 rounded-md px-3"
+                    size="sm"
+                    variant="outline"
+                  />
+                }
+              >
+                <Folder aria-hidden="true" className="size-4" />
+                <span className="truncate">
+                  {selectedProject?.name ?? "Save to project"}
+                </span>
+                <ChevronDown aria-hidden="true" className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                {selectedProject ? (
+                  <DropdownMenuItem onClick={() => void selectProject()}>
+                    No project
+                  </DropdownMenuItem>
+                ) : null}
+                {(projects ?? []).map((project) => (
+                  <DropdownMenuItem
+                    key={project._id}
+                    onClick={() => void selectProject(project._id)}
+                  >
+                    <Folder aria-hidden="true" className="size-4" />
+                    {project.name}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem
+                  onClick={() => void open({ mode: "project-new" })}
+                >
+                  <FolderPlus aria-hidden="true" className="size-4" />
+                  New project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </header>
         <section
           className="flex min-h-0 flex-1 flex-col"

@@ -92,7 +92,9 @@ describe("ImageWorkspace", () => {
       />
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "Product scene" }))
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use an example prompt" })
+    )
 
     expect(
       screen.getByRole("textbox", {

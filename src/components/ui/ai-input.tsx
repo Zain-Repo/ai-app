@@ -44,6 +44,7 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from "@/components/ui/attachment"
+import { cn } from "@/lib/utils"
 
 const WAVE_DURATION_MS = 1000
 const MAX_TEXTAREA_HEIGHT = 132
@@ -58,9 +59,9 @@ const HOVER_SPRING = {
   mass: 0.58,
 } as const
 
-/** Apple Intelligence-style spectrum used by the send wave. */
+/** Restrained semantic wash used by the send confirmation wave. */
 const WAVE_WASH_GRADIENT =
-  "linear-gradient(180deg, transparent, rgba(34,211,238,0.07), rgba(59,130,246,0.09), rgba(217,70,239,0.1), rgba(244,63,94,0.09), rgba(249,115,22,0.08), transparent)"
+  "linear-gradient(180deg, transparent, color-mix(in oklab, var(--foreground) 2%, transparent), color-mix(in oklab, var(--primary) 8%, transparent), color-mix(in oklab, var(--foreground) 3%, transparent), transparent)"
 
 export type AIInputOption = {
   value: string
@@ -72,7 +73,7 @@ export type AIInputMessage = {
   text: string
 }
 
-// ─── Settings dropdown types ────────────────────────────────────────────────
+// Settings dropdown types.
 
 export type PromptSettingOption = {
   value: string
@@ -83,7 +84,7 @@ export type PromptSettingOption = {
 export type PromptSettingGroup = {
   id: string
   label: string
-  options: PromptSettingOption[]
+  options: readonly PromptSettingOption[]
   /** Show the selected option as a featured row with description and checkmark. */
   display?: "featured" | "submenu"
   /** Optional submenu row label for picking other options (e.g. "More models"). */
@@ -96,10 +97,10 @@ export type PromptMenuAction = {
   onSelect: () => void
 }
 
-// ─── Settings dropdown helpers ───────────────────────────────────────────────
+// Settings dropdown helpers.
 
 function getDefaultSettings(
-  groups: PromptSettingGroup[],
+  groups: readonly PromptSettingGroup[],
   defaults?: Record<string, string>
 ) {
   return groups.reduce<Record<string, string>>((acc, group) => {
@@ -301,7 +302,7 @@ function normalizeEffortLevel(value: string): EffortLevel {
   return "medium"
 }
 
-function getEffortGroupId(groups: PromptSettingGroup[]) {
+function getEffortGroupId(groups: readonly PromptSettingGroup[]) {
   return groups.find((group) => group.id === "effort")?.id
 }
 
@@ -1061,9 +1062,9 @@ export function SettingsDropdown({
   disabled = false,
 }: {
   disabled?: boolean
-  groups: PromptSettingGroup[]
+  groups: readonly PromptSettingGroup[]
   values: Record<string, string>
-  menuActions?: PromptMenuAction[]
+  menuActions?: readonly PromptMenuAction[]
   onOpenChange?: (open: boolean) => void
   onValueChange: (groupId: string, value: string) => void
 }) {
@@ -1204,7 +1205,8 @@ export function SettingsDropdown({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={`Select settings: ${triggerLabel}`}
-        className="flex min-w-0 items-center gap-1.5 rounded-full py-1 text-sm transition-colors hover:text-foreground"
+        className="flex min-w-0 items-center gap-1.5 rounded-xl px-2 py-1.5 text-sm transition-[background-color,color,transform] duration-150 hover:bg-accent/65 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none active:scale-[0.97] motion-reduce:transform-none motion-reduce:transition-none"
+        data-slot="ai-input-control"
         disabled={disabled}
         onClick={toggleOpen}
         onMouseDown={(event) => event.preventDefault()}
@@ -1381,7 +1383,7 @@ export function SettingsDropdown({
   )
 }
 
-// ─── Plus menu ───────────────────────────────────────────────────────────────
+// Plus menu.
 
 export type AIInputMenuItem = {
   value: string
@@ -1399,18 +1401,18 @@ export type AIInputMenuItem = {
   /** Called when this toggle item changes, in addition to onMenuToggle. */
   onCheckedChange?: (checked: boolean) => void
   /** Nested items turn an action into a submenu (one level deep). */
-  items?: AIInputMenuItem[]
+  items?: readonly AIInputMenuItem[]
 }
 
-const DEFAULT_PLUS_MENU_ITEMS: AIInputMenuItem[] = [
+const DEFAULT_PLUS_MENU_ITEMS = [
   {
     value: "add-files",
     label: "Add files or photos",
     icon: Paperclip,
-    shortcut: "⌘U",
+    shortcut: "Ctrl+U",
   },
   { value: "screenshot", label: "Take a screenshot", icon: Camera },
-]
+] satisfies readonly AIInputMenuItem[]
 
 function formatAttachmentSize(size: number) {
   return size < 1024 * 1024
@@ -1474,7 +1476,7 @@ function OptionMenu({
   chipClassName: string
   disabled?: boolean
   onChange: (value: string) => void
-  options: AIInputOption[]
+  options: readonly AIInputOption[]
   value: string
 }) {
   const [open, setOpen] = useState(false)
@@ -1627,6 +1629,7 @@ function OptionMenu({
         aria-haspopup="menu"
         aria-label={ariaLabel}
         className={chipClassName}
+        data-slot="ai-input-control"
         disabled={disabled}
         onClick={() => {
           if (open) {
@@ -1734,7 +1737,7 @@ const plusSlideVariants = {
   exit: (dir: number) => ({ opacity: 0, x: dir * -10 }),
 }
 
-function collectToggleDefaults(items: AIInputMenuItem[]) {
+function collectToggleDefaults(items: readonly AIInputMenuItem[]) {
   const defaults: Record<string, boolean> = {}
 
   for (const item of items) {
@@ -1769,7 +1772,7 @@ function PlusMenu({
   onSelect,
   onToggle,
 }: {
-  items: AIInputMenuItem[]
+  items: readonly AIInputMenuItem[]
   onSelect?: (value: string) => void
   onToggle?: (value: string, checked: boolean) => void
 }) {
@@ -1931,7 +1934,8 @@ function PlusMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="More options"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground/70 transition-colors hover:text-foreground sm:size-9"
+        className="flex size-8 shrink-0 items-center justify-center rounded-xl text-foreground/70 transition-[background-color,color,transform] duration-150 hover:bg-accent/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none active:scale-[0.94] motion-reduce:transform-none motion-reduce:transition-none sm:size-9"
+        data-slot="ai-input-control"
         onClick={handleOpen}
         type="button"
       >
@@ -2005,25 +2009,28 @@ function PlusMenu({
   )
 }
 
-// ─── Public component ────────────────────────────────────────────────────────
+// Public component.
+
+export type AIInputGenerationState =
+  "idle" | "submitting" | "generating" | "stopping"
 
 export type AIInputProps = {
   /** Options for the provider chip on the left. */
-  providers?: AIInputOption[]
+  providers?: readonly AIInputOption[]
   defaultProvider?: string
   /** Disable the composer and all direct submission controls. */
   disabled?: boolean
   /** Current generation lifecycle; active states keep the draft editable. */
-  generationState?: "idle" | "submitting" | "generating" | "stopping"
+  generationState?: AIInputGenerationState
   /** Disable the provider selector independently of the composer. */
   providerDisabled?: boolean
   /** Setting groups for the settings dropdown (model, effort, etc.). */
-  settingGroups?: PromptSettingGroup[]
+  settingGroups?: readonly PromptSettingGroup[]
   defaultSettings?: Record<string, string>
   /** Action items shown at the top of the settings dropdown. */
-  menuActions?: PromptMenuAction[]
+  menuActions?: readonly PromptMenuAction[]
   /** Items for the plus menu: actions, toggles, separators, and one-level submenus. */
-  menuItems?: AIInputMenuItem[]
+  menuItems?: readonly AIInputMenuItem[]
   placeholder?: string
   /** Controlled composer draft. */
   value?: string
@@ -2376,7 +2383,7 @@ export function AIInput({
   )
 
   return (
-    <div className={`w-full ${className ?? ""}`} data-slot="ai-input">
+    <div className={cn("w-full", className)} data-slot="ai-input">
       <input
         className="sr-only"
         disabled={disabled}
@@ -2426,7 +2433,10 @@ export function AIInput({
         </div>
       ) : null}
 
-      <div className="@container relative rounded-2xl border border-border bg-card shadow-[0_8px_22px_-20px_rgba(0,0,0,0.16)]">
+      <div
+        className="@container relative rounded-[1.375rem] border border-border/80 bg-card/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.32)] transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-ring/40 focus-within:bg-card focus-within:shadow-[0_16px_38px_-26px_rgba(0,0,0,0.4)] focus-within:ring-2 focus-within:ring-ring/10 motion-reduce:transition-none"
+        data-slot="ai-input-surface"
+      >
         <AnimatePresence>
           {waveRun > 0 ? (
             <SendWave
@@ -2498,7 +2508,8 @@ export function AIInput({
 
         <InputPrimitive
           aria-label="Message"
-          className="block max-h-[120px] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground sm:px-4 sm:text-body sm:leading-5"
+          className="block max-h-[120px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground sm:px-[1.125rem] sm:text-body sm:leading-5"
+          data-slot="ai-input-textarea"
           disabled={disabled}
           onValueChange={(next) => {
             updateValue(next)
@@ -2511,7 +2522,10 @@ export function AIInput({
           value={value}
         />
 
-        <div className="flex items-center gap-1 px-2 pt-0.5 pb-2 sm:gap-1.5 sm:px-2.5 sm:pb-2.5">
+        <div
+          className="flex items-center gap-1 px-2.5 pt-1 pb-2.5 sm:gap-1.5 sm:px-3 sm:pb-3"
+          data-slot="ai-input-toolbar"
+        >
           {resolvedMenuItems.length > 0 ? (
             <PlusMenu
               items={resolvedMenuItems}
@@ -2521,7 +2535,8 @@ export function AIInput({
           ) : onPlusClick ? (
             <button
               aria-label="Add attachment"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground/70 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 sm:size-9"
+              className="flex size-8 shrink-0 items-center justify-center rounded-xl text-foreground/70 transition-[background-color,color,transform] duration-150 hover:bg-accent/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transform-none motion-reduce:transition-none sm:size-9"
+              data-slot="ai-input-control"
               disabled={disabled}
               onClick={onPlusClick}
               type="button"
@@ -2533,7 +2548,7 @@ export function AIInput({
           {providers.length > 0 ? (
             <OptionMenu
               ariaLabel="Select provider"
-              chipClassName="flex min-h-8 min-w-14 items-center gap-1.5 rounded-lg border border-border/60 bg-muted/75 px-2.5 py-1 font-medium text-label text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,transform] duration-150 hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:px-3"
+              chipClassName="flex min-h-8 min-w-14 items-center gap-1.5 rounded-xl border border-border/60 bg-muted/75 px-2.5 py-1 font-medium text-label text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,transform] duration-150 hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-card active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transform-none motion-reduce:transition-none sm:px-3"
               disabled={settingsLocked}
               onChange={(next) => {
                 setProvider(next)
@@ -2564,7 +2579,8 @@ export function AIInput({
             {onMicClick ? (
               <button
                 aria-label="Use voice input"
-                className="hidden size-8 shrink-0 items-center justify-center rounded-full text-foreground/60 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 sm:size-9 @[21rem]:flex"
+                className="hidden size-8 shrink-0 items-center justify-center rounded-xl text-foreground/60 transition-[background-color,color,transform] duration-150 hover:bg-accent/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transform-none motion-reduce:transition-none sm:size-9 @[21rem]:flex"
+                data-slot="ai-input-control"
                 disabled={disabled}
                 onClick={onMicClick}
                 type="button"
@@ -2580,7 +2596,8 @@ export function AIInput({
                     ? "Stopping response"
                     : "Stop response"
                 }
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-wait disabled:opacity-55 sm:size-9"
+                className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-foreground text-background shadow-sm transition-[opacity,transform,box-shadow] duration-150 hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none active:scale-[0.94] disabled:cursor-wait disabled:opacity-55 motion-reduce:transform-none motion-reduce:transition-none sm:size-9"
+                data-slot="ai-input-control"
                 disabled={generationState === "stopping"}
                 onClick={() => void onStop?.()}
                 type="button"
@@ -2590,7 +2607,13 @@ export function AIInput({
             ) : (
               <button
                 aria-label="Send message"
-                className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,opacity,transform] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed sm:size-9 ${hasValue && !disabled ? "bg-foreground text-background hover:opacity-90" : "bg-muted-foreground/50 text-background"}`}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-xl shadow-sm transition-[background-color,opacity,transform,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none active:scale-[0.94] disabled:cursor-not-allowed motion-reduce:transform-none motion-reduce:transition-none sm:size-9",
+                  hasValue && !disabled
+                    ? "bg-foreground text-background hover:opacity-90"
+                    : "bg-muted-foreground/50 text-background shadow-none"
+                )}
+                data-slot="ai-input-control"
                 disabled={disabled || !hasValue}
                 onClick={() => void handleSend()}
                 type="button"

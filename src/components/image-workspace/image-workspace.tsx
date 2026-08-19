@@ -1,10 +1,13 @@
 import {
   Download,
-  ChevronDown,
   Image as ImageIcon,
+  Info,
   LoaderCircle,
   Plug,
+  RotateCcw,
+  Settings2,
   Sparkles,
+  WandSparkles,
 } from "lucide-react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { useEffect, useMemo, useState } from "react"
@@ -15,14 +18,17 @@ import type {
   ImageModelCapability,
   ImageProvider,
 } from "../../../shared/image-generation"
-import { validateImageGenerationConfig } from "../../../shared/image-generation"
-import { useImageGenerationDraft } from "@/hooks/use-image-generation-draft"
+import {
+  getDefaultImageGenerationConfig,
+  validateImageGenerationConfig,
+} from "../../../shared/image-generation"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
-import { ImageSettings } from "./image-settings"
+import { useImageGenerationDraft } from "@/hooks/use-image-generation-draft"
 import { GenerationSet } from "./generation-set"
 import type { GenerationOutput, GenerationSetView } from "./generation-set"
+import { ImageSettings } from "./image-settings"
 import { ReferenceStrip } from "./reference-strip"
 import type { ImageReference } from "./reference-strip"
 
@@ -50,13 +56,13 @@ type ImageWorkspaceProps = {
   disabled?: boolean
   generationState: "generating" | "idle"
   initialReference?: { contentType: string; name: string; url: string } | null
-  modelId: string
   legacyGenerations?: Array<{
     createdAt: number
     images: Array<{ name: string; url: string }>
     model: string
     prompt: string
   }>
+  modelId: string
   models: ImageWorkspaceModel[]
   onConnectProvider: () => void
   onGenerate: (request: {
@@ -66,8 +72,8 @@ type ImageWorkspaceProps = {
     prompt: string
     routingProvider?: string
   }) => Promise<void>
-  onModelChange: (modelId: string) => void
   onInitialReferenceConsumed?: () => void
+  onModelChange: (modelId: string) => void
   onProviderChange: (provider: ImageProvider) => void
   onRoutingProviderChange: (routingProvider: string) => void
   provider: ImageProvider
@@ -75,32 +81,13 @@ type ImageWorkspaceProps = {
   routingOptions: ImageWorkspaceRoutingOption[]
 }
 
-const inspirationPrompts = [
-  {
-    label: "Editorial portrait",
-    prompt:
-      "Create an editorial portrait with soft window light, natural texture, and a restrained neutral palette.",
-  },
-  {
-    label: "Product scene",
-    prompt:
-      "Create a refined product scene with directional studio light, subtle shadows, and generous negative space.",
-  },
-  {
-    label: "Landscape study",
-    prompt:
-      "Create a quiet landscape study at first light with atmospheric depth and muted natural color.",
-  },
-] as const
+const inspirationPrompt =
+  "Create a refined product scene with directional studio light, subtle shadows, and generous negative space."
 
 function capabilityErrorMessage(cause: unknown) {
   return cause instanceof Error && cause.message
     ? cause.message
     : "Model settings could not be loaded. Try another model or reconnect the provider."
-}
-
-function conciseDimensionLabel(label: string) {
-  return label.replace(/\s+\d+(?:\.\d+)?:\d+(?:\.\d+)?$/, "") || label
 }
 
 export function ImageWorkspace({
@@ -139,7 +126,7 @@ export function ImageWorkspace({
   const [capabilityError, setCapabilityError] = useState("")
   const [prompt, setPrompt] = useState("")
   const [references, setReferences] = useState<ImageReference[]>([])
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(true)
   const [pendingReuse, setPendingReuse] = useState<{
     config: ImageGenerationConfig
     model: string
@@ -261,10 +248,6 @@ export function ImageWorkspace({
     }
   }, [capability, initialReference, onInitialReferenceConsumed])
 
-  const selectedModel = useMemo(
-    () => models.find((model) => model.value === modelId),
-    [modelId, models]
-  )
   const selectedProvider = useMemo(
     () => providers.find((option) => option.value === provider),
     [provider, providers]
@@ -280,13 +263,6 @@ export function ImageWorkspace({
     provider === "openrouter"
       ? (selectedRoutingOption?.label ?? "Automatic routing")
       : (selectedProvider?.label ?? provider)
-  const settingsSummary = useMemo(() => {
-    if (!capability || !config) return "Loading settings…"
-    const dimension = capability.dimensions.options.find(
-      (option) => option.value === config.dimension
-    )
-    return `${conciseDimensionLabel(dimension?.label ?? config.dimension)} · ${config.count} ${config.count === 1 ? "image" : "images"} · ${config.outputFormat.toUpperCase()}`
-  }, [capability, config])
   const isSubmitting = generationState === "generating"
   const canGenerate = Boolean(
     !archived &&
@@ -295,6 +271,9 @@ export function ImageWorkspace({
     capability &&
     config &&
     prompt.trim()
+  )
+  const hasGenerations = Boolean(
+    legacyGenerations.length || generations?.length
   )
 
   const generate = async () => {
@@ -330,6 +309,12 @@ export function ImageWorkspace({
         cause instanceof Error ? cause.message : "That setting is unavailable."
       )
     }
+  }
+
+  const resetSettings = () => {
+    if (!capability) return
+    setConfig(getDefaultImageGenerationConfig(capability))
+    setSubmissionError("")
   }
 
   const reuseGeneration = (generation: GenerationSetView) => {
@@ -401,195 +386,87 @@ export function ImageWorkspace({
   }
 
   return (
-    <div className="image-workspace flex min-h-0 flex-1 flex-col">
+    <div
+      className={`image-workspace image-studio-grid min-h-0 flex-1 overflow-hidden ${settingsOpen ? "is-settings-open" : ""}`}
+    >
       <aside
         aria-label="Image creation controls"
-        className="z-10 order-2 shrink-0 bg-background"
+        className="image-studio-create-panel flex min-h-0 flex-col border-r bg-background"
       >
-        <div className="mx-auto flex w-full max-w-[1320px] flex-col border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {settingsOpen && providers.length ? (
-            <div className="order-2 mt-2 grid grid-cols-1 gap-3 border-x px-4 pt-3 sm:grid-cols-2">
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                  Provider
-                </span>
-                <NativeSelect
-                  className="w-full [&_[data-slot=native-select]]:rounded-md [&_[data-slot=native-select]]:border-border [&_[data-slot=native-select]]:bg-background"
-                  disabled={Boolean(conversationId) || isSubmitting}
-                  onChange={(event) =>
-                    onProviderChange(event.target.value as ImageProvider)
-                  }
-                  value={provider}
-                >
-                  {providers.map((option) => (
-                    <NativeSelectOption key={option.value} value={option.value}>
-                      {option.label}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                  Model
-                </span>
-                <NativeSelect
-                  className="w-full [&_[data-slot=native-select]]:rounded-md [&_[data-slot=native-select]]:border-border [&_[data-slot=native-select]]:bg-background"
-                  disabled={isSubmitting || !models.length}
-                  onChange={(event) => onModelChange(event.target.value)}
-                  value={modelId}
-                >
-                  {models.map((model) => (
-                    <NativeSelectOption key={model.value} value={model.value}>
-                      {model.label}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-            </div>
-          ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+          <p className="text-[10px] font-semibold tracking-[0.16em] text-foreground/80 uppercase">
+            Create
+          </p>
 
-          {settingsOpen &&
-          provider === "openrouter" &&
-          routingOptions.length ? (
-            <label className="order-2 grid gap-1.5 border-x px-4 pt-2">
-              <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Route
-              </span>
-              <NativeSelect
-                className="w-full [&_[data-slot=native-select]]:rounded-md [&_[data-slot=native-select]]:border-border [&_[data-slot=native-select]]:bg-background"
-                disabled={isSubmitting}
-                onChange={(event) =>
-                  onRoutingProviderChange(event.target.value)
-                }
-                value={capabilityRoutingProvider ?? "auto"}
-              >
-                {routingOptions.map((option) => (
-                  <NativeSelectOption key={option.value} value={option.value}>
-                    {option.label}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              {routingOptions.find(
-                (option) => option.value === capabilityRoutingProvider
-              )?.description ? (
-                <span className="text-[11px] leading-relaxed text-muted-foreground">
-                  {
-                    routingOptions.find(
-                      (option) => option.value === capabilityRoutingProvider
-                    )?.description
-                  }
-                </span>
-              ) : null}
-            </label>
-          ) : null}
-
-          <label className="order-1 grid">
+          <label className="mt-4 grid">
             <span className="sr-only">Image prompt</span>
-            <Textarea
-              aria-describedby="image-prompt-help"
-              aria-label="Image prompt"
-              className="min-h-[5.5rem] rounded-t-md rounded-b-none border border-b-0 border-border bg-background px-4 py-3 text-base leading-relaxed shadow-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 md:text-sm"
-              disabled={archived || disabled}
-              id="image-prompt"
-              maxLength={8_000}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                  event.preventDefault()
-                  void generate()
-                }
-              }}
-              placeholder={
-                selectedModel
-                  ? `Describe the image you want ${selectedModel.label} to create…`
-                  : "Choose a model to begin"
-              }
-              value={prompt}
-            />
+            <span className="relative">
+              <Textarea
+                aria-describedby="image-prompt-help"
+                aria-label="Image prompt"
+                className="min-h-44 resize-none rounded-md border-border bg-background px-3.5 pt-3.5 pb-10 text-sm leading-relaxed shadow-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
+                disabled={archived || disabled}
+                id="image-prompt"
+                maxLength={8_000}
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault()
+                    void generate()
+                  }
+                }}
+                placeholder="Describe the image you want to create…"
+                value={prompt}
+              />
+              <Button
+                aria-label="Use an example prompt"
+                className="absolute bottom-2 left-2 text-muted-foreground"
+                disabled={archived || disabled}
+                onClick={() => {
+                  setPrompt(inspirationPrompt)
+                  requestAnimationFrame(() =>
+                    document.getElementById("image-prompt")?.focus()
+                  )
+                }}
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+              >
+                <WandSparkles aria-hidden="true" />
+              </Button>
+              <span className="absolute right-3 bottom-3 text-[10px] text-muted-foreground tabular-nums">
+                {prompt.length}/8000
+              </span>
+            </span>
             <span className="sr-only" id="image-prompt-help">
-              Ctrl/⌘ + Enter to generate
+              Control or Command plus Enter to generate
             </span>
           </label>
 
-          {settingsOpen && capability && config ? (
-            <div
-              className="order-2 max-h-[min(36svh,20rem)] overflow-y-auto border-x px-4 py-3 sm:max-h-[min(24svh,12rem)]"
-              id="image-settings-panel"
-            >
-              <ImageSettings
-                capability={capability}
-                config={config}
+          {capability && capability.references.max > 0 ? (
+            <div className="mt-5">
+              <ReferenceStrip
                 disabled={archived || disabled || isSubmitting}
-                onChange={changeSettings}
+                limit={capability.references.max}
+                onChange={setReferences}
+                references={references}
               />
-              {capability.pricing.display ? (
-                <p className="mt-5 text-xs text-muted-foreground">
-                  Estimated provider price: {capability.pricing.display}
-                </p>
-              ) : capability.pricing.kind === "unknown" ? (
-                <p className="mt-5 text-xs text-muted-foreground">
-                  Price shown by your provider after generation.
-                </p>
-              ) : null}
             </div>
-          ) : capabilityState === "loading" ? (
-            <div
-              className="order-0 mb-2 flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground"
-              role="status"
-            >
-              <LoaderCircle
-                aria-hidden="true"
-                className="size-4 animate-spin motion-reduce:animate-none"
-              />
-              Loading model settings…
-            </div>
-          ) : capabilityState === "failed" ? (
-            <p
-              className="order-0 mb-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive"
-              role="alert"
-            >
-              {capabilityError}
-            </p>
           ) : null}
 
-          {validationNotice ? (
-            <p
-              className="order-0 mb-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
-              role="status"
-            >
-              {validationNotice}
-            </p>
-          ) : null}
-          {submissionError ? (
-            <p
-              className="order-0 mb-2 rounded-md bg-destructive/8 px-3 py-2 text-xs leading-relaxed text-destructive"
-              role="alert"
-            >
-              {submissionError}
-            </p>
-          ) : null}
-          {archived ? (
-            <p className="order-0 mb-2 text-xs text-muted-foreground">
-              Restore this image thread to create more images.
-            </p>
-          ) : null}
-
-          <div className="order-3 flex flex-col gap-2 rounded-b-md border bg-background px-3 py-2.5 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {capability && capability.references.max > 0 ? (
-                <ReferenceStrip
-                  compact
-                  disabled={archived || disabled || isSubmitting}
-                  limit={capability.references.max}
-                  onChange={setReferences}
-                  references={references}
-                />
-              ) : null}
-              {providers.length ? (
-                <div className="relative shrink-0">
+          <div className="mt-5 grid gap-4">
+            {providers.length ? (
+              <label className="grid gap-1.5">
+                <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                  Model
+                </span>
+                <span className="relative">
                   <NativeSelect
                     aria-label="Image model"
-                    className="w-52 [&_[data-slot=native-select]]:h-10 [&_[data-slot=native-select]]:rounded-md [&_[data-slot=native-select]]:border-border [&_[data-slot=native-select]]:bg-background [&_[data-slot=native-select]]:pt-0.5 [&_[data-slot=native-select]]:pb-3.5"
+                    className="w-full [&_[data-slot=native-select]]:h-12 [&_[data-slot=native-select]]:pt-0.5 [&_[data-slot=native-select]]:pb-4"
                     disabled={isSubmitting || !models.length}
                     onChange={(event) => onModelChange(event.target.value)}
                     value={modelId}
@@ -602,93 +479,112 @@ export function ImageWorkspace({
                   </NativeSelect>
                   <span
                     aria-hidden="true"
-                    className="pointer-events-none absolute bottom-1.5 left-2.5 max-w-40 truncate text-[11px] leading-none text-muted-foreground"
+                    className="pointer-events-none absolute bottom-1.5 left-2.5 max-w-[calc(100%-2.5rem)] truncate text-[10px] leading-none text-muted-foreground"
                   >
                     {routeSummary}
                   </span>
-                </div>
-              ) : (
-                <Button
-                  className="h-10 rounded-md"
-                  onClick={onConnectProvider}
-                  type="button"
-                  variant="outline"
-                >
-                  <Plug aria-hidden="true" />
-                  Connect provider
-                </Button>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 xl:flex-nowrap">
-              <span className="hidden text-sm whitespace-nowrap text-foreground/80 lg:inline">
-                {settingsSummary}
-              </span>
-              <span
-                aria-hidden="true"
-                className="hidden h-6 w-px bg-border lg:block"
-              />
+                </span>
+              </label>
+            ) : (
               <Button
-                aria-controls="image-settings-panel"
-                aria-expanded={settingsOpen}
-                className="h-10 rounded-md px-3"
-                disabled={!capability || !config}
-                onClick={() => setSettingsOpen((open) => !open)}
+                className="w-full justify-center"
+                onClick={onConnectProvider}
                 type="button"
-                variant="ghost"
+                variant="outline"
               >
-                Settings
-                <ChevronDown
+                <Plug aria-hidden="true" />
+                Connect provider
+              </Button>
+            )}
+
+            {capabilityState === "loading" ? (
+              <div
+                className="flex items-center gap-2 border-y py-3 text-xs text-muted-foreground"
+                role="status"
+              >
+                <LoaderCircle
                   aria-hidden="true"
-                  className={`transition-transform motion-reduce:transition-none ${settingsOpen ? "rotate-180" : ""}`}
+                  className="size-4 animate-spin motion-reduce:animate-none"
                 />
-              </Button>
-              <span
-                aria-hidden="true"
-                className="hidden h-6 w-px bg-border 2xl:block"
+                Loading model settings…
+              </div>
+            ) : capabilityState === "failed" ? (
+              <p
+                className="border-y border-destructive/30 py-3 text-xs leading-relaxed text-destructive"
+                role="alert"
+              >
+                {capabilityError}
+              </p>
+            ) : capability && config ? (
+              <ImageSettings
+                capability={capability}
+                config={config}
+                disabled={archived || disabled || isSubmitting}
+                onChange={changeSettings}
+                section="primary"
               />
-              <kbd
-                aria-label="Control or Command Enter to generate"
-                className="hidden h-9 items-center rounded-md border bg-background px-3 font-sans text-xs text-muted-foreground 2xl:inline-flex"
-              >
-                ⌘ Enter
-              </kbd>
-              <Button
-                className="h-10 rounded-md px-5 text-sm"
-                disabled={!canGenerate}
-                onClick={() => void generate()}
-                type="button"
-              >
-                {isSubmitting ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="animate-spin motion-reduce:animate-none"
-                  />
-                ) : (
-                  <Sparkles aria-hidden="true" />
-                )}
-                {isSubmitting ? "Starting generation…" : "Generate"}
-              </Button>
-            </div>
+            ) : null}
           </div>
+
+          {validationNotice ? (
+            <p
+              className="mt-4 border-y border-amber-500/25 bg-amber-500/5 py-2.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
+              role="status"
+            >
+              {validationNotice}
+            </p>
+          ) : null}
+          {submissionError ? (
+            <p
+              className="mt-4 border-y border-destructive/25 bg-destructive/5 py-2.5 text-xs leading-relaxed text-destructive"
+              role="alert"
+            >
+              {submissionError}
+            </p>
+          ) : null}
+          {archived ? (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Restore this image thread to create more images.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-t bg-background p-4">
+          <Button
+            aria-controls="image-settings-panel"
+            aria-expanded={settingsOpen}
+            className="h-10 rounded-md px-3"
+            disabled={!capability || !config}
+            onClick={() => setSettingsOpen((open) => !open)}
+            type="button"
+            variant="outline"
+          >
+            <Settings2 aria-hidden="true" />
+            Settings
+          </Button>
+          <Button
+            className="h-10 rounded-md text-sm"
+            disabled={!canGenerate}
+            onClick={() => void generate()}
+            type="button"
+          >
+            {isSubmitting ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <Sparkles aria-hidden="true" />
+            )}
+            {isSubmitting ? "Starting…" : "Generate"}
+          </Button>
         </div>
       </aside>
 
       <main
-        className="order-1 flex min-h-0 flex-1 flex-col overflow-y-auto"
         aria-label="Generated images"
+        className="image-studio-canvas-panel flex min-h-0 min-w-0 flex-col bg-background"
       >
-        <header className="mx-auto w-full max-w-[1320px] shrink-0 px-4 pt-4 pb-1 sm:px-6 lg:px-4 lg:pt-5">
-          <p className="text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
-            Image studio
-          </p>
-          <h1 className="mt-1.5 font-heading text-2xl font-light tracking-tight text-foreground sm:text-[1.75rem]">
-            Create an image
-          </h1>
-          <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Describe a scene, choose a model, and shape the result in one quiet
-            workspace.
-          </p>
-        </header>
         {conversationId && generations === undefined ? (
           <div
             className="grid min-h-72 flex-1 place-items-center text-sm text-muted-foreground"
@@ -702,109 +598,253 @@ export function ImageWorkspace({
               Loading generations…
             </span>
           </div>
-        ) : generations?.length || legacyGenerations.length ? (
-          <div className="mx-auto w-full max-w-[1320px] px-4 py-2 sm:px-6 lg:px-4">
-            <p className="py-5 text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
-              Recent generations
-            </p>
-            {legacyGenerations.map((generation, index) => (
-              <article
-                className="border-t py-8 first:border-t-0"
-                key={`${generation.createdAt}-${index}`}
-              >
-                <header className="mb-5 max-w-2xl">
-                  <p className="line-clamp-2 text-sm leading-relaxed font-medium text-foreground">
-                    {generation.prompt}
-                  </p>
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {generation.model} · Earlier generation
-                  </p>
-                </header>
-                <div
-                  className={
-                    generation.images.length === 1
-                      ? "grid max-w-2xl grid-cols-1 gap-4"
-                      : "grid grid-cols-1 gap-4 sm:grid-cols-2"
-                  }
+        ) : hasGenerations ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+            <div className="mx-auto w-full max-w-5xl">
+              <p className="mb-2 text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                Recent generations
+              </p>
+              {legacyGenerations.map((generation, index) => (
+                <article
+                  className="border-t py-6 first:border-t-0"
+                  key={`${generation.createdAt}-${index}`}
                 >
-                  {generation.images.map((image) => (
-                    <div
-                      className="group relative overflow-hidden rounded-lg border bg-muted/30"
-                      key={image.url}
-                    >
-                      <img
-                        alt={generation.prompt}
-                        className="size-full min-h-48 object-cover"
-                        loading="lazy"
-                        src={image.url}
-                      />
-                      <Button
-                        aria-label={`Download ${image.name}`}
-                        className="absolute right-2 bottom-2 rounded-md bg-background/90 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                        render={<a download={image.name} href={image.url} />}
-                        size="icon-sm"
-                        variant="outline"
+                  <header className="mb-4 max-w-2xl">
+                    <p className="line-clamp-2 text-sm leading-relaxed font-medium">
+                      {generation.prompt}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {generation.model} · Earlier generation
+                    </p>
+                  </header>
+                  <div
+                    className={
+                      generation.images.length === 1
+                        ? "grid max-w-2xl grid-cols-1 gap-3"
+                        : "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                    }
+                  >
+                    {generation.images.map((image) => (
+                      <div
+                        className="group relative overflow-hidden rounded-md border bg-muted/30"
+                        key={image.url}
                       >
-                        <Download aria-hidden="true" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
-            {(generations ?? []).map((generation) => (
-              <GenerationSet
-                generation={generation}
-                key={generation._id}
-                onCancel={(generationSetId) => void cancel(generationSetId)}
-                onRetry={(generationSetId) => void retry(generationSetId)}
-                onReuse={reuseGeneration}
-                onUseAsReference={(output) => void useOutputAsReference(output)}
-                retryDisabled={hasActiveGeneration}
-              />
-            ))}
+                        <img
+                          alt={generation.prompt}
+                          className="size-full min-h-48 object-cover"
+                          loading="lazy"
+                          src={image.url}
+                        />
+                        <Button
+                          aria-label={`Download ${image.name}`}
+                          className="absolute right-2 bottom-2 rounded-md bg-background/90 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                          render={<a download={image.name} href={image.url} />}
+                          size="icon-sm"
+                          variant="outline"
+                        >
+                          <Download aria-hidden="true" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
+              {(generations ?? []).map((generation) => (
+                <GenerationSet
+                  generation={generation}
+                  key={generation._id}
+                  onCancel={(generationSetId) => void cancel(generationSetId)}
+                  onRetry={(generationSetId) => void retry(generationSetId)}
+                  onReuse={reuseGeneration}
+                  onUseAsReference={(output) =>
+                    void useOutputAsReference(output)
+                  }
+                  retryDisabled={hasActiveGeneration}
+                />
+              ))}
+            </div>
           </div>
         ) : (
-          <section className="flex min-h-0 flex-1 items-center justify-center px-6 py-5 text-center sm:min-h-[18rem] sm:py-6">
-            <div className="max-w-lg">
-              <span className="mx-auto grid size-14 place-items-center rounded-full border bg-background">
-                <ImageIcon
-                  aria-hidden="true"
-                  className="size-6 text-muted-foreground"
-                />
-              </span>
-              <h2 className="mt-4 font-heading text-2xl font-light tracking-tight">
-                What would you like to create?
-              </h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Start by describing the image you want to generate.
-              </p>
-              <div className="mt-5 flex flex-wrap items-center justify-center text-sm text-muted-foreground">
-                {inspirationPrompts.map((inspiration, index) => (
-                  <span className="flex items-center" key={inspiration.label}>
-                    {index > 0 ? (
-                      <span aria-hidden="true" className="h-6 w-px bg-border" />
-                    ) : null}
-                    <button
-                      className="rounded-md px-4 py-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
-                      disabled={archived || disabled}
-                      onClick={() => {
-                        setPrompt(inspiration.prompt)
-                        requestAnimationFrame(() =>
-                          document.getElementById("image-prompt")?.focus()
-                        )
-                      }}
-                      type="button"
-                    >
-                      {inspiration.label}
-                    </button>
+          <>
+            <div className="min-h-0 flex-1 p-4 pb-3">
+              <section
+                className="grid h-full min-h-72 place-items-center rounded-md border bg-background px-6 py-8 text-center"
+                data-testid="image-studio-canvas"
+              >
+                <div className="max-w-sm">
+                  <span className="relative mx-auto grid size-16 place-items-center text-muted-foreground">
+                    <ImageIcon aria-hidden="true" className="size-10" />
+                    <Sparkles
+                      aria-hidden="true"
+                      className="absolute top-0 right-0 size-5 text-primary"
+                    />
                   </span>
+                  <h1 className="mt-4 font-heading text-xl font-medium tracking-tight">
+                    Your canvas is ready
+                  </h1>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Describe your image on the left, add references, and
+                    generate to see it here.
+                  </p>
+                </div>
+              </section>
+            </div>
+
+            <section
+              aria-labelledby="image-variations-title"
+              className="shrink-0 px-4 pb-4"
+            >
+              <div className="mb-2 flex items-center gap-1.5">
+                <h2 className="text-xs font-medium" id="image-variations-title">
+                  Recent / Variations
+                </h2>
+                <Info
+                  aria-label="Generated variations will appear here"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div
+                    aria-hidden="true"
+                    className="grid min-h-24 place-items-center rounded-md border bg-muted/10 text-muted-foreground sm:min-h-28"
+                    key={index}
+                  >
+                    <ImageIcon className="size-5" />
+                  </div>
                 ))}
               </div>
-            </div>
-          </section>
+            </section>
+          </>
         )}
       </main>
+
+      {settingsOpen ? (
+        <aside
+          aria-label="Image settings"
+          className="image-studio-settings-panel flex min-h-0 flex-col border-l bg-background"
+          id="image-settings-panel"
+        >
+          <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
+            <h2 className="text-[10px] font-semibold tracking-[0.16em] uppercase">
+              Settings
+            </h2>
+            <Button
+              className="h-8 px-2 text-xs text-muted-foreground"
+              disabled={!capability || !config || isSubmitting}
+              onClick={resetSettings}
+              type="button"
+              variant="ghost"
+            >
+              Reset
+              <RotateCcw aria-hidden="true" className="size-3.5" />
+            </Button>
+          </header>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+            {providers.length ? (
+              <section aria-labelledby="image-routing-title">
+                <h3
+                  className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase"
+                  id="image-routing-title"
+                >
+                  Model routing
+                </h3>
+                <div className="mt-3 grid gap-3">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium">Provider</span>
+                    <NativeSelect
+                      disabled={Boolean(conversationId) || isSubmitting}
+                      onChange={(event) =>
+                        onProviderChange(event.target.value as ImageProvider)
+                      }
+                      value={provider}
+                    >
+                      {providers.map((option) => (
+                        <NativeSelectOption
+                          key={option.value}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </label>
+
+                  {provider === "openrouter" && routingOptions.length ? (
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-medium">Route</span>
+                      <NativeSelect
+                        disabled={isSubmitting}
+                        onChange={(event) =>
+                          onRoutingProviderChange(event.target.value)
+                        }
+                        value={capabilityRoutingProvider ?? "auto"}
+                      >
+                        {routingOptions.map((option) => (
+                          <NativeSelectOption
+                            key={option.value}
+                            value={option.value}
+                          >
+                            {option.label}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                      {selectedRoutingOption?.description ? (
+                        <span className="text-[11px] leading-relaxed text-muted-foreground">
+                          {selectedRoutingOption.description}
+                        </span>
+                      ) : null}
+                    </label>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            <section
+              aria-labelledby="advanced-image-settings-title"
+              className="mt-6 border-t pt-5"
+            >
+              <h3
+                className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase"
+                id="advanced-image-settings-title"
+              >
+                Generation
+              </h3>
+              <div className="mt-3">
+                {capability && config ? (
+                  <ImageSettings
+                    capability={capability}
+                    config={config}
+                    disabled={archived || disabled || isSubmitting}
+                    onChange={changeSettings}
+                    section="advanced"
+                  />
+                ) : (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Choose a model to view its generation controls.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {capability?.pricing.display ? (
+              <section className="mt-6 border-t pt-5">
+                <h3 className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                  Estimated cost
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {capability.pricing.display}
+                </p>
+              </section>
+            ) : capability?.pricing.kind === "unknown" ? (
+              <p className="mt-6 border-t pt-5 text-xs leading-relaxed text-muted-foreground">
+                Your provider reports the final price after generation.
+              </p>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
     </div>
   )
 }
