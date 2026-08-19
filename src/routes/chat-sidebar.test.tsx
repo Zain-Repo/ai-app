@@ -27,12 +27,19 @@ import { getWorkspaceOutputMode } from "@/lib/workspace-product"
 
 const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }))
 
+class ResizeObserverMock implements ResizeObserver {
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+}
+
 vi.mock("convex/react", async (importOriginal) => ({
   ...(await importOriginal<typeof ConvexReact>()),
   useQuery: useQueryMock,
 }))
 
 beforeEach(() => {
+  globalThis.ResizeObserver = ResizeObserverMock
   useQueryMock.mockReset()
   useQueryMock.mockReturnValue(undefined)
   Object.defineProperty(window, "matchMedia", {
@@ -166,6 +173,46 @@ describe("optional chat features", () => {
     expect(onAction).toHaveBeenCalledWith(
       expect.stringContaining("product hero image")
     )
+  })
+
+  it("renders pending and streamed commentary with the reasoning component", () => {
+    const messages = [
+      {
+        _id: "assistant-pending",
+        attachments: [],
+        content: "",
+        outputMode: "text",
+        role: "assistant",
+        status: "pending",
+      },
+      {
+        _id: "assistant-commentary",
+        attachments: [],
+        content: "",
+        outputMode: "text",
+        reasoningSteps: ["I am checking the current image-generation lineup."],
+        role: "assistant",
+        status: "streaming",
+      },
+    ] as unknown as NonNullable<ComponentProps<typeof MessageArea>["messages"]>
+    const view = render(
+      <MessageArea
+        actionsDisabled={false}
+        conversationId={"conversation-1" as Id<"conversations">}
+        messages={messages}
+        name={null}
+        onAction={vi.fn()}
+        onManageMemory={vi.fn()}
+        userMessageBubbleColor={undefined}
+        workspace="chat"
+      />
+    )
+
+    expect(view.getAllByRole("button", { name: /Thinking/ })).toHaveLength(2)
+    expect(
+      view.getAllByText("I am checking the current image-generation lineup.")
+    ).toHaveLength(2)
+    expect(view.getAllByText("Preparing response")).toHaveLength(2)
   })
 
   it("shows copy actions for user messages and terminal assistant text", () => {

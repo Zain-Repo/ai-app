@@ -28,6 +28,14 @@ export type DesktopCodexGenerateInput = {
   model: string
 }
 
+export type DesktopCodexMessagePhase = "commentary" | "final_answer"
+
+export type DesktopCodexDelta = {
+  delta: string
+  itemId: string
+  phase: DesktopCodexMessagePhase | null
+}
+
 export type DesktopCodexGenerateResult = {
   content: string
   interrupted?: boolean
@@ -63,7 +71,7 @@ export type Dev3DesktopApi = {
     cancel?: (requestId: string) => Promise<boolean>
     generate: (
       input: DesktopCodexGenerateInput,
-      onDelta?: (delta: string) => void,
+      onDelta?: (delta: DesktopCodexDelta) => void,
       requestId?: string
     ) => Promise<DesktopCodexGenerateResult>
     listModels: () => Promise<DesktopCodexModel[]>

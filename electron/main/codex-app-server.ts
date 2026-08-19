@@ -7,8 +7,10 @@ import readline from "node:readline"
 
 import type {
   DesktopCodexAccount,
+  DesktopCodexDelta,
   DesktopCodexGenerateInput,
   DesktopCodexGenerateResult,
+  DesktopCodexMessagePhase,
   DesktopCodexModel,
 } from "../types"
 import { parseCodexVersion } from "./codex-runtime"
@@ -35,6 +37,8 @@ type ActiveGeneration = {
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const REQUEST_TIMEOUT_MS = 30_000
 const TURN_TIMEOUT_MS = 10 * 60_000
+const MAX_REASONING_STEPS = 20
+const MAX_REASONING_STEP_LENGTH = 2_000
 const CODEX_REASONING_EFFORTS = new Set([
   "high",
   "low",
@@ -68,6 +72,37 @@ export function selectCompletedTurnItems(
     : []
 }
 
+export function parseCompletedCodexResponse(items: JsonObject[]) {
+  const content = items
+    .flatMap((item) =>
+      item.type === "agentMessage" &&
+      item.phase !== "commentary" &&
+      typeof item.text === "string"
+        ? [item.text]
+        : []
+    )
+    .join("\n\n")
+    .trim()
+  const reasoningSteps = items
+    .flatMap((item) => {
+      if (
+        item.type === "agentMessage" &&
+        item.phase === "commentary" &&
+        typeof item.text === "string"
+      )
+        return [item.text]
+      return item.type === "reasoning" && Array.isArray(item.summary)
+        ? item.summary.filter(
+            (part): part is string => typeof part === "string"
+          )
+        : []
+    })
+    .map((step) => step.trim().slice(0, MAX_REASONING_STEP_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_REASONING_STEPS)
+  return { content, reasoningSteps }
+}
+
 export function parseAgentMessageDelta(
   method: string,
   params: JsonObject,
@@ -76,11 +111,34 @@ export function parseAgentMessageDelta(
   if (
     method !== "item/agentMessage/delta" ||
     params.threadId !== threadId ||
+    typeof params.itemId !== "string" ||
+    !params.itemId ||
     typeof params.delta !== "string" ||
     !params.delta
   )
     return null
-  return params.delta
+  return { delta: params.delta, itemId: params.itemId }
+}
+
+export function parseAgentMessageStart(
+  method: string,
+  params: JsonObject,
+  threadId: string
+): { itemId: string; phase: DesktopCodexMessagePhase | null } | null {
+  if (
+    method !== "item/started" ||
+    params.threadId !== threadId ||
+    !isRecord(params.item) ||
+    params.item.type !== "agentMessage" ||
+    typeof params.item.id !== "string" ||
+    !params.item.id
+  )
+    return null
+  const phase = params.item.phase
+  return {
+    itemId: params.item.id,
+    phase: phase === "commentary" || phase === "final_answer" ? phase : null,
+  }
 }
 
 export function parseDesktopCodexModels(result: unknown): DesktopCodexModel[] {
@@ -268,7 +326,7 @@ export class CodexAppServer {
   async generate(
     requestId: string,
     input: DesktopCodexGenerateInput,
-    onDelta?: (delta: string) => void
+    onDelta?: (delta: DesktopCodexDelta) => void
   ): Promise<DesktopCodexGenerateResult> {
     if (this.activeGenerations.has(requestId))
       throw new Error("Codex request is already active")
@@ -315,9 +373,17 @@ export class CodexAppServer {
       active.threadId = threadId
 
       const completedItems: CompletedItemNotification[] = []
+      const messagePhases = new Map<string, DesktopCodexMessagePhase | null>()
       const stopObserving = this.observeNotifications((method, params) => {
+        const startedMessage = parseAgentMessageStart(method, params, threadId)
+        if (startedMessage)
+          messagePhases.set(startedMessage.itemId, startedMessage.phase)
         const delta = parseAgentMessageDelta(method, params, threadId)
-        if (delta) onDelta?.(delta)
+        if (delta)
+          onDelta?.({
+            ...delta,
+            phase: messagePhases.get(delta.itemId) ?? null,
+          })
         if (
           method === "item/completed" &&
           params.threadId === threadId &&
@@ -369,21 +435,7 @@ export class CodexAppServer {
           completedItems,
           turn.id
         )
-        const content = items
-          .flatMap((item) =>
-            item.type === "agentMessage" && typeof item.text === "string"
-              ? [item.text]
-              : []
-          )
-          .join("\n\n")
-          .trim()
-        const reasoningSteps = items.flatMap((item) =>
-          item.type === "reasoning" && Array.isArray(item.summary)
-            ? item.summary.filter(
-                (part): part is string => typeof part === "string"
-              )
-            : []
-        )
+        const { content, reasoningSteps } = parseCompletedCodexResponse(items)
         if (!content) throw new Error("Codex returned an empty response")
         return { content, reasoningSteps }
       } finally {

@@ -2,9 +2,24 @@ import { contextBridge, ipcRenderer } from "electron"
 
 import type {
   Dev3DesktopApi,
+  DesktopCodexDelta,
   DesktopCodexGenerateInput,
   DesktopUpdaterState,
 } from "../types"
+
+function isDesktopCodexDelta(value: unknown): value is DesktopCodexDelta {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const delta = value as Record<string, unknown>
+  return (
+    typeof delta.delta === "string" &&
+    Boolean(delta.delta) &&
+    typeof delta.itemId === "string" &&
+    Boolean(delta.itemId) &&
+    (delta.phase === null ||
+      delta.phase === "commentary" ||
+      delta.phase === "final_answer")
+  )
+}
 
 const api: Dev3DesktopApi = {
   isDesktop: true,
@@ -18,7 +33,7 @@ const api: Dev3DesktopApi = {
     listModels: () => ipcRenderer.invoke("desktop:codex-models"),
     generate: async (
       input: DesktopCodexGenerateInput,
-      onDelta?: (delta: string) => void,
+      onDelta?: (delta: DesktopCodexDelta) => void,
       suppliedRequestId?: string
     ) => {
       const requestId = suppliedRequestId ?? crypto.randomUUID()
@@ -27,11 +42,7 @@ const api: Dev3DesktopApi = {
         progressRequestId: unknown,
         delta: unknown
       ) => {
-        if (
-          progressRequestId === requestId &&
-          typeof delta === "string" &&
-          delta
-        )
+        if (progressRequestId === requestId && isDesktopCodexDelta(delta))
           onDelta?.(delta)
       }
       ipcRenderer.on("desktop:codex-delta", handler)
