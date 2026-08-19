@@ -488,10 +488,71 @@
 
 @layer components {
   .image-workspace {
-    --primary: #737384;
+    --primary: #6f67d8;
     --primary-foreground: #ffffff;
-    --ring: #8e8ea0;
+    --ring: #7e77df;
     --radius: 0.3125rem;
+
+    container-type: inline-size;
+  }
+
+  .image-studio-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(17.5rem, 19rem) minmax(0, 1fr);
+    background: var(--background);
+  }
+
+  .image-studio-grid.is-settings-open {
+    grid-template-columns:
+      minmax(17.5rem, 19rem) minmax(30rem, 1fr)
+      minmax(18rem, 19.5rem);
+  }
+
+  .image-studio-create-panel,
+  .image-studio-canvas-panel,
+  .image-studio-settings-panel {
+    min-height: 0;
+  }
+
+  @container (max-width: 82rem) {
+    .image-studio-grid.is-settings-open {
+      grid-template-columns: minmax(17.5rem, 19rem) minmax(0, 1fr);
+    }
+
+    .image-studio-settings-panel {
+      position: absolute;
+      z-index: 20;
+      inset-block: 0;
+      right: 0;
+      width: min(20rem, calc(100% - 17.5rem));
+      box-shadow: -16px 0 36px color-mix(in oklch, var(--foreground) 10%, transparent);
+    }
+  }
+
+  @container (max-width: 55rem) {
+    .image-studio-grid,
+    .image-studio-grid.is-settings-open {
+      grid-template-columns: minmax(0, 1fr);
+      overflow-y: auto;
+    }
+
+    .image-studio-create-panel {
+      min-height: min(42rem, 72svh);
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .image-studio-canvas-panel {
+      min-height: 34rem;
+    }
+
+    .image-studio-settings-panel {
+      position: absolute;
+      inset-block: 0;
+      right: 0;
+      width: min(22rem, 100%);
+    }
   }
 
   .app-view {
@@ -598,12 +659,12 @@
   }
 
   .chat-composer-dock {
-    border-top: 1px solid transparent;
+    border-top-color: transparent;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
     background: linear-gradient(
       to top,
       var(--background) 58%,
-      color-mix(in oklch, var(--background) 90%, transparent) 90%,
+      color-mix(in oklch, var(--background) 90%, transparent) 82%,
       transparent
     );
   }
@@ -612,9 +673,7 @@
     box-shadow: none;
   }
 
-  .chat-workspace-shell
-    .chat-composer-dock
-    [data-slot="ai-input-surface"] {
+  .chat-workspace-shell .chat-composer-dock [data-slot="ai-input-surface"] {
     border-radius: 1.25rem !important;
   }
 
@@ -628,12 +687,12 @@
 
   .chat-empty-state {
     min-height: min(24rem, 56vh);
-    padding-inline: 1.25rem;
     padding-block: 2rem;
+    padding-inline: 1.25rem;
     background: linear-gradient(
       180deg,
-      color-mix(in oklch, var(--muted) 18%, transparent),
-      transparent 12rem
+      transparent,
+      color-mix(in oklch, var(--muted) 34%, transparent)
     );
   }
 

@@ -1,51 +1,44 @@
-# Project Sources ledger design QA
+# Image Studio design QA
 
-- Source visual truth: `C:\Users\Zain\AppData\Local\Temp\codex-clipboard-45b0d1bf-4322-44fd-b9a7-b54ba9db9cfe.png`
-- Implementation screenshot: `D:\Documents\projects\ai-app\design-qa-project-sources-ledger.png`
-- Side-by-side comparison: `D:\Documents\projects\ai-app\design-qa-project-sources-comparison.png`
-- Primary viewport: 1917 × 992 CSS pixels at 1× normalized density.
-- Responsive check: 1280-pixel browser viewport.
-- Compared state: signed-in Project workspace, light theme, Sources tab active,
-  OpenRouter pinned, and four ready PDF sources.
+- Source visual truth: `C:\Users\Zain\AppData\Local\Temp\codex-clipboard-33075555-f2b6-45c3-b564-ffd1e13496b4.png`
+- Implementation target: `http://localhost:4173/chat/?workspace=image&mode=chat-new`
+- Implementation screenshot: unavailable; both the in-app browser and the existing Chrome profile redirect the local target to `/sign-in`
+- Comparison viewport: 1917 × 985 CSS pixels
+- Source pixels: 1749 × 899
+- Implementation pixels: unavailable
+- Density normalization: source was intended for the same wide desktop aspect ratio; final normalization is pending an authenticated implementation capture
+- State: light-theme, new-image empty state with the settings inspector open
 
-## Findings
+**Findings**
 
-- No unresolved P0, P1, or P2 visual issues.
-- The workspace content anchor, maximum width, heading, new-chat action, tabs,
-  semantic-search strip, source columns, row heights, dividers, and primary
-  actions align closely with the reference at the target viewport.
-- The implementation reports four searchable sources because the rendered
-  fixture contains four ready sources. This intentionally resolves the static
-  reference's inconsistent `6 sources are searchable` and `4 of 4 sources`
-  labels.
-- The validation harness used the real Project workspace and Project Sources
-  components. Its simplified sidebar shell was excluded from findings because
-  the local browser could not enter the Clerk-authenticated application shell,
-  and the sidebar was not modified by this update.
-- The source ledger uses an internal horizontal overflow region at narrower
-  widths; the 1280-pixel check found no document-level horizontal overflow.
-- Fresh final browser verification reported no console errors.
+- [P0] Authenticated implementation capture is unavailable
+  - Location: local Dev3 preview route.
+  - Evidence: the source design opens correctly as an image, while both available browser profiles redirect `http://localhost:4173/chat/?workspace=image&mode=chat-new` to `http://localhost:4173/sign-in`.
+  - Impact: the rendered implementation cannot be placed beside the source visual, so typography, spacing, colors, icon fidelity, copy, and responsive layout cannot receive the required visual comparison.
+  - Fix: sign in to the local Dev3 preview in the in-app browser, capture the empty image-studio state at 1917 × 985, and rerun this comparison.
+
+**Open Questions**
+
+- None about the selected design. Browser authentication is the only remaining gate.
+
+**Implementation Checklist**
+
+- Capture the authenticated implementation at 1917 × 985.
+- Compare the full frame with the selected source visual.
+- Inspect focused crops for the creation rail, canvas empty state, settings inspector, and header project control.
+- Exercise prompt entry, the example prompt action, settings collapse/reset, model controls, reference validation, and project selection.
+- Check console errors and repeat visual comparison after any P0/P1/P2 fixes.
+
+**Follow-up Polish**
+
+- Pending the authenticated visual comparison.
 
 ## Comparison history
 
-1. Initial pass: the main workspace was too centered and narrow, the semantic
-   configuration remained card-like, and source processing appeared in a
-   horizontal attachment layout.
-2. Structure pass: moved the workspace to the reference anchor, widened the
-   content region, converted the semantic controls into a three-part strip,
-   and replaced attachment cards with a columnar source ledger.
-3. Detail pass: matched the reference's vertical spacing, line-tab treatment,
-   processing stack, muted ready badge, icon scale, and table typography.
-4. Final pass: compared the reference and implementation together at the same
-   normalized 1917 × 992 viewport and found no remaining P0–P2 mismatches.
+### Initial pass — 2026-08-19
 
-## Interaction evidence
+- Earlier findings: authenticated capture unavailable.
+- Fixes made: none; authentication cannot be bypassed or weakened for visual QA.
+- Post-fix visual evidence: unavailable.
 
-- Chats and Sources tabs switch the visible Project state.
-- Selecting a source row updates the selected count.
-- Remove opens the existing confirmation dialog; Keep source cancels it.
-- Add files remains connected and enabled in the ready state.
-- Retry is disabled when no source is retryable.
-- Provider selection remains connected to the existing confirmation workflow.
-
-final result: passed
+final result: blocked
