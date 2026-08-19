@@ -31,7 +31,8 @@ function AiSuggestedActions({
     >
       {suggestions.map((suggestion) => (
         <Button
-          className="h-auto min-h-14 items-start justify-start rounded-xl px-3 py-2.5 text-left whitespace-normal"
+          className="group/suggestion h-auto min-h-16 items-start justify-start overflow-hidden rounded-xl px-4 py-3 text-left whitespace-normal transition-[border-color,background-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:border-foreground/15 hover:bg-card hover:shadow-[0_12px_30px_-24px_color-mix(in_oklch,var(--foreground)_42%,transparent)] active:translate-y-0 motion-reduce:transform-none motion-reduce:transition-none"
+          data-chat-suggestion=""
           disabled={disabled || !onSelect}
           key={suggestion.prompt}
           onClick={() => onSelect?.(suggestion.prompt)}

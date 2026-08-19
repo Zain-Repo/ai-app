@@ -25,18 +25,16 @@ describe("ImageSettings", () => {
         capability={capability}
         config={getDefaultImageGenerationConfig(capability)}
         onChange={onChange}
+        section="primary"
       />
     )
 
-    expect(screen.getAllByRole("radio")).toHaveLength(
-      capability.dimensions.options.length
-    )
-    fireEvent.click(screen.getByRole("radio", { name: "Widescreen 16:9" }))
+    fireEvent.change(screen.getByLabelText("Aspect ratio"), {
+      target: { value: "16:9" },
+    })
     expect(onChange).toHaveBeenCalledWith({ dimension: "16:9" })
 
-    fireEvent.change(screen.getByLabelText("Images"), {
-      target: { value: "4" },
-    })
+    fireEvent.click(screen.getByRole("radio", { name: "4" }))
     expect(onChange).toHaveBeenCalledWith({ count: 4 })
     expect(screen.getByLabelText("Resolution")).toBeTruthy()
   })

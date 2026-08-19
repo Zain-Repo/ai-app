@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, ImagePlus, X } from "lucide-react"
-import { useEffect, useId, useMemo } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -8,6 +8,9 @@ export type ImageReference = {
   file: File
   id: string
 }
+
+const acceptedReferenceTypes = ["image/jpeg", "image/png", "image/webp"]
+const maxReferenceBytes = 10 * 1024 * 1024
 
 function ReferencePreview({
   reference,
@@ -34,7 +37,7 @@ function ReferencePreview({
     <li
       className={cn(
         "group relative shrink-0 overflow-hidden border bg-muted",
-        compact ? "size-12 rounded-md" : "size-16 rounded-xl"
+        compact ? "size-12 rounded-md" : "aspect-square w-full rounded-md"
       )}
     >
       <img
@@ -90,15 +93,24 @@ export function ReferenceStrip({
   references: ImageReference[]
 }) {
   const inputId = useId()
+  const [rejectionMessage, setRejectionMessage] = useState("")
   const addFiles = (files: FileList | null) => {
     if (!files) return
     const available = Math.max(0, limit - references.length)
-    const additions = [...files]
-      .filter((file) =>
-        ["image/jpeg", "image/png", "image/webp"].includes(file.type)
-      )
+    const selectedFiles = [...files]
+    const validFiles = selectedFiles.filter(
+      (file) =>
+        acceptedReferenceTypes.includes(file.type) &&
+        file.size <= maxReferenceBytes
+    )
+    const additions = validFiles
       .slice(0, available)
       .map((file) => ({ file, id: crypto.randomUUID() }))
+    setRejectionMessage(
+      validFiles.length === selectedFiles.length
+        ? ""
+        : "Use JPG, PNG, or WebP images no larger than 10 MB."
+    )
     onChange([...references, ...additions])
   }
   const move = (from: number, to: number) => {
@@ -180,8 +192,8 @@ export function ReferenceStrip({
           {references.length}/{limit}
         </span>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        <ul className="flex gap-2">
+      {references.length ? (
+        <ul className="grid grid-cols-4 gap-2">
           {references.map((reference, index) => (
             <ReferencePreview
               index={index}
@@ -194,33 +206,77 @@ export function ReferenceStrip({
               total={references.length}
             />
           ))}
+          {references.length < limit ? (
+            <li>
+              <label
+                className="grid aspect-square min-w-0 cursor-pointer place-items-center rounded-md border border-dashed text-muted-foreground transition-colors focus-within:outline-2 focus-within:outline-ring hover:border-foreground/30 hover:bg-muted/60 hover:text-foreground"
+                htmlFor={inputId}
+              >
+                <ImagePlus aria-hidden="true" className="size-5" />
+                <span className="sr-only">Add reference images</span>
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={disabled}
+                  id={inputId}
+                  multiple
+                  onChange={(event) => {
+                    addFiles(event.target.files)
+                    event.currentTarget.value = ""
+                  }}
+                  type="file"
+                />
+              </label>
+            </li>
+          ) : null}
         </ul>
-        {references.length < limit ? (
-          <label
-            className="grid size-16 shrink-0 cursor-pointer place-items-center rounded-xl border border-dashed text-muted-foreground transition-colors focus-within:outline-2 focus-within:outline-ring hover:border-foreground/30 hover:bg-muted/60 hover:text-foreground"
-            htmlFor={inputId}
-          >
-            <ImagePlus aria-hidden="true" className="size-5" />
-            <span className="sr-only">Add reference images</span>
-            <input
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              disabled={disabled}
-              id={inputId}
-              multiple
-              onChange={(event) => {
-                addFiles(event.target.files)
-                event.currentTarget.value = ""
-              }}
-              type="file"
+      ) : (
+        <label
+          className={cn(
+            "grid min-h-24 cursor-pointer place-items-center rounded-md border border-dashed bg-background px-4 py-4 text-center transition-colors focus-within:outline-2 focus-within:outline-ring hover:border-foreground/30 hover:bg-muted/30",
+            disabled && "pointer-events-none opacity-50"
+          )}
+          htmlFor={inputId}
+        >
+          <span>
+            <ImagePlus
+              aria-hidden="true"
+              className="mx-auto size-5 text-muted-foreground"
             />
-          </label>
-        ) : null}
-      </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        The first image has the strongest influence. Use the arrow controls to
-        set reference order.
-      </p>
+            <span className="mt-2 block text-sm font-medium">
+              Add reference images
+            </span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              JPG, PNG, or WebP · max 10 MB
+            </span>
+          </span>
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            disabled={disabled}
+            id={inputId}
+            multiple
+            onChange={(event) => {
+              addFiles(event.target.files)
+              event.currentTarget.value = ""
+            }}
+            type="file"
+          />
+        </label>
+      )}
+      {rejectionMessage ? (
+        <p
+          className="text-[11px] leading-relaxed text-destructive"
+          role="alert"
+        >
+          {rejectionMessage}
+        </p>
+      ) : references.length ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          The first reference has the strongest influence. Reorder with the
+          image controls.
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -21,9 +21,68 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
     })),
   })
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: vi.fn(),
+  })
 })
 
 afterEach(cleanup)
+
+describe("AIInput composer surface", () => {
+  it("exposes semantic surface and control hooks without weakening labels", () => {
+    render(
+      <AIInput
+        onMicClick={vi.fn()}
+        providers={[{ label: "OpenAI", value: "openai" }]}
+        settingGroups={[
+          {
+            id: "effort",
+            label: "Effort",
+            options: [{ label: "Balanced", value: "medium" }],
+          },
+        ]}
+      />
+    )
+
+    const surface = screen
+      .getByLabelText("Message")
+      .closest<HTMLElement>('[data-slot="ai-input-surface"]')
+    expect(surface).toBeTruthy()
+    if (!surface) throw new Error("Expected the composer surface")
+
+    expect(surface.querySelector('[data-slot="ai-input-toolbar"]')).toBeTruthy()
+
+    for (const label of [
+      "More options",
+      "Select provider",
+      "Select settings: Balanced",
+      "Use voice input",
+      "Send message",
+    ]) {
+      const control = screen.getByLabelText(label)
+      expect(control.tagName).toBe("BUTTON")
+      expect(control.getAttribute("data-slot")).toBe("ai-input-control")
+      expect(surface.contains(control)).toBe(true)
+    }
+  })
+
+  it("keeps the advertised attachment shortcut wired to the file picker", () => {
+    const { container } = render(<AIInput />)
+    const fileInput =
+      container.querySelector<HTMLInputElement>('input[type="file"]')
+    expect(fileInput).toBeTruthy()
+    if (!fileInput) throw new Error("Expected the attachment file input")
+    const clickFileInput = vi.spyOn(fileInput, "click")
+
+    fireEvent.click(screen.getByLabelText("More options"))
+    expect(screen.getByRole("menu", { name: "More options" })).toBeTruthy()
+    expect(screen.getByText("Ctrl+U")).toBeTruthy()
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "u" })
+    expect(clickFileInput).toHaveBeenCalledOnce()
+  })
+})
 
 describe("AIInput attachments", () => {
   it("attaches files dropped on the page to the submitted prompt", async () => {
