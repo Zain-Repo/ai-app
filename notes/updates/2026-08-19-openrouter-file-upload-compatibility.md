@@ -26,7 +26,8 @@ composer error.
 ## Validation
 
 - `bunx vitest run convex/openRouterAttachments.test.ts convex/openRouterResponses.test.ts convex/providerOAuth.test.ts` — 39 tests passed.
-- `bun run test` — 343 tests passed across 75 files.
+- `bun run test` — 350 tests passed across 76 files after merging the latest
+  `master`.
 - `bun run typecheck` — passed.
 - `bun run build` — passed with the existing route-file warning for
   `src/routes/chat-sidebar.test.tsx`.
