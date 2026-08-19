@@ -51,6 +51,8 @@ const libraryAssetValidator = v.union(
     kind: v.literal("generated_image"),
     conversationId: v.id("conversations"),
     messageId: v.id("messages"),
+    generationSetId: v.optional(v.id("imageGenerationSets")),
+    generationOutputId: v.optional(v.id("imageGenerationOutputs")),
     provider: v.optional(v.string()),
     model: v.optional(v.string()),
   })
