@@ -300,7 +300,7 @@ export function LibraryWorkspace({
   const loadingFirstPage = status === "LoadingFirstPage"
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="library-workspace min-h-0 flex-1 overflow-y-auto">
       <main className="mx-auto w-full max-w-6xl px-5 py-6 md:px-8 md:py-8">
         <header className="mb-7 flex flex-col gap-5 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
