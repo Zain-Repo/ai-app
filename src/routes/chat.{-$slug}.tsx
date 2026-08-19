@@ -4157,10 +4157,13 @@ function MessageAreaContent({
                         message.content ||
                         "Codex could not complete this response."
                       ) : message.provider === "openai" ? (
+                        message.content ||
                         "OpenAI could not complete this response."
                       ) : message.provider === "fal" ? (
+                        message.content ||
                         "Fal could not complete this response."
                       ) : (
+                        message.content ||
                         "OpenRouter could not complete this response."
                       )
                     ) : isUser ? (

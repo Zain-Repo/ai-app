@@ -36,6 +36,24 @@ without opening the Electron UI, run:
 bun run desktop:codex:smoke
 ```
 
+## Production web deployment
+
+Production deploys must publish the Convex backend and the Cloudflare worker from
+the same source revision. Configure a production Convex deploy key in the build
+environment as `CONVEX_DEPLOY_KEY`, then run:
+
+```powershell
+bun run deploy
+```
+
+The deploy script uses Convex's supported `convex deploy --cmd` flow. Convex sets
+`VITE_CONVEX_URL` to the production deployment while running the frontend build,
+type-checks and publishes the backend functions, and only then allows
+`wrangler deploy` to publish that build. If the deploy key is absent, invalid, or
+lacks the `deployment:deploy` permission, the command stops before Cloudflare is
+updated. Store the key only in the deployment platform's secret environment; do
+not commit it or place it in public build logs.
+
 ## Windows installer
 
 The production desktop client is a thin wrapper around the deployed HTTPS web
