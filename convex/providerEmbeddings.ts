@@ -1,10 +1,10 @@
 "use node"
 
 import { createOpenAI } from "@ai-sdk/openai"
-import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import type { OpenRouterEmbeddingSettings } from "@openrouter/ai-sdk-provider"
 import { APICallError, embedMany } from "ai"
 
+import { createUserOpenRouter } from "../shared/openrouter-provider"
 import {
   getProjectEmbeddingModel,
   OPENAI_EMBEDDING_MODEL,
@@ -70,10 +70,7 @@ export async function createProviderEmbeddings(
   try {
     const model =
       provider === "openrouter"
-        ? createOpenRouter({
-            apiKey: token,
-            compatibility: "strict",
-          }).textEmbeddingModel(
+        ? createUserOpenRouter(token).textEmbeddingModel(
             OPENROUTER_EMBEDDING_MODEL,
             getPrivateOpenRouterEmbeddingSettings()
           )

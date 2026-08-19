@@ -9,6 +9,7 @@ import {
   imageGenerationSetStatusValidator,
   imageProviderValidator,
 } from "./imageGenerationPolicy"
+import { providerUsageValidator } from "../shared/provider-usage"
 import { terminalRunValidator } from "./terminalPolicy"
 
 const connectionStatus = v.union(
@@ -348,6 +349,7 @@ export default defineSchema({
     reasoningEffort: v.optional(v.string()),
     reasoningSteps: v.optional(v.array(v.string())),
     contextTokens: v.optional(v.number()),
+    providerUsage: v.optional(providerUsageValidator),
     terminalRuns: v.optional(v.array(terminalRunValidator)),
     uiPayload: v.optional(v.string()),
     errorCode: v.optional(v.literal("insufficient_credits")),

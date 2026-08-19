@@ -4,7 +4,6 @@ import { createHash } from "node:crypto"
 
 import { createOpenAI } from "@ai-sdk/openai"
 import type { OpenAILanguageModelResponsesOptions } from "@ai-sdk/openai"
-import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import type { OpenRouterChatSettings } from "@openrouter/ai-sdk-provider"
 import { APICallError, generateText, stepCountIs, streamText, tool } from "ai"
 import type { ModelMessage } from "ai"
@@ -37,6 +36,8 @@ import {
   MAX_PROJECT_SOURCE_TEXT_CHARS,
 } from "./projectEmbeddingPolicy"
 import { decryptProviderToken } from "./providerCrypto"
+import { createUserOpenRouter } from "../shared/openrouter-provider"
+import { aggregateOpenRouterUsage } from "../shared/provider-usage"
 import {
   getImageOutputRange,
   getStaticImageModelCapability,
@@ -759,10 +760,7 @@ async function requestConversationTitle(
   const result =
     args.provider === "openrouter"
       ? await generateText({
-          model: createOpenRouter({
-            apiKey: token,
-            compatibility: "strict",
-          })(
+          model: createUserOpenRouter(token)(
             OPENROUTER_TITLE_MODEL,
             getOpenRouterModelSettings(
               OPENROUTER_TITLE_MODEL,
@@ -1427,10 +1425,7 @@ export const generate = internalAction({
       const result =
         context.provider === "openrouter"
           ? (() => {
-              const openrouter = createOpenRouter({
-                apiKey: token,
-                compatibility: "strict",
-              })
+              const openrouter = createUserOpenRouter(token)
               const tools = selectOpenRouterTools(supportsTools, {
                 [RENDER_UI_TOOL_NAME]: renderUiTool,
                 ...(terminalSandbox
@@ -1604,6 +1599,7 @@ export const generate = internalAction({
         throw new Error("Provider response incomplete")
 
       let contextTokens: number | undefined
+      let providerUsage: ReturnType<typeof aggregateOpenRouterUsage>
       try {
         const totalTokens = (await result.usage).totalTokens
         if (
@@ -1615,12 +1611,20 @@ export const generate = internalAction({
       } catch {
         // Usage metadata is optional and must not discard a completed response.
       }
+      if (context.provider === "openrouter") {
+        try {
+          providerUsage = aggregateOpenRouterUsage(await result.steps)
+        } catch {
+          // Provider billing metadata is optional and independent of token usage.
+        }
+      }
 
       await throwIfStopped()
       await ctx.runMutation(internal.conversations.finishOpenRouterResponse, {
         assistantMessageId: args.assistantMessageId,
         content,
         ...(contextTokens === undefined ? {} : { contextTokens }),
+        ...(providerUsage ? { providerUsage } : {}),
         failed: false,
         ...(reasoning.trim() ? { reasoningSteps: [reasoning.trim()] } : {}),
         ...(terminalRuns.length ? { terminalRuns } : {}),

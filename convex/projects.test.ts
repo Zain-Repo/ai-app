@@ -488,6 +488,15 @@ describe("projects and conversations", () => {
       content: "",
       contextTokens: 1_234,
       failed: false,
+      providerUsage: {
+        provider: "openrouter",
+        inputTokens: 1_000,
+        outputTokens: 234,
+        totalTokens: 1_234,
+        cachedInputTokens: 600,
+        reasoningTokens: 34,
+        costUsd: 0.0123,
+      },
       uiPayload,
     })
     await expect(
@@ -505,6 +514,15 @@ describe("projects and conversations", () => {
           },
         ],
         contextTokens: 1_234,
+        providerUsage: {
+          provider: "openrouter",
+          inputTokens: 1_000,
+          outputTokens: 234,
+          totalTokens: 1_234,
+          cachedInputTokens: 600,
+          reasoningTokens: 34,
+          costUsd: 0.0123,
+        },
         status: "complete",
         uiPayload,
       },
