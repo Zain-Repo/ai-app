@@ -148,6 +148,7 @@ type CatalogModel = {
   label: string
   description?: string
   contextLength?: number
+  inputModalities?: string[]
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
@@ -195,6 +196,7 @@ const modelValidator = v.object({
   label: v.string(),
   description: v.optional(v.string()),
   contextLength: v.optional(v.number()),
+  inputModalities: v.optional(v.array(v.string())),
   outputMode: v.union(v.literal("image"), v.literal("text")),
   reasoningEfforts: v.optional(v.array(reasoningEffortValidator)),
   defaultReasoningEffort: v.optional(reasoningEffortValidator),
@@ -508,6 +510,7 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
           value: model.id,
           label,
           outputMode,
+          inputModalities,
           ...(contextLength === undefined ? {} : { contextLength }),
           description: describeCapabilities(
             inputModalities,

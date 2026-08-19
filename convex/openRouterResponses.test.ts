@@ -300,6 +300,39 @@ describe("AI SDK provider bridge", () => {
     })
   })
 
+  it.each(["", "application/octet-stream"])(
+    "inlines Markdown identified by filename when storage reports %j",
+    async (contentType) => {
+      const storageId = "kg2markdown" as Id<"_storage">
+      const messages = await inlineTextAttachments(
+        [
+          {
+            attachments: [
+              {
+                contentType,
+                name: "sub-account-notes.md",
+                storageId,
+                url: "https://files.example/sub-account-notes.md",
+              },
+            ],
+            content: "Read this note.",
+            role: "user",
+          },
+        ],
+        async () => new Blob(["# Markdown survives missing MIME metadata"])
+      )
+
+      expect(messages).toEqual([
+        {
+          attachments: [],
+          content:
+            'Read this note.\n\nReferenced file "sub-account-notes.md":\n--- BEGIN FILE ---\n# Markdown survives missing MIME metadata\n--- END FILE ---',
+          role: "user",
+        },
+      ])
+    }
+  )
+
   it("preserves OpenRouter routing, privacy, and reasoning", () => {
     const messages = [
       {
