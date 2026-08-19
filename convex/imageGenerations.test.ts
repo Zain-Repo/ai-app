@@ -292,6 +292,16 @@ describe("image generation persistence", () => {
       throw new Error("Expected generated Library asset")
     expect(persisted.asset.generationSetId).toBe(created.generationSetId)
     expect(persisted.asset.generationOutputId).toBe(generation.outputs[0]._id)
+
+    const libraryPage = await authenticated.query(api.library.list, {
+      paginationOpts: { cursor: null, numItems: 10 },
+    })
+    expect(libraryPage.page).toMatchObject([
+      {
+        generationSetId: created.generationSetId,
+        generationOutputId: generation.outputs[0]._id,
+      },
+    ])
   })
 
   it.each(["running", "complete"] as const)(
