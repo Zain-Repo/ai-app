@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { downloadLibraryAsset } from "@/components/library-workspace"
+import { cn } from "@/lib/utils"
 
 export type GenerationSetView = FunctionReturnType<
   typeof api.imageGenerations.listByConversation
@@ -37,9 +38,11 @@ const setStatusLabels = {
 } as const
 
 function OutputCard({
+  compact = false,
   onOpen,
   output,
 }: {
+  compact?: boolean
   onOpen: (output: GenerationOutput) => void
   output: GenerationOutput
 }) {
@@ -47,7 +50,10 @@ function OutputCard({
     return (
       <button
         aria-label={`Open generated image ${output.ordinal + 1}`}
-        className="group relative min-h-48 overflow-hidden rounded-lg border bg-muted/30 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={cn(
+          "group relative overflow-hidden border bg-muted/30 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          compact ? "aspect-square min-h-32" : "min-h-48 rounded-lg"
+        )}
         onClick={() => onOpen(output)}
         type="button"
       >
@@ -67,7 +73,10 @@ function OutputCard({
   return (
     <div
       aria-label={`Output ${output.ordinal + 1}: ${output.status}`}
-      className="grid min-h-48 place-items-center rounded-lg border bg-muted/30 p-5 text-center"
+      className={cn(
+        "grid place-items-center border bg-muted/30 p-5 text-center",
+        compact ? "aspect-square min-h-32" : "min-h-48 rounded-lg"
+      )}
       role="status"
     >
       <div>
@@ -97,6 +106,7 @@ export function GenerationSet({
   onReuse,
   onUseAsReference,
   retryDisabled = false,
+  variant = "feed",
 }: {
   generation: GenerationSetView
   onCancel: (generationSetId: GenerationSetView["_id"]) => void
@@ -104,6 +114,7 @@ export function GenerationSet({
   onReuse: (generation: GenerationSetView) => void
   onUseAsReference: (output: GenerationOutput) => void
   retryDisabled?: boolean
+  variant?: "feed" | "rail"
 }) {
   const [selectedOutput, setSelectedOutput] = useState<GenerationOutput | null>(
     null
@@ -115,8 +126,20 @@ export function GenerationSet({
   const created = new Date(generation.createdAt)
 
   return (
-    <article className="border-t py-8 first:border-t-0">
-      <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <article
+      className={cn(
+        "border-t first:border-t-0",
+        variant === "rail" ? "py-5" : "py-8"
+      )}
+    >
+      <header
+        className={cn(
+          "flex flex-col gap-3",
+          variant === "rail"
+            ? "mb-3"
+            : "mb-5 sm:flex-row sm:items-start sm:justify-between"
+        )}
+      >
         <div className="min-w-0">
           <p className="line-clamp-2 text-sm leading-relaxed font-medium text-foreground">
             {generation.prompt}
@@ -133,7 +156,7 @@ export function GenerationSet({
             })}`}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           <Button
             aria-label="Copy prompt"
             onClick={() =>
@@ -181,13 +204,18 @@ export function GenerationSet({
 
       <div
         className={
-          generation.outputs.length === 1
-            ? "grid max-w-2xl grid-cols-1 gap-4"
-            : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+          variant === "rail"
+            ? generation.outputs.length === 1
+              ? "grid grid-cols-1 gap-2"
+              : "grid grid-cols-2 gap-2"
+            : generation.outputs.length === 1
+              ? "grid max-w-2xl grid-cols-1 gap-4"
+              : "grid grid-cols-1 gap-4 sm:grid-cols-2"
         }
       >
         {generation.outputs.map((output) => (
           <OutputCard
+            compact={variant === "rail"}
             key={output._id}
             onOpen={setSelectedOutput}
             output={output}

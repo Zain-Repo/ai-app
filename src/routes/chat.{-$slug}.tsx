@@ -2368,7 +2368,10 @@ function ChatWorkspace() {
   )
 
   return (
-    <SidebarProvider className="chat-workspace-shell h-svh overflow-hidden">
+    <SidebarProvider
+      className="chat-workspace-shell h-svh overflow-hidden"
+      data-workspace={workspace}
+    >
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
         <SidebarHeader className="gap-2 border-b border-sidebar-border/50 p-2.5">
           <SidebarWorkspaceSwitcher
@@ -2380,7 +2383,7 @@ function ChatWorkspace() {
             onVoiceActivate={() => void activateVoice()}
           />
           <Button
-            className="h-8 w-full justify-start rounded-lg px-2.5 text-sidebar-foreground shadow-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="image-sidebar-primary-action h-8 w-full justify-start rounded-lg px-2.5 text-sidebar-foreground shadow-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             onClick={() =>
               open({ mode: "chat-new", projectId: search.projectId })
             }
