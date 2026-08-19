@@ -87,7 +87,6 @@ import type {
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { SidebarWorkspaceSwitcher } from "@/components/sidebar-workspace-switcher"
-import { TextShimmer } from "@/components/text-shimmer"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
 import { getChatStarterSuggestions } from "@/lib/chat-starter-suggestions"
@@ -532,6 +531,8 @@ function isReasoningEffort(value: string): value is ReasoningEffort {
 const MAX_PROJECT_SOURCES = 8
 const MAX_PROJECT_SOURCE_FILES = 5
 const MAX_PROJECT_SOURCE_BYTES = 20 * 1024 * 1024
+const MAX_DESKTOP_REASONING_STEPS = 20
+const MAX_DESKTOP_REASONING_STEP_LENGTH = 2_000
 
 const reasoningEffortLabels: Record<ReasoningEffort, string> = {
   ultra: "Ultra",
@@ -1777,6 +1778,8 @@ function ChatWorkspace() {
     }))
     let streamedContent = ""
     let persistedContent = ""
+    const streamedCommentaryByItem = new Map<string, string>()
+    let persistedReasoningSteps: string[] = []
     let streamTimer: ReturnType<typeof setTimeout> | null = null
     let streamPersistenceAvailable = true
     let streamWrite = Promise.resolve()
@@ -1786,18 +1789,36 @@ function ChatWorkspace() {
       requestId,
     }
 
+    const getStreamedReasoningSteps = () =>
+      Array.from(streamedCommentaryByItem.values())
+        .map((step) => step.trim().slice(0, MAX_DESKTOP_REASONING_STEP_LENGTH))
+        .filter(Boolean)
+        .slice(0, MAX_DESKTOP_REASONING_STEPS)
+
     // Serialize snapshots so a slower mutation cannot overwrite newer text.
     const queueStreamWrite = () => {
-      if (!streamPersistenceAvailable || streamedContent === persistedContent)
+      const reasoningStepsToPersist = getStreamedReasoningSteps()
+      if (
+        !streamPersistenceAvailable ||
+        (streamedContent === persistedContent &&
+          reasoningStepsToPersist.length === persistedReasoningSteps.length &&
+          reasoningStepsToPersist.every(
+            (step, index) => step === persistedReasoningSteps[index]
+          ))
+      )
         return
       const contentToPersist = streamedContent
       persistedContent = contentToPersist
+      persistedReasoningSteps = reasoningStepsToPersist
       streamWrite = streamWrite.then(async () => {
         if (!streamPersistenceAvailable) return
         try {
           await streamDesktopCodexResponse({
             conversationId: targetConversationId,
             content: contentToPersist,
+            ...(reasoningStepsToPersist.length
+              ? { reasoningSteps: reasoningStepsToPersist }
+              : {}),
           })
         } catch {
           streamPersistenceAvailable = false
@@ -1850,7 +1871,12 @@ function ChatWorkspace() {
           ],
         },
         (delta) => {
-          streamedContent += delta
+          if (delta.phase === "commentary")
+            streamedCommentaryByItem.set(
+              delta.itemId,
+              (streamedCommentaryByItem.get(delta.itemId) ?? "") + delta.delta
+            )
+          else streamedContent += delta.delta
           if (!streamTimer)
             streamTimer = setTimeout(() => {
               streamTimer = null
@@ -4029,19 +4055,22 @@ function MessageAreaContent({
                         !hasReasoning &&
                         !hasTerminalRuns &&
                         !hasUi) ? (
-                      <div
-                        aria-label="Thinking"
-                        className="text-sm text-muted-foreground"
-                        role="status"
-                      >
-                        <TextShimmer
-                          as="span"
-                          baseColor="var(--muted-foreground)"
-                          duration={2}
-                          shimmerColor="var(--foreground)"
-                        >
+                      <div>
+                        <span className="sr-only" role="status">
                           Thinking
-                        </TextShimmer>
+                        </span>
+                        <ReasoningSteps className="max-w-full border">
+                          <ReasoningStepsTrigger>
+                            Thinking
+                          </ReasoningStepsTrigger>
+                          <ReasoningStepsContent>
+                            <ReasoningStep
+                              id={`${message._id}-pending`}
+                              label="Preparing response"
+                              status="active"
+                            />
+                          </ReasoningStepsContent>
+                        </ReasoningSteps>
                       </div>
                     ) : message.status === "failed" ? (
                       message.errorCode === "insufficient_credits" ? (
@@ -4084,7 +4113,9 @@ function MessageAreaContent({
                       <div className="space-y-3">
                         {message.reasoningSteps?.length ? (
                           <ReasoningSteps className="max-w-full border">
-                            <ReasoningStepsTrigger />
+                            <ReasoningStepsTrigger>
+                              {isStreaming ? "Thinking" : "Reasoning"}
+                            </ReasoningStepsTrigger>
                             <ReasoningStepsContent>
                               {message.reasoningSteps.map((step, index) => (
                                 <ReasoningStep

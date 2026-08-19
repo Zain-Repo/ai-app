@@ -5,6 +5,8 @@ import {
   CodexAppServer,
   isDesktopCodexReasoningEffort,
   parseAgentMessageDelta,
+  parseAgentMessageStart,
+  parseCompletedCodexResponse,
   parseDesktopCodexModels,
   selectCompletedTurnItems,
 } from "./codex-app-server"
@@ -173,10 +175,15 @@ describe("Codex app-server protocol", () => {
     expect(
       parseAgentMessageDelta(
         "item/agentMessage/delta",
-        { delta: "Hello", threadId: "thread-1", turnId: "turn-1" },
+        {
+          delta: "Hello",
+          itemId: "message-1",
+          threadId: "thread-1",
+          turnId: "turn-1",
+        },
         "thread-1"
       )
-    ).toBe("Hello")
+    ).toEqual({ delta: "Hello", itemId: "message-1" })
     expect(
       parseAgentMessageDelta(
         "item/agentMessage/delta",
@@ -191,6 +198,89 @@ describe("Codex app-server protocol", () => {
         "thread-1"
       )
     ).toBeNull()
+  })
+
+  it("classifies commentary and final answer message items", () => {
+    expect(
+      parseAgentMessageStart(
+        "item/started",
+        {
+          item: {
+            id: "commentary-1",
+            phase: "commentary",
+            text: "",
+            type: "agentMessage",
+          },
+          threadId: "thread-1",
+        },
+        "thread-1"
+      )
+    ).toEqual({ itemId: "commentary-1", phase: "commentary" })
+    expect(
+      parseAgentMessageStart(
+        "item/started",
+        {
+          item: {
+            id: "answer-1",
+            phase: "final_answer",
+            text: "",
+            type: "agentMessage",
+          },
+          threadId: "thread-1",
+        },
+        "thread-1"
+      )
+    ).toEqual({ itemId: "answer-1", phase: "final_answer" })
+    expect(
+      parseAgentMessageStart(
+        "item/started",
+        {
+          item: {
+            id: "legacy-1",
+            phase: null,
+            text: "",
+            type: "agentMessage",
+          },
+          threadId: "thread-1",
+        },
+        "thread-1"
+      )
+    ).toEqual({ itemId: "legacy-1", phase: null })
+  })
+
+  it("separates commentary from the completed final answer", () => {
+    expect(
+      parseCompletedCodexResponse([
+        {
+          id: "commentary-1",
+          phase: "commentary",
+          text: "I am checking the available models.",
+          type: "agentMessage",
+        },
+        {
+          id: "reasoning-1",
+          summary: ["Compared current capabilities"],
+          type: "reasoning",
+        },
+        {
+          id: "answer-1",
+          phase: "final_answer",
+          text: "Use the image model.",
+          type: "agentMessage",
+        },
+      ])
+    ).toEqual({
+      content: "Use the image model.",
+      reasoningSteps: [
+        "I am checking the available models.",
+        "Compared current capabilities",
+      ],
+    })
+    expect(
+      parseCompletedCodexResponse([
+        { id: "legacy-1", text: "Legacy answer", type: "agentMessage" },
+      ])
+    ).toEqual({ content: "Legacy answer", reasoningSteps: [] })
   })
 
   it("preserves model reasoning efforts from model/list", () => {
