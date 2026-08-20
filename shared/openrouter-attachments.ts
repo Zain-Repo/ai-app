@@ -3,7 +3,8 @@ export type AttachmentDescriptor = {
   name: string
 }
 
-export type OpenRouterAttachmentKind = "binary" | "image" | "pdf" | "text"
+export type OpenRouterAttachmentKind =
+  "audio" | "binary" | "image" | "pdf" | "text" | "video"
 
 const PDF_MEDIA_TYPE = "application/pdf"
 const DEFAULT_BINARY_MEDIA_TYPE = "application/octet-stream"
@@ -114,6 +115,8 @@ export function classifyOpenRouterAttachment({
   const mediaType = normalizeMediaType(contentType)
   if (mediaType === PDF_MEDIA_TYPE) return "pdf"
   if (IMAGE_MEDIA_TYPES.has(mediaType)) return "image"
+  if (mediaType.startsWith("audio/")) return "audio"
+  if (mediaType.startsWith("video/")) return "video"
   if (mediaType.startsWith("text/") || TEXT_MEDIA_TYPES.has(mediaType))
     return "text"
 
@@ -164,6 +167,10 @@ export function getOpenRouterAttachmentCompatibilityError(
     const kind = classifyOpenRouterAttachment(attachment)
     if (kind === "image" && !modalities.has("image"))
       return `${modelLabel} cannot read image attachments. Choose a model with image input or remove ${JSON.stringify(attachment.name)}.`
+    if (kind === "audio" && !modalities.has("audio"))
+      return `${modelLabel} cannot read audio attachments. Choose a model with audio input or remove ${JSON.stringify(attachment.name)}.`
+    if (kind === "video" && !modalities.has("video"))
+      return `${modelLabel} cannot read video attachments. Choose a model with video input or remove ${JSON.stringify(attachment.name)}.`
     if (kind === "binary" && !modalities.has("file"))
       return `${modelLabel} cannot read ${JSON.stringify(attachment.name)}. Choose a model with file input, or attach a PDF or text-based file instead.`
   }
