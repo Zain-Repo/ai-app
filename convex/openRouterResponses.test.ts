@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
-import { APICallError } from "ai"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
+import { APICallError, generateText } from "ai"
 
 import type { Id } from "./_generated/dataModel"
 import {
@@ -8,10 +9,14 @@ import {
   addGenerationContexts,
   classifyProviderFailure,
   generateOpenRouterImage,
+  getOpenRouterMessageAttachmentCompatibilityError,
   getOpenRouterModelSettings,
   getPrivateOpenRouterEmbeddingSettings,
   inlineTextAttachments,
+  loadOpenRouterModelCapabilities,
   loadOpenRouterModelSupportsTools,
+  loadProviderAttachmentData,
+  MAX_PROVIDER_ATTACHMENT_BYTES,
   normalizeGeneratedTitle,
   parseOpenRouterImageResponse,
   readProjectSourceForIndexing,
@@ -220,6 +225,52 @@ describe("AI SDK provider bridge", () => {
     expect(hydrated[1]?.content).toContain(skill)
   })
 
+  it("does not read historical text files after the inline budget is spent", async () => {
+    const historicalStorageId = "kg2historical-full" as Id<"_storage">
+    const currentStorageId = "kg2current-full" as Id<"_storage">
+    const read = vi.fn(async (storageId: Id<"_storage">) =>
+      storageId === currentStorageId
+        ? new Blob(["C".repeat(500_000)])
+        : new Blob(["H".repeat(500_000)])
+    )
+    const hydrated = await inlineTextAttachments(
+      [
+        {
+          attachments: [
+            {
+              contentType: "text/plain",
+              name: "historical.txt",
+              storageId: historicalStorageId,
+              url: "https://files.example/historical.txt",
+            },
+          ],
+          content: "Earlier request",
+          role: "user",
+        },
+        {
+          attachments: [
+            {
+              contentType: "text/plain",
+              name: "current.txt",
+              storageId: currentStorageId,
+              url: "https://files.example/current.txt",
+            },
+          ],
+          content: "Current request",
+          role: "user",
+        },
+      ],
+      read
+    )
+
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith(currentStorageId)
+    expect(hydrated[0]?.content).toContain(
+      'Referenced file "historical.txt":\n--- BEGIN FILE ---\n[File truncated]\n--- END FILE ---'
+    )
+    expect(hydrated[1]?.content).toContain("C".repeat(500_000))
+  })
+
   it("streams the full source fingerprint while retaining only indexable text", async () => {
     const content = `${"first line\n".repeat(
       Math.ceil(MAX_PROJECT_SOURCE_TEXT_CHARS / 11)
@@ -335,12 +386,19 @@ describe("AI SDK provider bridge", () => {
           content: [
             { text: "Review these files", type: "text" },
             {
-              image: new URL("https://files.example/screen.png"),
+              data: {
+                type: "url",
+                url: new URL("https://files.example/screen.png"),
+              },
+              filename: "screen.png",
               mediaType: "image/png",
-              type: "image",
+              type: "file",
             },
             {
-              data: new URL("https://files.example/brief.pdf"),
+              data: {
+                type: "url",
+                url: new URL("https://files.example/brief.pdf"),
+              },
               filename: "brief.pdf",
               mediaType: "application/pdf",
               type: "file",
@@ -349,6 +407,210 @@ describe("AI SDK provider bridge", () => {
         },
       ],
     })
+  })
+
+  it("loads provider files as canonical AI SDK data parts", async () => {
+    const imageStorageId = "kg2image" as Id<"_storage">
+    const messages = await loadProviderAttachmentData(
+      [
+        {
+          attachments: [
+            {
+              contentType: "image/png",
+              name: "screen.png",
+              storageId: imageStorageId,
+              url: "http://127.0.0.1:3210/api/storage/screen",
+            },
+          ],
+          content: "",
+          role: "user",
+        },
+      ],
+      async () => new Blob([Uint8Array.from([1, 2, 3])])
+    )
+
+    expect(toModelPrompt(messages).messages).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            data: {
+              data: Uint8Array.from([1, 2, 3]),
+              type: "data",
+            },
+            filename: "screen.png",
+            mediaType: "image/png",
+            type: "file",
+          },
+        ],
+      },
+    ])
+  })
+
+  it("turns unavailable stored attachments into a safe provider failure", async () => {
+    const cause = await loadProviderAttachmentData(
+      [
+        {
+          attachments: [
+            {
+              contentType: "image/png",
+              name: "missing.png",
+              storageId: "kg2missing" as Id<"_storage">,
+              url: "https://files.example/missing.png",
+            },
+          ],
+          content: "Review this image",
+          role: "user",
+        },
+      ],
+      async () => null
+    ).catch((error: unknown) => error)
+
+    expect(classifyProviderFailure(cause, "openrouter")).toEqual({
+      code: "invalid_request",
+      needsAuthentication: false,
+      safeMessage:
+        '"missing.png" is no longer available. Remove it and try again.',
+    })
+  })
+
+  it("turns invalid text encodings into a safe provider failure", async () => {
+    const cause = await inlineTextAttachments(
+      [
+        {
+          attachments: [
+            {
+              contentType: "application/octet-stream",
+              name: "legacy.md",
+              storageId: "kg2legacy" as Id<"_storage">,
+              url: "https://files.example/legacy.md",
+            },
+          ],
+          content: "Review this file",
+          role: "user",
+        },
+      ],
+      async () => new Blob([Uint8Array.from([0xff, 0xfe])])
+    ).catch((error: unknown) => error)
+
+    expect(classifyProviderFailure(cause, "openrouter")).toEqual({
+      code: "invalid_request",
+      needsAuthentication: false,
+      safeMessage:
+        '"legacy.md" is not valid UTF-8 text. Save it as UTF-8 or remove it and try again.',
+    })
+  })
+
+  it("rejects an excessive conversation attachment total before loading blobs", async () => {
+    const read = vi.fn(async () => new Blob([Uint8Array.from([1])]))
+    const cause = await loadProviderAttachmentData(
+      [
+        {
+          attachments: [
+            {
+              contentType: "image/png",
+              name: "first.png",
+              size: MAX_PROVIDER_ATTACHMENT_BYTES,
+              storageId: "kg2first" as Id<"_storage">,
+              url: "https://files.example/first.png",
+            },
+            {
+              contentType: "application/pdf",
+              name: "second.pdf",
+              size: 1,
+              storageId: "kg2second" as Id<"_storage">,
+              url: "https://files.example/second.pdf",
+            },
+          ],
+          content: "Review these files",
+          role: "user",
+        },
+      ],
+      read
+    ).catch((error: unknown) => error)
+
+    expect(read).not.toHaveBeenCalled()
+    expect(classifyProviderFailure(cause, "openrouter")).toEqual({
+      code: "invalid_request",
+      needsAuthentication: false,
+      safeMessage:
+        "Attachments included in this conversation exceed the 40 MB model limit. Start a new conversation with fewer files and try again.",
+    })
+  })
+
+  it("serializes stored image and PDF bytes through the OpenRouter provider", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              finish_reason: "stop",
+              index: 0,
+              message: { content: "Done", role: "assistant" },
+            },
+          ],
+          created: 1,
+          id: "generation-test",
+          model: "openai/gpt-4o",
+          object: "chat.completion",
+          usage: {
+            completion_tokens: 1,
+            prompt_tokens: 1,
+            total_tokens: 2,
+          },
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      )
+    )
+    const openrouter = createOpenRouter({
+      apiKey: "test-token",
+      compatibility: "strict",
+      fetch: fetchMock,
+    })
+    const prompt = toModelPrompt([
+      {
+        attachments: [
+          {
+            contentType: "image/png",
+            data: Uint8Array.from([1, 2, 3]),
+            name: "screen.png",
+            url: "http://127.0.0.1:3210/api/storage/screen",
+          },
+          {
+            contentType: "application/pdf",
+            data: Uint8Array.from([4, 5, 6]),
+            name: "brief.pdf",
+            url: "http://127.0.0.1:3210/api/storage/brief",
+          },
+        ],
+        content: "Review these files",
+        role: "user",
+      },
+    ])
+
+    await generateText({
+      model: openrouter("openai/gpt-4o"),
+      ...prompt,
+    })
+
+    const request = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as {
+      messages: Array<{ content: unknown }>
+    }
+    expect(body.messages[0]?.content).toEqual([
+      { text: "Review these files", type: "text" },
+      {
+        image_url: { url: "data:image/png;base64,AQID" },
+        type: "image_url",
+      },
+      {
+        file: {
+          file_data: "data:application/pdf;base64,BAUG",
+          filename: "brief.pdf",
+        },
+        type: "file",
+      },
+    ])
   })
 
   it.each(["", "application/octet-stream"])(
@@ -487,19 +749,25 @@ describe("AI SDK provider bridge", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: { supported_parameters: ["temperature", "tools"] },
+          data: {
+            architecture: { input_modalities: ["text", "image", "file"] },
+            supported_parameters: ["temperature", "tools"],
+          },
         })
       )
     )
     vi.stubGlobal("fetch", fetchMock)
 
     await expect(
-      loadOpenRouterModelSupportsTools(
+      loadOpenRouterModelCapabilities(
         "test-token",
         "openai/gpt-4",
         new AbortController().signal
       )
-    ).resolves.toBe(true)
+    ).resolves.toEqual({
+      inputModalities: ["text", "image", "file"],
+      supportsTools: true,
+    })
     expect(fetchMock).toHaveBeenCalledWith(
       "https://openrouter.ai/api/v1/model/openai/gpt-4",
       expect.objectContaining({
@@ -525,6 +793,65 @@ describe("AI SDK provider bridge", () => {
     await expect(
       loadOpenRouterModelSupportsTools("test-token", "openai/gpt-4")
     ).resolves.toBe(false)
+  })
+
+  it("preserves authentication failures from the model metadata request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 401 }))
+    )
+
+    const cause = await loadOpenRouterModelCapabilities(
+      "expired-token",
+      "openai/gpt-4"
+    ).catch((error: unknown) => error)
+
+    expect(classifyProviderFailure(cause, "openrouter")).toEqual({
+      code: "authentication",
+      needsAuthentication: true,
+      safeMessage:
+        "OpenRouter authentication failed. Reconnect the provider and try again.",
+      status: 401,
+    })
+  })
+
+  it("rejects incompatible historical attachments in the backend", () => {
+    const messages = [
+      {
+        attachments: [
+          {
+            contentType: "image/png",
+            name: "historical.png",
+            url: "https://files.example/historical.png",
+          },
+        ],
+        content: "Earlier request",
+        role: "user" as const,
+      },
+      { content: "Retry with this model", role: "user" as const },
+    ]
+
+    expect(
+      getOpenRouterMessageAttachmentCompatibilityError(
+        messages,
+        ["text"],
+        "meta-llama/llama-text"
+      )
+    ).toContain("cannot read image attachments")
+    expect(
+      getOpenRouterMessageAttachmentCompatibilityError(
+        messages,
+        ["text", "image"],
+        "openai/gpt-4o"
+      )
+    ).toBeNull()
+    expect(
+      getOpenRouterMessageAttachmentCompatibilityError(
+        messages,
+        null,
+        "openai/gpt-4o"
+      )
+    ).toContain("could not verify")
   })
 
   it("classifies streamed OpenRouter errors without retaining raw details", () => {

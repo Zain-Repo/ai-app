@@ -386,6 +386,14 @@ export function parseOpenRouterModelSupportsTools(value: unknown) {
   return supportedParameters ? supportedParameters.includes("tools") : null
 }
 
+export function parseOpenRouterModelInputModalities(value: unknown) {
+  const model = isRecord(value) && isRecord(value.data) ? value.data : value
+  if (!isRecord(model) || !isRecord(model.architecture)) return null
+  return (
+    readOptionalStringArray(model.architecture.input_modalities, 32) ?? null
+  )
+}
+
 export function parseOpenRouterCreditStatus(
   value: unknown
 ): CreditStatus | null {

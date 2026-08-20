@@ -12,6 +12,7 @@ import {
   parseOpenAIModels,
   parseOpenRouterCreditStatus,
   parseOpenRouterEndpoints,
+  parseOpenRouterModelInputModalities,
   parseOpenRouterModelSupportsTools,
   parseOpenRouterModels,
   resolveRealtimeVoice,
@@ -216,6 +217,22 @@ describe("OpenRouter model catalog", () => {
       })
     ).toBeNull()
     expect(parseOpenRouterModelSupportsTools({ data: {} })).toBeNull()
+  })
+
+  it("reads input modalities only from valid current model metadata", () => {
+    expect(
+      parseOpenRouterModelInputModalities({
+        data: {
+          architecture: { input_modalities: ["text", "image", "file"] },
+        },
+      })
+    ).toEqual(["text", "image", "file"])
+    expect(
+      parseOpenRouterModelInputModalities({
+        data: { architecture: { input_modalities: ["text", 42] } },
+      })
+    ).toBeNull()
+    expect(parseOpenRouterModelInputModalities({ data: {} })).toBeNull()
   })
 })
 

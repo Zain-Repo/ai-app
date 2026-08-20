@@ -79,6 +79,31 @@ describe("OpenRouter attachment compatibility", () => {
     )
   })
 
+  it.each([
+    ["audio/mpeg", "recording.mp3", "audio"],
+    ["video/mp4", "demo.mp4", "video"],
+  ])(
+    "matches %s attachments to the model's %s input capability",
+    (contentType, name, modality) => {
+      const attachment = { contentType, name }
+      expect(classifyOpenRouterAttachment(attachment)).toBe(modality)
+      expect(
+        getOpenRouterAttachmentCompatibilityError(
+          [attachment],
+          ["text", modality],
+          "Multimodal model"
+        )
+      ).toBeNull()
+      expect(
+        getOpenRouterAttachmentCompatibilityError(
+          [attachment],
+          ["text"],
+          "Text model"
+        )
+      ).toContain(`cannot read ${modality} attachments`)
+    }
+  )
+
   it("rejects unknown binary files unless the model advertises file input", () => {
     const attachment = {
       contentType: "application/zip",

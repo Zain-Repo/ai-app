@@ -26,6 +26,7 @@ import {
 } from "./providerEmbeddings"
 import {
   getOpenRouterModelUrl,
+  parseOpenRouterModelInputModalities,
   parseOpenRouterModelSupportsTools,
 } from "./providerOAuth"
 import {
@@ -56,6 +57,7 @@ import { finishTerminalRun, startTerminalRun } from "./terminalPolicy"
 import {
   classifyOpenRouterAttachment,
   decodeOpenRouterTextAttachment,
+  getOpenRouterAttachmentCompatibilityError,
   resolveOpenRouterAttachmentMediaType,
 } from "../shared/openrouter-attachments"
 import type { StoredTerminalRun } from "./terminalPolicy"
@@ -84,6 +86,7 @@ const PROJECT_EMBEDDING_BATCH_SIZE = 32
 const MAX_PROJECT_PDF_PAGES = 250
 const MAX_PROJECT_PDF_IMAGE_PIXELS = 16_777_216
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
+export const MAX_PROVIDER_ATTACHMENT_BYTES = MAX_ATTACHMENT_BYTES * 2
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
 const MAX_OPENROUTER_MODEL_METADATA_BYTES = 512 * 1024
 const OPENROUTER_MODEL_METADATA_TIMEOUT_MS = 5_000
@@ -131,6 +134,7 @@ type ReasoningEffort =
 type ProviderMessage = {
   attachments?: Array<{
     contentType: string
+    data?: Uint8Array
     name: string
     size?: number
     storageId?: Id<"_storage">
@@ -217,6 +221,14 @@ class OpenRouterImageError extends Error {
     super("OpenRouter image generation failed")
   }
 }
+
+class OpenRouterModelMetadataError extends Error {
+  constructor(readonly statusCode: number) {
+    super("OpenRouter model metadata request failed")
+  }
+}
+
+class ProviderInputError extends Error {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -318,6 +330,12 @@ export function classifyProviderFailure(
   cause: unknown,
   provider?: "openrouter" | "openai" | "fal"
 ): ProviderFailure {
+  if (cause instanceof ProviderInputError)
+    return {
+      code: "invalid_request",
+      needsAuthentication: false,
+      safeMessage: cause.message,
+    }
   const apiError = APICallError.isInstance(cause) ? cause : undefined
   const structuredError =
     provider === "openrouter"
@@ -326,7 +344,9 @@ export function classifyProviderFailure(
   const status =
     apiError?.statusCode ??
     structuredError?.status ??
-    (cause instanceof OpenRouterImageError || cause instanceof FalApiError
+    (cause instanceof OpenRouterImageError ||
+    cause instanceof OpenRouterModelMetadataError ||
+    cause instanceof FalApiError
       ? cause.statusCode
       : undefined)
   const errorType = structuredError?.errorType
@@ -418,7 +438,7 @@ export function classifyProviderFailure(
   }
 }
 
-export async function loadOpenRouterModelSupportsTools(
+export async function loadOpenRouterModelCapabilities(
   token: string,
   model: string,
   signal?: AbortSignal
@@ -428,17 +448,30 @@ export async function loadOpenRouterModelSupportsTools(
       headers: { Authorization: `Bearer ${token}` },
       signal: timeoutSignal(OPENROUTER_MODEL_METADATA_TIMEOUT_MS, signal),
     })
-    if (!response.ok) return false
+    if (!response.ok) throw new OpenRouterModelMetadataError(response.status)
     const value = await readBoundedJson(
       response,
       MAX_OPENROUTER_MODEL_METADATA_BYTES,
       "OpenRouter model metadata was invalid"
     )
-    return parseOpenRouterModelSupportsTools(value) === true
-  } catch {
-    // Capability lookup must fail closed to universally supported plain text.
-    return false
+    return {
+      inputModalities: parseOpenRouterModelInputModalities(value),
+      supportsTools: parseOpenRouterModelSupportsTools(value) === true,
+    }
+  } catch (cause) {
+    if (cause instanceof OpenRouterModelMetadataError) throw cause
+    // Capability lookup must fail closed to universally supported text and PDF.
+    return { inputModalities: null, supportsTools: false }
   }
+}
+
+export async function loadOpenRouterModelSupportsTools(
+  token: string,
+  model: string,
+  signal?: AbortSignal
+) {
+  return (await loadOpenRouterModelCapabilities(token, model, signal))
+    .supportsTools
 }
 
 export function selectOpenRouterTools<T extends Record<string, unknown>>(
@@ -616,11 +649,23 @@ export async function inlineTextAttachments(
         attachments.push(attachment)
         continue
       }
+      if (remaining === 0) {
+        textFiles.push(
+          `Referenced file ${JSON.stringify(attachment.name)}:\n--- BEGIN FILE ---\n[File truncated]\n--- END FILE ---`
+        )
+        continue
+      }
 
       const blob = await read(attachment.storageId)
-      const text = blob
-        ? decodeOpenRouterTextAttachment(await blob.arrayBuffer())
-        : ""
+      let text = ""
+      if (blob)
+        try {
+          text = decodeOpenRouterTextAttachment(await blob.arrayBuffer())
+        } catch {
+          throw new ProviderInputError(
+            `${JSON.stringify(attachment.name)} is not valid UTF-8 text. Save it as UTF-8 or remove it and try again.`
+          )
+        }
       const excerpt = text.slice(0, remaining)
       remaining -= excerpt.length
       textFiles.push(
@@ -636,6 +681,99 @@ export async function inlineTextAttachments(
     }
   }
   return hydrated
+}
+
+export async function loadProviderAttachmentData(
+  messages: ProviderMessage[],
+  read: (storageId: Id<"_storage">) => Promise<Blob | null>
+) {
+  const userAttachments = messages.flatMap((message) =>
+    message.role === "user" ? (message.attachments ?? []) : []
+  )
+  const declaredBytes = userAttachments.reduce(
+    (total, attachment) => total + (attachment.size ?? 0),
+    0
+  )
+  if (declaredBytes > MAX_PROVIDER_ATTACHMENT_BYTES)
+    throw new ProviderInputError(
+      "Attachments included in this conversation exceed the 40 MB model limit. Start a new conversation with fewer files and try again."
+    )
+
+  let loadedBytes = 0
+  const hydrated: ProviderMessage[] = []
+  for (const message of messages) {
+    if (message.role !== "user" || !message.attachments?.length) {
+      hydrated.push(message)
+      continue
+    }
+
+    const attachments: NonNullable<ProviderMessage["attachments"]> = []
+    for (const attachment of message.attachments) {
+      if (attachment.data) {
+        loadedBytes += attachment.data.byteLength
+        if (loadedBytes > MAX_PROVIDER_ATTACHMENT_BYTES)
+          throw new ProviderInputError(
+            "Attachments included in this conversation exceed the 40 MB model limit. Start a new conversation with fewer files and try again."
+          )
+        attachments.push(attachment)
+        continue
+      }
+      if (!attachment.storageId) {
+        attachments.push(attachment)
+        continue
+      }
+
+      // Read sequentially and enforce an aggregate budget so long conversations
+      // cannot create an unbounded burst of in-memory attachment data.
+      const blob = await read(attachment.storageId)
+      if (!blob)
+        throw new ProviderInputError(
+          `${JSON.stringify(attachment.name)} is no longer available. Remove it and try again.`
+        )
+      if (blob.size > MAX_ATTACHMENT_BYTES)
+        throw new ProviderInputError(
+          `${JSON.stringify(attachment.name)} is too large to send. Remove it and try again.`
+        )
+      loadedBytes += blob.size
+      if (loadedBytes > MAX_PROVIDER_ATTACHMENT_BYTES)
+        throw new ProviderInputError(
+          "Attachments included in this conversation exceed the 40 MB model limit. Start a new conversation with fewer files and try again."
+        )
+      attachments.push({
+        ...attachment,
+        data: new Uint8Array(await blob.arrayBuffer()),
+      })
+    }
+    hydrated.push({ ...message, attachments })
+  }
+  return hydrated
+}
+
+export function getOpenRouterMessageAttachmentCompatibilityError(
+  messages: ProviderMessage[],
+  inputModalities: string[] | null,
+  modelLabel: string
+) {
+  const attachments = messages.flatMap((message) =>
+    message.role === "user" ? (message.attachments ?? []) : []
+  )
+  const capabilityDependentAttachments = attachments.filter((attachment) => {
+    const kind = classifyOpenRouterAttachment(attachment)
+    return (
+      kind === "audio" ||
+      kind === "binary" ||
+      kind === "image" ||
+      kind === "video"
+    )
+  })
+  if (!capabilityDependentAttachments.length) return null
+  if (!inputModalities)
+    return `OpenRouter could not verify whether ${modelLabel} supports these attachments. Try again or choose a different model.`
+  return getOpenRouterAttachmentCompatibilityError(
+    capabilityDependentAttachments,
+    inputModalities,
+    modelLabel
+  )
 }
 
 export function addGenerationContexts(
@@ -716,21 +854,21 @@ export function toModelPrompt(messages: ProviderMessage[]) {
       return {
         role: "user",
         content: [
-          { type: "text", text: message.content },
-          ...message.attachments.map((attachment) =>
-            classifyOpenRouterAttachment(attachment) === "image"
-              ? {
-                  type: "image" as const,
-                  image: new URL(attachment.url),
-                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
-                }
-              : {
-                  type: "file" as const,
-                  data: new URL(attachment.url),
-                  filename: attachment.name,
-                  mediaType: resolveOpenRouterAttachmentMediaType(attachment),
-                }
-          ),
+          ...(message.content
+            ? [{ type: "text" as const, text: message.content }]
+            : []),
+          ...message.attachments.map((attachment) => ({
+            type: "file" as const,
+            data:
+              attachment.data === undefined
+                ? {
+                    type: "url" as const,
+                    url: new URL(attachment.url),
+                  }
+                : { type: "data" as const, data: attachment.data },
+            filename: attachment.name,
+            mediaType: resolveOpenRouterAttachmentMediaType(attachment),
+          })),
         ],
       }
     })
@@ -1383,23 +1521,43 @@ export const generate = internalAction({
             context.messages,
             context.projectSourceFallbackAttachments
           )
-      const hydratedMessages = await inlineTextAttachments(
+      const textHydratedMessages = await inlineTextAttachments(
         messagesWithProjectSourceFallback,
         async (storageId) => await ctx.storage.get(storageId)
       )
-      const messages = addGenerationContexts(
-        hydratedMessages,
+      const messagesWithContexts = addGenerationContexts(
+        textHydratedMessages,
         agentMemoryContext.referenceText,
         projectSourceContext
       )
+      const openRouterCapabilities =
+        context.provider === "openrouter"
+          ? await loadOpenRouterModelCapabilities(
+              token,
+              context.model,
+              abortController.signal
+            )
+          : null
+      const attachmentCompatibilityError = openRouterCapabilities
+        ? getOpenRouterMessageAttachmentCompatibilityError(
+            messagesWithContexts,
+            openRouterCapabilities.inputModalities,
+            context.model
+          )
+        : null
+      if (attachmentCompatibilityError)
+        throw new ProviderInputError(attachmentCompatibilityError)
+      const messages =
+        context.provider === "openrouter"
+          ? await loadProviderAttachmentData(
+              messagesWithContexts,
+              async (storageId) => await ctx.storage.get(storageId)
+            )
+          : messagesWithContexts
       const prompt = toModelPrompt(messages)
       const supportsTools =
         context.provider !== "openrouter" ||
-        (await loadOpenRouterModelSupportsTools(
-          token,
-          context.model,
-          abortController.signal
-        ))
+        openRouterCapabilities?.supportsTools === true
       const terminalSandbox = supportsTools
         ? createTerminalSandboxSession({
             conversationId: args.conversationId,
