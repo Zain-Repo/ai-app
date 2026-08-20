@@ -686,6 +686,8 @@ export function getStaticImageModelCapability(
   modelId: string
 ) {
   if (provider === "fal") return falCapabilitiesByModel.get(modelId) ?? null
+  if (provider === "ai_gateway")
+    return gatewayCapabilitiesByModel.get(modelId) ?? null
   return null
 }
 
