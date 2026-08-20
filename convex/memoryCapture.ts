@@ -4,7 +4,7 @@ import type { Id } from "./_generated/dataModel"
 import { internal } from "./_generated/api"
 import { internalMutation, internalQuery } from "./_generated/server"
 import type { MutationCtx, QueryCtx } from "./_generated/server"
-import { isSafeDurableMemory, isSensitiveMemory, normalizeEditedMemory } from "./memoryPolicy"
+import { isSafeDurableMemory, isSensitiveMemory, MEMORY_EMBEDDING_DIMENSIONS, normalizeEditedMemory } from "./memoryPolicy"
 import {
   createMemoryTombstoneHash,
   getMemoryScopeKey,
@@ -458,7 +458,7 @@ export const applySearchDocuments = internalMutation({
       profile.ownerId !== args.ownerId ||
       profile.status !== "active" ||
       profile.policyRevision !== args.policyRevision ||
-      profile.dimensions !== 1536
+      profile.dimensions !== MEMORY_EMBEDDING_DIMENSIONS
     ) {
       return 0
     }
@@ -466,7 +466,7 @@ export const applySearchDocuments = internalMutation({
     const now = Date.now()
     for (const document of args.documents.slice(0, 5)) {
       if (
-        document.embedding.length !== 1536 ||
+        document.embedding.length !== MEMORY_EMBEDDING_DIMENSIONS ||
         document.embedding.some((value) => !Number.isFinite(value))
       ) {
         continue

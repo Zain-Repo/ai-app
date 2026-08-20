@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest"
 
 import {
   buildMemoryContext,
+  getMemoryProcessingPolicy,
+  isMemoryProcessingProfileStale,
   MEMORY_EMBEDDING_DIMENSIONS,
+  MEMORY_EMBEDDING_MODEL,
   memoryExtractionSchema,
   parseEmbeddingResponse,
   parseMemoryExtraction,
   selectRelevantMemoryFacts,
   memoryExtractionInstructions,
+  toFixedDimensionEmbedding,
 } from "./memoryPolicy"
 
 describe("memory policy", () => {
@@ -73,6 +77,7 @@ describe("memory policy", () => {
       { length: MEMORY_EMBEDDING_DIMENSIONS },
       (_, index) => index / MEMORY_EMBEDDING_DIMENSIONS
     )
+    const normalized = toFixedDimensionEmbedding(vector)
     expect(
       parseEmbeddingResponse(
         {
@@ -83,7 +88,7 @@ describe("memory policy", () => {
         },
         2
       )
-    ).toEqual([vector, vector])
+    ).toEqual([normalized, normalized])
     expect(
       parseEmbeddingResponse(
         {
@@ -95,6 +100,32 @@ describe("memory policy", () => {
         2
       )
     ).toBeNull()
+  })
+
+  it("pins OpenRouter memory embeddings to Qwen3 8B at 1536 dimensions", () => {
+    const policy = getMemoryProcessingPolicy("openrouter")
+    expect(policy.embeddingModel).toBe(MEMORY_EMBEDDING_MODEL)
+    expect(policy.embeddingModel).toBe("qwen/qwen3-embedding-8b")
+    expect(policy.dimensions).toBe(1536)
+    expect(
+      isMemoryProcessingProfileStale({
+        dimensions: 1536,
+        embeddingModel: "openai/text-embedding-3-small",
+        extractionModel: policy.extractionModel,
+        provider: "openrouter",
+      })
+    ).toBe(true)
+  })
+
+  it("reduces native Qwen vectors to the Convex index size", () => {
+    const native = Array.from({ length: 4096 }, (_, index) =>
+      index === 0 ? 3 : 0
+    )
+    expect(toFixedDimensionEmbedding(native, 1536)).toEqual([
+      1,
+      ...Array.from({ length: 1535 }, () => 0),
+    ])
+    expect(toFixedDimensionEmbedding([1, 2], 1536)).toBeNull()
   })
 
   it("labels all recalled memory as quoted untrusted data", () => {
