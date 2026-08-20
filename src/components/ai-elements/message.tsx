@@ -18,6 +18,7 @@ import {
 } from "@/components/ai-elements/terminal"
 import { cn } from "@/lib/utils"
 import { executeBrowserPython } from "@/lib/browser-python"
+import { normalizeMarkdownMath } from "@/lib/markdown-math"
 import { createMathPlugin } from "@streamdown/math"
 import { PlayIcon, SquareIcon } from "lucide-react"
 import type { ComponentProps, HTMLAttributes } from "react"
@@ -202,7 +203,7 @@ const markdownPlugins = {
 }
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ children, className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "markdown-response size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
@@ -211,7 +212,9 @@ export const MessageResponse = memo(
       components={markdownComponents}
       plugins={markdownPlugins}
       {...props}
-    />
+    >
+      {normalizeMarkdownMath(children ?? "")}
+    </Streamdown>
   ),
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&

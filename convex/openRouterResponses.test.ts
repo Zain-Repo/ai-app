@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
+import { APICallError } from "ai"
 
 import type { Id } from "./_generated/dataModel"
 import {
   addProjectSourceFallbackAttachments,
   addGenerationContexts,
+  classifyProviderFailure,
   generateOpenRouterImage,
   getOpenRouterModelSettings,
   getPrivateOpenRouterEmbeddingSettings,
   inlineTextAttachments,
+  loadOpenRouterModelSupportsTools,
   normalizeGeneratedTitle,
   parseOpenRouterImageResponse,
   readProjectSourceForIndexing,
+  selectOpenRouterTools,
   toModelPrompt,
 } from "./openRouterResponses"
 import { MAX_PROJECT_SOURCE_TEXT_CHARS } from "./projectEmbeddingPolicy"
@@ -169,6 +173,53 @@ describe("AI SDK provider bridge", () => {
     expect(latestContent).toContain("[File truncated]")
   })
 
+  it("reserves inline text budget for the latest file before historical files", async () => {
+    const historicalStorageId = "kg2historical" as Id<"_storage">
+    const currentStorageId = "kg2skill" as Id<"_storage">
+    const skill = "S".repeat(6 * 1024)
+    const readOrder: Id<"_storage">[] = []
+    const hydrated = await inlineTextAttachments(
+      [
+        {
+          attachments: [
+            {
+              contentType: "text/plain",
+              name: "historical.txt",
+              storageId: historicalStorageId,
+              url: "https://files.example/historical.txt",
+            },
+          ],
+          content: "Earlier request",
+          role: "user",
+        },
+        {
+          attachments: [
+            {
+              contentType: "application/octet-stream",
+              name: "SKILL.md",
+              storageId: currentStorageId,
+              url: "https://files.example/SKILL.md",
+            },
+          ],
+          content: "Use my current skill.",
+          role: "user",
+        },
+      ],
+      async (storageId) => {
+        readOrder.push(storageId)
+        return storageId === currentStorageId
+          ? new Blob([skill])
+          : new Blob(["H".repeat(500_000)])
+      }
+    )
+
+    expect(readOrder).toEqual([currentStorageId, historicalStorageId])
+    expect(hydrated).toHaveLength(2)
+    expect(hydrated[0]?.content).toContain("H".repeat(500_000 - skill.length))
+    expect(hydrated[0]?.content).toContain("[File truncated]")
+    expect(hydrated[1]?.content).toContain(skill)
+  })
+
   it("streams the full source fingerprint while retaining only indexable text", async () => {
     const content = `${"first line\n".repeat(
       Math.ceil(MAX_PROJECT_SOURCE_TEXT_CHARS / 11)
@@ -300,6 +351,73 @@ describe("AI SDK provider bridge", () => {
     })
   })
 
+  it.each(["", "application/octet-stream"])(
+    "inlines Markdown identified by filename when storage reports %j",
+    async (contentType) => {
+      const storageId = "kg2markdown" as Id<"_storage">
+      const messages = await inlineTextAttachments(
+        [
+          {
+            attachments: [
+              {
+                contentType,
+                name: "sub-account-notes.md",
+                storageId,
+                url: "https://files.example/sub-account-notes.md",
+              },
+            ],
+            content: "Read this note.",
+            role: "user",
+          },
+        ],
+        async () => new Blob(["# Markdown survives missing MIME metadata"])
+      )
+
+      expect(messages).toEqual([
+        {
+          attachments: [],
+          content:
+            'Read this note.\n\nReferenced file "sub-account-notes.md":\n--- BEGIN FILE ---\n# Markdown survives missing MIME metadata\n--- END FILE ---',
+          role: "user",
+        },
+      ])
+    }
+  )
+
+  it("turns an exact 6 KB octet-stream SKILL.md into ordinary model text", async () => {
+    const skill = "# SKILL.md\n".padEnd(6 * 1024, "x")
+    const messages = await inlineTextAttachments(
+      [
+        {
+          attachments: [
+            {
+              contentType: "application/octet-stream",
+              name: "SKILL.md",
+              storageId: "kg2exactskill" as Id<"_storage">,
+              url: "https://files.example/SKILL.md",
+            },
+          ],
+          content: "Read this skill.",
+          role: "user",
+        },
+      ],
+      async () => new Blob([skill])
+    )
+    const prompt = toModelPrompt(messages)
+
+    expect(new TextEncoder().encode(skill)).toHaveLength(6 * 1024)
+    expect(prompt.messages).toEqual([
+      {
+        content: expect.stringContaining(skill),
+        role: "user",
+      },
+    ])
+    expect(
+      getOpenRouterModelSettings("meta-llama/llama-text", messages)
+    ).not.toHaveProperty("plugins")
+    expect(JSON.stringify(prompt)).not.toContain('"type":"file"')
+  })
+
   it("preserves OpenRouter routing, privacy, and reasoning", () => {
     const messages = [
       {
@@ -363,6 +481,127 @@ describe("AI SDK provider bridge", () => {
         },
       },
     })
+  })
+
+  it("enables optional tools only from trusted current model metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { supported_parameters: ["temperature", "tools"] },
+        })
+      )
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(
+      loadOpenRouterModelSupportsTools(
+        "test-token",
+        "openai/gpt-4",
+        new AbortController().signal
+      )
+    ).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/model/openai/gpt-4",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer test-token" },
+      })
+    )
+    expect(selectOpenRouterTools(true, { renderUi: "tool" })).toEqual({
+      renderUi: "tool",
+    })
+    expect(selectOpenRouterTools(false, { renderUi: "tool" })).toBeUndefined()
+  })
+
+  it("degrades unknown model capability metadata to plain text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ data: { supported_parameters: null } }))
+        )
+    )
+
+    await expect(
+      loadOpenRouterModelSupportsTools("test-token", "openai/gpt-4")
+    ).resolves.toBe(false)
+  })
+
+  it("classifies streamed OpenRouter errors without retaining raw details", () => {
+    const rateLimit = classifyProviderFailure(
+      {
+        code: 429,
+        message: "upstream detail that must not be retained",
+        metadata: {
+          error_type: "rate_limit_exceeded",
+          raw: "private upstream payload",
+        },
+      },
+      "openrouter"
+    )
+    const guardrail = classifyProviderFailure(
+      {
+        code: 403,
+        message: "prompt fragment that must not be retained",
+        metadata: { error_type: "permission_denied" },
+      },
+      "openrouter"
+    )
+    const authentication = classifyProviderFailure(
+      {
+        code: 403,
+        message: "credential detail that must not be retained",
+        metadata: { error_type: "authentication" },
+      },
+      "openrouter"
+    )
+
+    expect(rateLimit).toEqual({
+      code: "rate_limited",
+      errorType: "rate_limit_exceeded",
+      needsAuthentication: false,
+      safeMessage: "OpenRouter rate limit was reached. Try again shortly.",
+      status: 429,
+    })
+    expect(guardrail).toMatchObject({
+      code: "request_blocked",
+      errorType: "permission_denied",
+      needsAuthentication: false,
+      status: 403,
+    })
+    expect(authentication).toMatchObject({
+      code: "authentication",
+      errorType: "authentication",
+      needsAuthentication: true,
+      status: 403,
+    })
+    expect(
+      JSON.stringify([rateLimit, guardrail, authentication])
+    ).not.toContain("upstream")
+    expect(
+      JSON.stringify([rateLimit, guardrail, authentication])
+    ).not.toContain("prompt")
+  })
+
+  it("classifies APICallError authentication without trusting raw bodies", () => {
+    const apiError = new APICallError({
+      message: "raw provider message",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      requestBodyValues: { messages: ["private prompt"] },
+      responseBody: '{"error":{"message":"raw response"}}',
+      statusCode: 401,
+    })
+
+    const failure = classifyProviderFailure(apiError, "openrouter")
+    expect(failure).toEqual({
+      code: "authentication",
+      needsAuthentication: true,
+      safeMessage:
+        "OpenRouter authentication failed. Reconnect the provider and try again.",
+      status: 401,
+    })
+    expect(JSON.stringify(failure)).not.toContain("private prompt")
+    expect(JSON.stringify(failure)).not.toContain("raw response")
   })
 
   it("normalizes prompt-based chat titles", () => {

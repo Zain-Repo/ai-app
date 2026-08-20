@@ -13,7 +13,7 @@
     "desktop:start": "electron-forge start",
     "desktop:codex:smoke": "node scripts/smoke-codex-app-server.mjs",
     "build": "vite build",
-    "deploy": "bun run build && wrangler deploy",
+    "deploy": "convex deploy --cmd \"bun run build\" --cmd-url-env-var-name VITE_CONVEX_URL && wrangler deploy",
     "cf-typegen": "wrangler types",
     "preview": "vite preview",
     "test": "vitest run",
