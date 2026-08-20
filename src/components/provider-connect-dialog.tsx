@@ -27,7 +27,7 @@ import {
   OPENROUTER_PKCE_STORAGE_KEY,
 } from "@/lib/openrouter-oauth"
 
-const providers = [
+export const providers = [
   {
     id: "anthropic",
     name: "Anthropic",
@@ -47,6 +47,13 @@ const providers = [
     name: "xAI",
     mark: "x",
     description: "Direct Grok API access uses an API key",
+    auth: "API key",
+  },
+  {
+    id: "vercel",
+    name: "Vercel",
+    mark: "V",
+    description: "Use Vercel AI Gateway with an API key",
     auth: "API key",
   },
 ] as const
