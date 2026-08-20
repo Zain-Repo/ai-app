@@ -695,6 +695,18 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_name", ["name"]),
 
+  assistantResponseFeedback: defineTable({
+    ownerId: v.id("users"),
+    conversationId: v.id("conversations"),
+    responseMessageId: v.id("messages"),
+    rating: v.union(v.literal("positive"), v.literal("negative")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_response_message_id", ["responseMessageId"])
+    .index("by_conversation_id", ["conversationId"])
+    .index("by_owner_id", ["ownerId"]),
+
   responseMemoryReferences: defineTable({
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),

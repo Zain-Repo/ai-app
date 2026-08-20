@@ -20,12 +20,12 @@ async function loadCurrentCapability(
   ctx: ActionCtx,
   args: {
     model: string
-    provider: "fal" | "openrouter"
+    provider: "fal" | "openrouter" | "ai_gateway"
     routingProvider?: string
   }
 ) {
-  if (args.provider === "fal")
-    return getStaticImageModelCapability("fal", args.model)
+  if (args.provider === "fal" || args.provider === "ai_gateway")
+    return getStaticImageModelCapability(args.provider, args.model)
 
   const credential = await ctx.runQuery(
     internal.providerConnections.getOpenRouterCredential,
@@ -67,7 +67,11 @@ export const create = action({
     draftAttachmentIds: v.optional(v.array(v.id("draftAttachments"))),
     model: v.string(),
     projectId: v.optional(v.string()),
-    provider: v.union(v.literal("fal"), v.literal("openrouter")),
+    provider: v.union(
+      v.literal("fal"),
+      v.literal("openrouter"),
+      v.literal("ai_gateway")
+    ),
     providerConnectionId: v.id("providerConnections"),
     routingProvider: v.optional(v.string()),
   },

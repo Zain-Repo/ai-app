@@ -56,7 +56,11 @@ const generationSetViewValidator = v.object({
   _id: v.id("imageGenerationSets"),
   assistantMessageId: v.id("messages"),
   prompt: v.string(),
-  provider: v.union(v.literal("fal"), v.literal("openrouter")),
+  provider: v.union(
+    v.literal("fal"),
+    v.literal("openrouter"),
+    v.literal("ai_gateway")
+  ),
   model: v.string(),
   endpoint: v.optional(v.string()),
   config: imageGenerationConfigValidator,
@@ -171,7 +175,7 @@ export const createGenerationRequest = internalMutation({
       connection.ownerId !== user._id ||
       connection.status !== "connected" ||
       connection.provider !== args.capability.provider ||
-      !["fal", "openrouter"].includes(connection.provider)
+      !["fal", "openrouter", "ai_gateway"].includes(connection.provider)
     )
       throw new Error("Image provider is unavailable")
     if (args.capability.modelId !== args.model)
@@ -884,7 +888,11 @@ export const getRetryContext = internalQuery({
     capabilityRevision: v.string(),
     config: imageGenerationConfigValidator,
     model: v.string(),
-    provider: v.union(v.literal("fal"), v.literal("openrouter")),
+    provider: v.union(
+      v.literal("fal"),
+      v.literal("openrouter"),
+      v.literal("ai_gateway")
+    ),
     routingProvider: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
