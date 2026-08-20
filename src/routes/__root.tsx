@@ -108,6 +108,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <template
+          data-design-contract="user-pinned-chat-reference"
+          dangerouslySetInnerHTML={{
+            __html:
+              "<!-- THESIS: A calm AI workspace with an information-rich sidebar and an unobstructed conversation canvas; no starter-card grid. OWN-WORLD: Warm white surfaces, soft gray dividers, restrained green actions, Inter typography, and consistent outline icons. STORY: Choose context in the sidebar, understand the current workspace immediately, and begin in the anchored composer. FIRST VIEWPORT: Sidebar at left, compact title and toggle above, centered welcome with generous whitespace, wide composer at the bottom. FORM: User-pinned supplied reference, key user-pinned-chat-reference. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md. -->",
+          }}
+        />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

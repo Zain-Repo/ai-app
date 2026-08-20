@@ -1,7 +1,6 @@
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { AudioWaveform } from "lucide-react"
+import { AudioWaveform, ChevronDown } from "lucide-react"
 
+import { Dev3Logo } from "@/components/dev3-logo"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -52,20 +51,23 @@ export function SidebarWorkspaceSwitcher({
   return (
     <div
       aria-label="Workspace controls"
-      className="flex min-w-0 items-center justify-between gap-1.5"
+      className="flex min-w-0 items-center justify-between gap-2"
       role="group"
     >
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`Choose workspace. Current workspace: ${activeWorkspace.label}`}
-          className="group flex h-8 min-w-0 items-center gap-1 rounded-lg px-2 text-left text-sm font-medium tracking-tight text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/30 disabled:cursor-not-allowed disabled:opacity-50 data-popup-open:bg-sidebar-accent"
+          className="group flex h-11 min-w-0 items-center gap-1.5 rounded-xl px-1.5 text-left text-sidebar-foreground transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring/30 disabled:cursor-not-allowed disabled:opacity-50 data-popup-open:bg-sidebar-accent"
           disabled={disabled}
         >
-          <span className="truncate">{activeWorkspace.label}</span>
-          <HugeiconsIcon
+          <Dev3Logo
+            className="truncate text-[1.125rem]"
+            markClassName="size-8"
+          />
+          <span className="sr-only">{activeWorkspace.label}</span>
+          <ChevronDown
             aria-hidden="true"
             className="size-3.5 shrink-0 text-sidebar-foreground/55 transition-transform duration-150 group-data-popup-open:rotate-180 motion-reduce:transform-none motion-reduce:transition-none"
-            icon={ArrowDown01Icon}
             strokeWidth={1.8}
           />
         </DropdownMenuTrigger>
@@ -104,12 +106,12 @@ export function SidebarWorkspaceSwitcher({
       {workspace === "chat" && !disabled ? (
         <Button
           aria-label="Start voice mode"
-          className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-3.5"
+          className="shrink-0 rounded-xl text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4"
           onClick={() => {
             setOpenMobile(false)
             onVoiceActivate()
           }}
-          size="icon-sm"
+          size="icon"
           title="Start voice mode"
           variant="ghost"
         >
