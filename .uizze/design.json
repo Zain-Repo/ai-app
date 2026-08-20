@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-19T20:17:20.6592153-04:00",
+  "title": "Design System: Dev3",
+  "extensions": {
+    "colorMeta": {
+      "sage-signal": {
+        "role": "primary",
+        "displayName": "Sage Signal",
+        "canonical": "#4f8463",
+        "tonalRamp": [
+          "#142019",
+          "#203328",
+          "#2d4938",
+          "#3b624a",
+          "#4f8463",
+          "#79a287",
+          "#acc4b4",
+          "#e5eee8"
+        ]
+      },
+      "warm-paper": {
+        "role": "neutral",
+        "displayName": "Warm Paper",
+        "canonical": "#fbfbfa",
+        "tonalRamp": [
+          "#202120",
+          "#3b3c3a",
+          "#595a57",
+          "#787976",
+          "#9a9b97",
+          "#bdbeba",
+          "#dedfdb",
+          "#fbfbfa"
+        ]
+      },
+      "deep-ink": {
+        "role": "neutral",
+        "displayName": "Deep Ink",
+        "canonical": "#111312",
+        "tonalRamp": [
+          "#111312",
+          "#242725",
+          "#3c403d",
+          "#5b605c",
+          "#7c827d",
+          "#a1a6a2",
+          "#c9ccc9",
+          "#f2f3f2"
+        ]
+      },
+      "sidebar-linen": {
+        "role": "neutral",
+        "displayName": "Sidebar Linen",
+        "canonical": "#f7f7f6",
+        "tonalRamp": [
+          "#1f201f",
+          "#3a3b39",
+          "#575855",
+          "#767774",
+          "#979895",
+          "#b9bab7",
+          "#dcddda",
+          "#f7f7f6"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Empty-state greetings and rare top-level statements."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Conversation content and explanatory product copy."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, metadata, and compact controls."
+      }
+    },
+    "shadows": [
+      {
+        "name": "composer-lift",
+        "value": "0 14px 34px -28px color-mix(in oklch, var(--foreground) 34%, transparent)",
+        "purpose": "Soft separation for the anchored chat composer."
+      },
+      {
+        "name": "dialog-lift",
+        "value": "0 24px 64px -36px rgba(0,0,0,0.42)",
+        "purpose": "Diffuse depth for modal surfaces only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "interface-state",
+        "value": "150ms ease",
+        "purpose": "Default hover, focus, and compact interaction transition."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "High-contrast creation action used once per sidebar header.",
+      "html": "<button class=\"ds-btn-primary\">New chat</button>",
+      "css": ".ds-btn-primary { height: 48px; padding: 0 16px; border: 1px solid transparent; border-radius: 14px; background: var(--foreground, #111312); color: var(--background, #fbfbfa); font: 600 13px/1.5 'Inter Variable', Inter, sans-serif; transition: background-color 150ms ease, transform 150ms ease; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--foreground, #111312) 90%, transparent); } .ds-btn-primary:active { transform: scale(.99); } .ds-btn-primary:focus-visible { outline: 2px solid color-mix(in srgb, var(--ring, #4f8463) 35%, transparent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Accent Icon Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Compact positive action used for send controls.",
+      "html": "<button class=\"ds-btn-accent\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 19V5m0 0-5 5m5-5 5 5\"/></svg></button>",
+      "css": ".ds-btn-accent { display: inline-grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 999px; background: var(--primary, #4f8463); color: #fff; transition: background-color 150ms ease, transform 150ms ease; } .ds-btn-accent svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; } .ds-btn-accent:hover { background: color-mix(in srgb, var(--primary, #4f8463) 90%, #111312); } .ds-btn-accent:active { transform: scale(.98); } .ds-btn-accent:focus-visible { outline: 2px solid color-mix(in srgb, var(--ring, #4f8463) 35%, transparent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Bordered search field used in the sidebar header.",
+      "html": "<input class=\"ds-input-search\" type=\"search\" placeholder=\"Search chats\" />",
+      "css": ".ds-input-search { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--input, #dedfdd); border-radius: 14px; background: var(--card, #fff); color: var(--foreground, #111312); font: 400 14px/1.5 'Inter Variable', Inter, sans-serif; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input-search::placeholder { color: var(--muted-foreground, #656a66); } .ds-input-search:hover { border-color: color-mix(in srgb, var(--foreground, #111312) 24%, var(--input, #dedfdd)); } .ds-input-search:focus-visible { border-color: var(--ring, #4f8463); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring, #4f8463) 20%, transparent); outline: 0; }"
+    },
+    {
+      "name": "Sidebar Navigation Item",
+      "kind": "nav",
+      "description": "Sentence-case navigation row with an outline icon and tonal active state.",
+      "html": "<button class=\"ds-nav-item ds-nav-item-active\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5M8 4v15.5M4 19.5h16\"/></svg><span>Library</span></button>",
+      "css": ".ds-nav-item { display: flex; width: 100%; height: 36px; align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: 12px; background: transparent; color: var(--sidebar-foreground, #171918); font: 400 14px/1.5 'Inter Variable', Inter, sans-serif; text-align: left; transition: background-color 150ms ease; } .ds-nav-item svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-item:hover, .ds-nav-item-active { background: var(--sidebar-accent, #e8ece8); } .ds-nav-item:focus-visible { outline: 2px solid color-mix(in srgb, var(--sidebar-ring, #4f8463) 30%, transparent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Bordered Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat content container separated by a hairline border.",
+      "html": "<section class=\"ds-card\"><strong>Workspace item</strong><p>Supporting information stays concise.</p></section>",
+      "css": ".ds-card { padding: 20px; border: 1px solid var(--border, #dedfdd); border-radius: 16px; background: var(--card, #fff); color: var(--card-foreground, #111312); font: 400 14px/1.5 'Inter Variable', Inter, sans-serif; } .ds-card strong { display: block; font-weight: 600; } .ds-card p { margin: 4px 0 0; color: var(--muted-foreground, #656a66); } .ds-card:hover { border-color: color-mix(in srgb, var(--foreground, #111312) 20%, var(--border, #dedfdd)); } .ds-card:focus-within { outline: 2px solid color-mix(in srgb, var(--ring, #4f8463) 20%, transparent); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chat Composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "Wide anchored input surface with quiet ambient lift.",
+      "html": "<div class=\"ds-composer\"><textarea aria-label=\"Message\" placeholder=\"Message Dev3…\"></textarea><button aria-label=\"Send message\">↑</button></div>",
+      "css": ".ds-composer { display: grid; min-height: 116px; padding: 18px 18px 14px; border: 1px solid var(--border, #dedfdd); border-radius: 24px; background: var(--card, #fff); box-shadow: 0 14px 34px -28px rgba(17,19,18,.34); } .ds-composer textarea { min-height: 52px; resize: none; border: 0; outline: 0; background: transparent; color: var(--foreground, #111312); font: 400 16px/1.5 'Inter Variable', Inter, sans-serif; } .ds-composer button { justify-self: end; width: 40px; height: 40px; border: 0; border-radius: 999px; background: var(--primary, #4f8463); color: #fff; font-size: 20px; transition: background-color 150ms ease; } .ds-composer button:hover { background: color-mix(in srgb, var(--primary, #4f8463) 90%, #111312); } .ds-composer:focus-within { border-color: var(--ring, #4f8463); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring, #4f8463) 15%, transparent), 0 14px 34px -28px rgba(17,19,18,.34); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet AI Desk",
+    "overview": "Dev3 is a clear, composed workspace that recedes until the user needs it. Warm near-white planes, soft dividers, restrained green signals, and one sans-serif family keep attention on the conversation and the work around it.",
+    "keyCharacteristics": [
+      "Warm neutral surfaces with a sparse sage accent.",
+      "Inter Variable across display, body, and interface roles.",
+      "An 8px spacing rhythm with compact 4px refinements.",
+      "Flat surfaces separated by tone and hairline borders.",
+      "Outline icons with consistent 1.75–1.8px strokes."
+    ],
+    "rules": [
+      {
+        "name": "The Sparse Signal Rule",
+        "body": "Sage marks action or state; it does not become a decorative field.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm Canvas Rule",
+        "body": "Major workspace surfaces stay warm-neutral rather than cool gray or stark blue-white.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "Use Inter Variable for product UI and display roles; create contrast through scale, weight, and tracking.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Navigation and section labels use natural sentence case, not tracked all-caps kickers.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-by-Default Rule",
+        "body": "Resting surfaces use borders or tonal contrast; shadow is reserved for anchored inputs and modal depth.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve generous whitespace around the empty-state greeting and composer.",
+      "Do use Lucide-style outline icons at consistent size and stroke weight.",
+      "Do communicate structure with borders, tone, and spacing before adding shadow.",
+      "Do keep the sidebar useful and information-rich while the main stage remains quiet."
+    ],
+    "donts": [
+      "Don't add starter-card grids to the chat empty state.",
+      "Don't use sage as a broad decorative background or apply gradients to text.",
+      "Don't mix filled, multicolor, and outline icon families in the same control group.",
+      "Don't introduce tracked uppercase kickers or ornamental labels into product navigation."
+    ]
+  }
+}

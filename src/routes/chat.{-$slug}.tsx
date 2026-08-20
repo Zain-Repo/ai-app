@@ -13,7 +13,6 @@ import {
   Link01Icon,
   MoreHorizontalIcon,
   RefreshIcon,
-  Search01Icon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -25,9 +24,13 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  Image,
   LibraryBig,
+  MessageCircle,
   Paperclip,
   Plug,
+  Plus,
+  Search,
 } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
 import {
@@ -92,9 +95,9 @@ import type {
 } from "@/components/project-sources-panel"
 import { SidebarUserMenu } from "@/components/sidebar-user-menu"
 import { SidebarWorkspaceSwitcher } from "@/components/sidebar-workspace-switcher"
+import { Dev3Mark } from "@/components/dev3-logo"
 import { getDesktopApi } from "@/lib/desktop-api"
 import { generateDesktopChatTitle } from "@/lib/desktop-chat-title"
-import { getChatStarterSuggestions } from "@/lib/chat-starter-suggestions"
 import { formatProjectDate } from "@/lib/format-project-date"
 import { imageStudioV2Enabled } from "@/lib/image-studio-rollout"
 import { UploadThingDropzone } from "@/components/uploadthing-dropzone"
@@ -2358,7 +2361,7 @@ function ChatWorkspace() {
   const renderConversation = (conversation: SidebarConversation) => (
     <SidebarMenuItem key={conversation._id}>
       <SidebarMenuButton
-        className="rounded-xl px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
+        className="rounded-xl px-2.5 transition-[background-color,color] duration-150 hover:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
         isActive={conversationId === conversation._id}
         render={
           <button
@@ -2372,6 +2375,7 @@ function ChatWorkspace() {
           />
         }
       >
+        <MessageCircle aria-hidden="true" strokeWidth={1.75} />
         <SidebarConversationLabel
           isWorking={
             conversation.isGenerating ||
@@ -2431,7 +2435,7 @@ function ChatWorkspace() {
       data-workspace={workspace}
     >
       <Sidebar className="chat-workspace-sidebar" collapsible="offcanvas">
-        <SidebarHeader className="gap-2 border-b border-sidebar-border/50 p-2.5">
+        <SidebarHeader className="gap-2.5 border-b border-sidebar-border p-4 pb-3">
           <SidebarWorkspaceSwitcher
             disabled={conversationWorkspacePending || sendState === "sending"}
             workspace={workspace}
@@ -2445,14 +2449,9 @@ function ChatWorkspace() {
             onClick={() =>
               open({ mode: "chat-new", projectId: search.projectId })
             }
-            size="sm"
-            variant="ghost"
+            size="lg"
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={Add01Icon}
-              strokeWidth={2}
-            />{" "}
+            <Plus aria-hidden="true" strokeWidth={1.8} />
             {workspace === "image" ? "New image" : "New chat"}
           </Button>
           <ProviderConnectDialog
@@ -2460,10 +2459,9 @@ function ChatWorkspace() {
             open={connectorOpen}
           />
           <div className="relative">
-            <HugeiconsIcon
+            <Search
               aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 -translate-y-1/2 text-sidebar-foreground/45"
-              icon={Search01Icon}
+              className="pointer-events-none absolute top-1/2 left-3 z-10 size-[1.125rem] -translate-y-1/2 text-sidebar-foreground/55"
               strokeWidth={1.8}
             />
             <SidebarInput
@@ -2472,7 +2470,7 @@ function ChatWorkspace() {
                   ? "Search recent images"
                   : "Search recent chats"
               }
-              className="h-8 rounded-lg border-sidebar-border/60 bg-background/55 pl-8 transition-colors focus-visible:bg-background"
+              className="h-11 rounded-xl border-sidebar-border bg-background pl-10 text-sm shadow-[0_5px_16px_-16px_rgba(0,0,0,0.7)] transition-colors focus-visible:bg-background"
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={
                 workspace === "image" ? "Search images" : "Search chats"
@@ -2480,10 +2478,10 @@ function ChatWorkspace() {
               value={searchQuery}
             />
           </div>
-          <SidebarMenu>
+          <SidebarMenu className="gap-1 py-1.5">
             <SidebarMenuItem>
               <SidebarMenuButton
-                className="rounded-lg px-2.5 transition-[background-color,color,box-shadow] duration-150 hover:bg-sidebar-accent/60 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-sm"
+                className="rounded-xl px-2.5 transition-colors duration-150 hover:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                 isActive={search.mode === "library"}
                 onClick={() => void open({ mode: "library" })}
               >
@@ -2491,11 +2489,25 @@ function ChatWorkspace() {
                 <span>Library</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="rounded-xl px-2.5 transition-colors duration-150 hover:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                isActive={
+                  workspace === "image" &&
+                  search.mode !== "library" &&
+                  search.mode !== "project"
+                }
+                onClick={() => void switchWorkspace("image")}
+              >
+                <Image aria-hidden="true" strokeWidth={1.75} />
+                <span>Images</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
-        <SidebarContent className="gap-0 px-2 py-2">
-          <SidebarGroup className="p-1.5">
-            <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
+        <SidebarContent className="gap-0 px-3 py-3">
+          <SidebarGroup className="p-1">
+            <SidebarGroupLabel className="h-8 px-2 text-xs font-medium text-sidebar-foreground/55">
               Projects
             </SidebarGroupLabel>
             <SidebarGroupAction
@@ -2635,8 +2647,8 @@ function ChatWorkspace() {
               ) : null}
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup className="p-1.5 pt-2">
-            <SidebarGroupLabel className="h-6 px-2 text-[10px] font-semibold tracking-[0.14em] text-sidebar-foreground/45 uppercase">
+          <SidebarGroup className="p-1 pt-3">
+            <SidebarGroupLabel className="h-8 px-2 text-xs font-medium text-sidebar-foreground/55">
               {copy.recentHeading}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -2662,7 +2674,7 @@ function ChatWorkspace() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="gap-1.5 border-t border-sidebar-border/50 bg-sidebar/35 p-2">
+        <SidebarFooter className="gap-2 border-t border-sidebar-border bg-sidebar p-3">
           {conversationId && !conversationWorkspacePending ? (
             <Select
               aria-label="Conversation memory mode"
@@ -2738,8 +2750,7 @@ function ChatWorkspace() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="chat-workspace-stage">
-        <header className="chat-workspace-header flex shrink-0 items-center gap-3 border-b px-3 sm:px-4">
-          <SidebarTrigger />
+        <header className="chat-workspace-header flex shrink-0 items-center gap-3 border-b px-4 sm:px-6">
           <div className="min-w-0">
             {selectedProject && search.mode !== "project" ? (
               <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -2754,20 +2765,18 @@ function ChatWorkspace() {
                   {selectedProject.name}
                 </span>
               </p>
-            ) : (
-              <p className="chat-workspace-kicker">
-                {search.mode === "library" ? "Your content" : "AI workspace"}
-              </p>
-            )}
-            <p className="truncate text-sm font-semibold tracking-tight">
+            ) : null}
+            <p className="truncate text-base font-semibold tracking-[-0.02em]">
               {search.mode === "library"
                 ? "Library"
                 : search.mode === "project"
                   ? (selectedProject?.name ?? "Project")
                   : (selected?.title ??
+                    selectedModel?.label ??
                     (workspace === "image" ? "New image" : "New chat"))}
             </p>
           </div>
+          <SidebarTrigger className="ml-auto" />
           {workspace === "image" &&
           search.mode !== "library" &&
           search.mode !== "project" &&
@@ -3481,8 +3490,8 @@ function ChatWorkspace() {
                   value,
                 }))}
               />
-              <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-6 pb-3 sm:px-5">
-                <div className="mx-auto w-full max-w-3xl">
+              <div className="chat-composer-dock sticky bottom-0 z-10 w-full px-4 pt-6 pb-3 sm:px-6">
+                <div className="mx-auto w-full max-w-5xl">
                   {selected?.status === "archived" ? (
                     <p className="mb-2 text-center text-xs text-muted-foreground">
                       This chat is archived. Restore it from your profile menu
@@ -3625,6 +3634,9 @@ function ChatWorkspace() {
                       This chat could not be added to the project. Try again.
                     </p>
                   ) : null}
+                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                    Dev3 can make mistakes. Check important information.
+                  </p>
                 </div>
               </div>
             </>
@@ -3895,30 +3907,20 @@ export function MessageArea(props: MessageAreaProps) {
   if (props.messages.length === 0)
     return (
       <Empty className="chat-empty-state border-0">
-        <EmptyHeader className="gap-3">
+        <EmptyHeader className="gap-4">
           <EmptyMedia
-            className="bg-primary/10 text-primary ring-1 ring-primary/15"
+            className="size-16 bg-primary/10 text-primary"
             variant="icon"
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={AiBrain01Icon}
-              strokeWidth={1.8}
-            />
+            <Dev3Mark aria-hidden="true" className="size-9" />
           </EmptyMedia>
-          <EmptyTitle className="text-balance">
+          <EmptyTitle className="text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-4xl">
             {welcomeMessage.title(props.name)}
           </EmptyTitle>
-          <EmptyDescription className="max-w-xs text-pretty">
+          <EmptyDescription className="max-w-md text-base leading-7 text-pretty">
             {WELCOME_DESCRIPTION}
           </EmptyDescription>
         </EmptyHeader>
-        <AiSuggestedActions
-          className="mt-2 max-w-xl"
-          disabled={props.actionsDisabled}
-          onSelect={props.onAction}
-          suggestions={getChatStarterSuggestions(props.workspace)}
-        />
       </Empty>
     )
 

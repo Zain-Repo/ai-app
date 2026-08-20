@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
 @import "@clerk/ui/themes/shadcn.css";
 @import "katex/dist/katex.min.css";
 @import "streamdown/styles.css";
@@ -11,75 +12,75 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #202023;
+  --background: #fbfbfa;
+  --foreground: #111312;
   --card: #ffffff;
-  --card-foreground: #202023;
+  --card-foreground: #111312;
   --popover: #ffffff;
-  --popover-foreground: #202023;
-  --primary: #8e8ea0;
+  --popover-foreground: #111312;
+  --primary: #4f8463;
   --primary-foreground: #ffffff;
-  --secondary: #f1f1f3;
-  --secondary-foreground: #202023;
-  --muted: #f5f5f6;
-  --muted-foreground: #5f5f6b;
-  --accent: #eeeef0;
-  --accent-foreground: #202023;
+  --secondary: #f1f3f1;
+  --secondary-foreground: #111312;
+  --muted: #f4f5f3;
+  --muted-foreground: #656a66;
+  --accent: #ecefec;
+  --accent-foreground: #111312;
   --destructive: #b42318;
-  --border: #e1e1e5;
-  --input: #e1e1e5;
-  --ring: #8e8ea0;
-  --chart-1: #8e8ea0;
-  --chart-2: #626274;
-  --chart-3: #3f3f4b;
-  --chart-4: #b8b8c4;
-  --chart-5: #d2d2d9;
-  --radius: 5px;
-  --sidebar: #f8f8f9;
-  --sidebar-foreground: #202023;
-  --sidebar-primary: #8e8ea0;
+  --border: #dedfdd;
+  --input: #dedfdd;
+  --ring: #4f8463;
+  --chart-1: #4f8463;
+  --chart-2: #6f907b;
+  --chart-3: #2d5b40;
+  --chart-4: #a7b9ad;
+  --chart-5: #d9e2dc;
+  --radius: 0.75rem;
+  --sidebar: #f7f7f6;
+  --sidebar-foreground: #171918;
+  --sidebar-primary: #4f8463;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eeeef0;
-  --sidebar-accent-foreground: #202023;
-  --sidebar-border: #e1e1e5;
-  --sidebar-ring: #8e8ea0;
+  --sidebar-accent: #e8ece8;
+  --sidebar-accent-foreground: #171918;
+  --sidebar-border: #dedfdd;
+  --sidebar-ring: #4f8463;
   --success-fill: #e8f4ed;
   --success-accent: #367a52;
   --success-foreground: #24603d;
   --switch-track: #8e8ea0;
 }
 .dark {
-  --background: #202023;
-  --foreground: #f7f7f8;
-  --card: #2a2a2e;
-  --card-foreground: #f7f7f8;
-  --popover: #2a2a2e;
-  --popover-foreground: #f7f7f8;
-  --primary: #a7a7b7;
-  --primary-foreground: #202023;
-  --secondary: #333338;
-  --secondary-foreground: #f7f7f8;
-  --muted: #2d2d31;
-  --muted-foreground: #b8b8c3;
-  --accent: #37373c;
-  --accent-foreground: #f7f7f8;
+  --background: #181a19;
+  --foreground: #f4f5f3;
+  --card: #202321;
+  --card-foreground: #f4f5f3;
+  --popover: #202321;
+  --popover-foreground: #f4f5f3;
+  --primary: #83b292;
+  --primary-foreground: #122018;
+  --secondary: #292d2a;
+  --secondary-foreground: #f4f5f3;
+  --muted: #252825;
+  --muted-foreground: #b4bab5;
+  --accent: #303531;
+  --accent-foreground: #f4f5f3;
   --destructive: #f97066;
-  --border: #44444b;
-  --input: #44444b;
-  --ring: #a7a7b7;
+  --border: #3d423e;
+  --input: #3d423e;
+  --ring: #83b292;
   --chart-1: #a7a7b7;
   --chart-2: #c2c2cc;
   --chart-3: #8e8ea0;
   --chart-4: #6a6a78;
   --chart-5: #44444b;
-  --sidebar: #252528;
-  --sidebar-foreground: #f7f7f8;
-  --sidebar-primary: #a7a7b7;
-  --sidebar-primary-foreground: #202023;
-  --sidebar-accent: #37373c;
-  --sidebar-accent-foreground: #f7f7f8;
-  --sidebar-border: #44444b;
-  --sidebar-ring: #a7a7b7;
+  --sidebar: #1d201e;
+  --sidebar-foreground: #f4f5f3;
+  --sidebar-primary: #83b292;
+  --sidebar-primary-foreground: #122018;
+  --sidebar-accent: #303531;
+  --sidebar-accent-foreground: #f4f5f3;
+  --sidebar-border: #3d423e;
+  --sidebar-ring: #83b292;
   --success-fill: #183525;
   --success-accent: #8ad0a1;
   --success-foreground: #b5ebc6;
@@ -88,11 +89,14 @@
 
 @theme inline {
   --font-sans:
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading:
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display:
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
   --text-sm: 0.875rem;
   --text-sm--line-height: 1.5;
   --text-title: 1rem;
@@ -294,7 +298,104 @@
   }
 }
 
-/* OpenAI-aligned application surfaces: restrained, flat, and based on an 8px rhythm. */
+@layer components {
+  .chat-workspace-shell {
+    background: var(--background);
+  }
+
+  .chat-workspace-sidebar {
+    border-right: 1px solid var(--sidebar-border);
+    background: var(--sidebar);
+    box-shadow: none;
+  }
+
+  .chat-workspace-sidebar [data-slot="sidebar-inner"] {
+    background: var(--sidebar);
+  }
+
+  .chat-workspace-sidebar [data-sidebar="menu-button"] {
+    min-height: 2.25rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+  }
+
+  .chat-workspace-sidebar [data-sidebar="menu-button"][data-active="true"] {
+    background: color-mix(in oklch, var(--sidebar-accent) 88%, transparent);
+    box-shadow: none;
+  }
+
+  .chat-workspace-stage {
+    background: var(--background);
+  }
+
+  .chat-workspace-header {
+    min-height: 4.75rem;
+    border-color: transparent;
+    background: var(--background);
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .chat-empty-state {
+    min-height: 0;
+    padding: clamp(2rem, 6vh, 5.5rem) 1.5rem 2rem;
+    background: var(--background);
+  }
+
+  .chat-empty-state [data-slot="empty-header"] {
+    max-width: 38rem;
+  }
+
+  .chat-empty-state [data-slot="empty-icon"] {
+    border-radius: 1rem !important;
+  }
+
+  .chat-composer-dock {
+    border-top: 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    background: linear-gradient(
+      to top,
+      var(--background) 76%,
+      color-mix(in oklch, var(--background) 94%, transparent) 90%,
+      transparent
+    );
+  }
+
+  .chat-composer-dock [data-slot="ai-input-surface"] {
+    border-color: var(--border);
+    border-radius: 1.5rem !important;
+    background: var(--card);
+    box-shadow: 0 14px 34px -28px
+      color-mix(in oklch, var(--foreground) 34%, transparent);
+  }
+
+  .chat-composer-dock [data-slot="ai-input-control"] {
+    border-radius: 999px !important;
+  }
+
+  .chat-composer-dock [data-slot="ai-input-textarea"] {
+    color: var(--foreground);
+  }
+
+  .chat-composer-dock [aria-label="Send message"]:not(:disabled) {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  @media (max-width: 40rem) {
+    .chat-workspace-header {
+      min-height: 3.75rem;
+    }
+
+    .chat-empty-state {
+      justify-content: flex-start;
+      padding-top: clamp(3rem, 12vh, 6rem);
+    }
+  }
+}
+
+/* Reference-aligned application surfaces: calm, soft-edged, and based on an 8px rhythm. */
 @layer components {
   [data-slot="button"],
   [data-slot="input"],
@@ -317,7 +418,7 @@
   [data-slot="command"],
   [data-slot="card"],
   [data-slot="ai-input"] {
-    border-radius: 5px !important;
+    border-radius: 0.875rem !important;
   }
 
   [data-slot="button"] {
@@ -382,7 +483,7 @@
   .library-workspace .rounded-2xl,
   .library-workspace .rounded-3xl,
   .library-workspace [class*="rounded-["] {
-    border-radius: 5px !important;
+    border-radius: 0.875rem !important;
   }
 
   .cinematic-page,
@@ -476,6 +577,16 @@
   }
   body {
     @apply bg-background text-body font-normal text-foreground antialiased;
+    caret-color: var(--primary);
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 24%, transparent);
+    color: var(--foreground);
+  }
+  * {
+    scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
+      transparent;
+    scrollbar-width: thin;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

@@ -154,7 +154,7 @@ describe("optional chat features", () => {
     }
   })
 
-  it("submits a workspace-specific starter prompt from an empty chat", () => {
+  it("keeps the empty chat focused without starter cards", () => {
     const onAction = vi.fn()
     const view = render(
       <MessageArea
@@ -169,11 +169,11 @@ describe("optional chat features", () => {
       />
     )
 
-    fireEvent.click(view.getByRole("button", { name: /Product hero/ }))
-
-    expect(onAction).toHaveBeenCalledWith(
-      expect.stringContaining("product hero image")
-    )
+    expect(
+      view.container.querySelector('[data-slot="empty-title"]')
+    ).toBeTruthy()
+    expect(view.queryByRole("button", { name: /Product hero/ })).toBeNull()
+    expect(onAction).not.toHaveBeenCalled()
   })
 
   it("renders pending and streamed commentary with the reasoning component", () => {
