@@ -8,7 +8,8 @@ import type {
 
 export const imageProviderValidator = v.union(
   v.literal("fal"),
-  v.literal("openrouter")
+  v.literal("openrouter"),
+  v.literal("ai_gateway")
 )
 
 export const imageOutputFormatValidator = v.union(
@@ -170,6 +171,9 @@ export function buildProviderImageInput(
 }
 
 export function asImageProvider(value: string): ImageProvider {
-  if (value === "fal" || value === "openrouter") return value
-  throw new Error("Image generation requires OpenRouter or Fal")
+  if (value === "fal" || value === "openrouter" || value === "ai_gateway")
+    return value
+  throw new Error(
+    "Image generation requires OpenRouter, Vercel AI Gateway, or Fal"
+  )
 }

@@ -68,6 +68,35 @@ describe("ChatMessageRow", () => {
     expect(onRetry).toHaveBeenCalledOnce()
   })
 
+  it("toggles helpful and unhelpful response feedback", () => {
+    const onFeedback = vi.fn()
+    renderRow(
+      <ChatMessageRow
+        actionsDisabled={false}
+        copied={false}
+        feedback={null}
+        message={assistantMessage}
+        onCopy={vi.fn()}
+        onEdit={vi.fn()}
+        onFeedback={onFeedback}
+        onRetry={vi.fn()}
+        onSelectBranch={vi.fn()}
+        retryModels={[]}
+      >
+        Raw response text
+      </ChatMessageRow>
+    )
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mark response as helpful" })
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mark response as unhelpful" })
+    )
+    expect(onFeedback).toHaveBeenNthCalledWith(1, "positive")
+    expect(onFeedback).toHaveBeenNthCalledWith(2, "negative")
+  })
+
   it("navigates a controlled response branch with accessible buttons", () => {
     const onSelectBranch = vi.fn()
     const previousBranchId = "previous-branch" as Id<"conversationBranches">
@@ -104,3 +133,4 @@ describe("ChatMessageRow", () => {
     ).toBe(true)
   })
 })
+

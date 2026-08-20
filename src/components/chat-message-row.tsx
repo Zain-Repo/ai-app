@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, ChevronDown, Copy, Pencil, RotateCcw } from "lucide-react"
+import { Check, ChevronDown, Copy, Pencil, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react"
 import type { ReactNode } from "react"
 
 import type { Id } from "../../convex/_generated/dataModel"
@@ -34,6 +34,8 @@ export type ChatMessageBranchNavigation = {
   total: number
 }
 
+export type AssistantResponseFeedbackRating = "negative" | "positive"
+
 export async function copyMessageText(
   text: string,
   clipboard: Pick<Clipboard, "writeText"> = navigator.clipboard
@@ -60,9 +62,11 @@ export function ChatMessageRow({
   bubbleClassName,
   children,
   copied,
+  feedback,
   message,
   onCopy,
   onEdit,
+  onFeedback,
   onRetry,
   onSelectBranch,
   retryModels,
@@ -71,9 +75,11 @@ export function ChatMessageRow({
   bubbleClassName?: string
   children: ReactNode
   copied: boolean
+  feedback?: AssistantResponseFeedbackRating | null
   message: ChatMessageRowMessage
   onCopy: () => void
   onEdit: () => void
+  onFeedback?: (rating: AssistantResponseFeedbackRating | null) => void
   onRetry: (model?: string) => void
   onSelectBranch: (branchId: Id<"conversationBranches">) => void
   retryModels: Array<{ label: string; value: string }>
@@ -85,6 +91,11 @@ export function ChatMessageRow({
     message.status === "failed" ||
     message.status === "stopped"
   const branch = message.branchNavigation
+  const canRateResponse =
+    !isUser &&
+    message.status === "complete" &&
+    Boolean(message.content.trim()) &&
+    Boolean(onFeedback)
 
   const toolbar = actionsAvailable ? (
     <MessageToolbar
@@ -157,6 +168,44 @@ export function ChatMessageRow({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            {canRateResponse ? (
+              <>
+                <MessageAction
+                  aria-pressed={feedback === "positive"}
+                  className={cn(
+                    feedback === "positive" &&
+                      "bg-success-fill text-success-foreground"
+                  )}
+                  disabled={actionsDisabled}
+                  label="Mark response as helpful"
+                  onClick={() =>
+                    onFeedback?.(
+                      feedback === "positive" ? null : "positive"
+                    )
+                  }
+                  tooltip="Helpful response"
+                >
+                  <ThumbsUp aria-hidden="true" className="size-4" />
+                </MessageAction>
+                <MessageAction
+                  aria-pressed={feedback === "negative"}
+                  className={cn(
+                    feedback === "negative" &&
+                      "bg-destructive/10 text-destructive"
+                  )}
+                  disabled={actionsDisabled}
+                  label="Mark response as unhelpful"
+                  onClick={() =>
+                    onFeedback?.(
+                      feedback === "negative" ? null : "negative"
+                    )
+                  }
+                  tooltip="Unhelpful response"
+                >
+                  <ThumbsDown aria-hidden="true" className="size-4" />
+                </MessageAction>
+              </>
+            ) : null}
           </>
         )}
         {!isUser && branch ? (
@@ -204,3 +253,4 @@ export function ChatMessageRow({
     </MessageScrollerItem>
   )
 }
+

@@ -2,7 +2,7 @@ export const IMAGE_CAPABILITY_SCHEMA_VERSION = 1
 export const IMAGE_STUDIO_APP_MAX_OUTPUTS = 4
 export const IMAGE_STUDIO_MAX_REFERENCES = 5
 
-export type ImageProvider = "fal" | "openrouter"
+export type ImageProvider = "ai_gateway" | "fal" | "openrouter"
 export type ImageOutputFormat = "jpeg" | "png" | "webp"
 export type ImageDimensionParameter = "aspect_ratio" | "image_size" | "size"
 
@@ -643,6 +643,43 @@ const falCapabilities: ImageModelCapability[] = [
 const falCapabilitiesByModel = new Map(
   falCapabilities.map((capability) => [capability.modelId, capability])
 )
+
+const gatewayDefaultCapabilityOptions: ImageModelCapability["options"] = {
+  defaultOutputFormat: "png",
+  outputFormats,
+  outputFormatParameter: true,
+  seed: true,
+}
+
+function buildGatewayCapability(
+  modelId: string,
+  overrides: Partial<Omit<ImageModelCapability, "modelId" | "provider">> = {}
+): ImageModelCapability {
+  return {
+    schemaVersion: IMAGE_CAPABILITY_SCHEMA_VERSION,
+    revision: "ai_gateway:" + modelId + ":v1",
+    provider: "ai_gateway",
+    modelId,
+    modes: ["textToImage", "imageToImage"],
+    dimensions: {
+      parameter: "aspect_ratio",
+      options: commonRatios,
+      default: "1:1",
+    },
+    multiplicity: fourImageMultiplicity,
+    references: { max: IMAGE_STUDIO_MAX_REFERENCES },
+    options: gatewayDefaultCapabilityOptions,
+    pricing: { kind: "unknown", currency: "USD" },
+    ...overrides,
+  }
+}
+
+const gatewayCapabilitiesByModel = new Map<string, ImageModelCapability>([
+  ["bfl/flux-2-klein-4b", buildGatewayCapability("bfl/flux-2-klein-4b")],
+  ["bfl/flux-2-pro", buildGatewayCapability("bfl/flux-2-pro")],
+  ["openai/gpt-image-1.5", buildGatewayCapability("openai/gpt-image-1.5")],
+  ["openai/gpt-image-2", buildGatewayCapability("openai/gpt-image-2")],
+])
 
 export function getStaticImageModelCapability(
   provider: ImageProvider,

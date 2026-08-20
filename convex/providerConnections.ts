@@ -17,6 +17,7 @@ const provider = v.union(
   v.literal("openrouter"),
   v.literal("openai"),
   v.literal("fal"),
+  v.literal("ai_gateway"),
   v.literal("codex"),
   v.literal("cursor")
 )
@@ -43,7 +44,7 @@ export const listMine = query({
     return connections.map((connection) => ({
       connectionId: connection._id,
       provider: connection.provider as
-        "openrouter" | "openai" | "fal" | "codex" | "cursor",
+        "openrouter" | "openai" | "fal" | "ai_gateway" | "codex" | "cursor",
       authMethod: connection.authMethod,
       status: connection.status,
       ...(connection.displayName
@@ -198,10 +199,14 @@ export const completeApiKey = internalMutation({
           ? "OpenAI"
           : args.provider === "fal"
             ? "fal"
+            : args.provider === "ai_gateway"
+              ? "Vercel AI Gateway"
             : args.provider,
       scopes:
         args.provider === "fal"
           ? ["models", "images"]
+          : args.provider === "ai_gateway"
+            ? ["models", "responses", "images"]
           : ["models", "responses"],
       status: "connected" as const,
       updatedAt: Date.now(),

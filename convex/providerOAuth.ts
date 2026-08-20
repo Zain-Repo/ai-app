@@ -2,6 +2,7 @@ import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
 import { action, env } from "./_generated/server"
+import { createGateway } from "ai"
 import { FalApiError, loadFalImageModels } from "./fal"
 import { decryptProviderToken, encryptProviderToken } from "./providerCrypto"
 import {
@@ -18,6 +19,7 @@ const OPENROUTER_MODEL_URL = "https://openrouter.ai/api/v1/model"
 const OPENROUTER_MODEL_ENDPOINTS_URL = "https://openrouter.ai/api/v1/models"
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls"
+const AI_GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1/models"
 const MAX_SDP_BYTES = 64 * 1024
 const LONG_CONTEXT_WINDOW = 1_050_000
 const COMPACT_CONTEXT_WINDOW = 400_000
@@ -153,6 +155,19 @@ type CatalogModel = {
   outputMode: "image" | "text"
   reasoningEfforts?: ReasoningEffort[]
   defaultReasoningEffort?: ReasoningEffort
+}
+
+type GatewayCatalogModel = {
+  context_window?: number
+  description?: string
+  id: string
+  modalities?: {
+    input?: string[]
+    output?: string[]
+  }
+  name?: string
+  reasoning_options?: unknown
+  type?: string
 }
 
 type ModelEndpoint = {
@@ -426,6 +441,14 @@ function readModalities(value: unknown) {
     : []
 }
 
+function readGatewayModalities(value: unknown) {
+  if (!isRecord(value)) return { input: [] as string[], output: [] as string[] }
+  return {
+    input: readModalities(value.input),
+    output: readModalities(value.output),
+  }
+}
+
 function readOptionalStringArray(value: unknown, maximumLength: number) {
   return Array.isArray(value) &&
     value.every(
@@ -556,6 +579,52 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
             outputModalities,
             contextLengthLabel
           ),
+          ...reasoningOptions,
+        },
+      ]
+    })
+    .slice(0, MAX_MODELS)
+}
+
+export function parseGatewayModels(models: unknown[]): CatalogModel[] {
+  return models
+    .filter(isRecord)
+    .flatMap((model) => {
+      const id = typeof model.id === "string" ? model.id : ""
+      const name = typeof model.name === "string" ? model.name : id
+      if (!id || !/^[^/\s]+\/[^/\s]+$/.test(id) || name.length > 200) return []
+      const provider = id.split("/", 1)[0]
+      if (!provider) return []
+      const type = typeof model.type === "string" ? model.type : ""
+      const modalities = readGatewayModalities(model.modalities)
+      const contextLength =
+        isFiniteNumber(model.context_window) && model.context_window > 0
+          ? model.context_window
+          : undefined
+      const contextLengthLabel = formatContextLength(contextLength)
+      const reasoningOptions = readReasoningOptions(model.reasoning_options)
+      const outputMode: CatalogModel["outputMode"] =
+        type === "image" ||
+        (modalities.output.includes("image") && !modalities.output.includes("text"))
+          ? "image"
+          : "text"
+      const description =
+        typeof model.description === "string" && model.description.trim()
+          ? model.description.trim().slice(0, 240)
+          : describeCapabilities(
+              modalities.input,
+              modalities.output.length ? modalities.output : outputMode === "image" ? ["image"] : ["text"],
+              contextLengthLabel
+            )
+      return [
+        {
+          provider,
+          value: id,
+          label: name,
+          outputMode,
+          ...(modalities.input.length ? { inputModalities: modalities.input } : {}),
+          ...(contextLength === undefined ? {} : { contextLength }),
+          description,
           ...reasoningOptions,
         },
       ]
@@ -695,6 +764,49 @@ export const connectFal = action({
     await ctx.runMutation(internal.providerConnections.completeApiKey, {
       ...encrypted,
       provider: "fal",
+    })
+    return null
+  },
+})
+
+export const connectAIGateway = action({
+  args: { apiKey: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!(await ctx.auth.getUserIdentity()))
+      throw new Error("Not authenticated")
+    const key = args.apiKey.trim()
+    if (
+      key.length < 16 ||
+      key.length > 2048 ||
+      /\s/.test(key) ||
+      [...key].some((character) => {
+        const code = character.charCodeAt(0)
+        return code < 32 || code === 127
+      })
+    )
+      throw new Error("Enter a valid Vercel AI Gateway API key")
+    const response = await fetch(AI_GATEWAY_MODELS_URL, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (response.status === 401 || response.status === 403)
+      throw new Error("Vercel AI Gateway rejected this API key")
+    if (!response.ok)
+      throw new Error("Vercel AI Gateway could not verify this API key")
+    const result = await readJson(response)
+    if (!isRecord(result) || !Array.isArray(result.data))
+      throw new Error("Vercel AI Gateway returned an invalid model catalog")
+    if (!parseGatewayModels(result.data).length)
+      throw new Error("Vercel AI Gateway returned no usable models for this key")
+    const encrypted = await encryptProviderToken(
+      key,
+      env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+      "ai_gateway"
+    )
+    await ctx.runMutation(internal.providerConnections.completeApiKey, {
+      ...encrypted,
+      provider: "ai_gateway",
     })
     return null
   },

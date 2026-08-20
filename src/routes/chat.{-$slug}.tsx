@@ -63,7 +63,10 @@ import {
 } from "../../shared/openrouter-attachments"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
-import type { ChatMessageBranchNavigation } from "@/components/chat-message-row"
+import type {
+  AssistantResponseFeedbackRating,
+  ChatMessageBranchNavigation,
+} from "@/components/chat-message-row"
 import { WorkspaceHistoryPartialNotice } from "@/components/workspace-history-partial-notice"
 import {
   Context,
@@ -3949,10 +3952,25 @@ function MessageAreaWithResponseSources(props: LoadedMessageAreaProps) {
     [conversationResponseSources]
   )
 
+  const conversationResponseFeedback = useQuery(
+    api.responseFeedback.listConversation,
+    props.conversationId ? { conversationId: props.conversationId } : "skip"
+  )
+  const responseFeedbackByMessageId = useMemo(
+    () =>
+      new Map(
+        (conversationResponseFeedback ?? []).map(
+          ({ responseMessageId, rating }) => [responseMessageId, rating]
+        )
+      ),
+    [conversationResponseFeedback]
+  )
+
   return (
     <MessageAreaContent
       {...props}
       responseSourcesByMessageId={responseSourcesByMessageId}
+      responseFeedbackByMessageId={responseFeedbackByMessageId}
     />
   )
 }
@@ -3967,7 +3985,9 @@ function MessageAreaContent({
   onManageMemory,
   onRetry = () => undefined,
   onSelectBranch = () => undefined,
+  conversationId,
   responseSourcesByMessageId,
+  responseFeedbackByMessageId,
   retryModels = [],
   targetMessageId,
   userMessageBubbleColor,
@@ -3976,7 +3996,14 @@ function MessageAreaContent({
     Id<"messages">,
     ResponseMemorySource[]
   >
+  responseFeedbackByMessageId?: ReadonlyMap<
+    Id<"messages">,
+    AssistantResponseFeedbackRating
+  >
 }) {
+  const submitAssistantResponseFeedback = useMutation(
+    api.responseFeedback.submit
+  )
   const consumedTargetMessageId = useRef<string | undefined>(undefined)
 
   useEffect(() => {
@@ -4026,10 +4053,24 @@ function MessageAreaContent({
                         : "w-full max-w-2xl"
                     }
                     copied={copiedMessageId === message._id}
+                    feedback={responseFeedbackByMessageId?.get(message._id) ?? null}
                     key={message._id}
                     message={message}
                     onCopy={() => onCopy(message)}
                     onEdit={() => onEdit(message)}
+                    onFeedback={(rating) => {
+                      if (!conversationId) return
+                      void submitAssistantResponseFeedback({
+                        conversationId,
+                        responseMessageId: message._id,
+                        rating:
+                          rating === "positive"
+                            ? "positive"
+                            : rating === "negative"
+                              ? "negative"
+                              : null,
+                      })
+                    }}
                     onRetry={(model) => onRetry(message, model)}
                     onSelectBranch={onSelectBranch}
                     retryModels={retryModels}

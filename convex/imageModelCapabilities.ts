@@ -429,7 +429,11 @@ export function parseOpenRouterImageRoutes(value: unknown, modelId: string) {
 
 export const get = action({
   args: {
-    provider: v.union(v.literal("fal"), v.literal("openrouter")),
+    provider: v.union(
+      v.literal("fal"),
+      v.literal("openrouter"),
+      v.literal("ai_gateway")
+    ),
     model: v.string(),
     routingProvider: v.optional(v.string()),
   },
@@ -442,13 +446,18 @@ export const get = action({
             { provider: "fal" }
           )
         : await ctx.runQuery(
-            internal.providerConnections.getOpenRouterCredential,
-            {}
+            internal.providerConnections.getProviderCredential,
+            { provider: args.provider }
           )
     if (!credential) throw new Error("Provider not connected")
 
     if (args.provider === "fal") {
       const capability = getStaticImageModelCapability("fal", args.model)
+      if (!capability) throw new Error("Image model is unavailable")
+      return capability
+    }
+    if (args.provider === "ai_gateway") {
+      const capability = getStaticImageModelCapability("ai_gateway", args.model)
       if (!capability) throw new Error("Image model is unavailable")
       return capability
     }

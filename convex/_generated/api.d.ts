@@ -42,6 +42,7 @@ import type * as providerConnections from "../providerConnections.js";
 import type * as providerCrypto from "../providerCrypto.js";
 import type * as providerEmbeddings from "../providerEmbeddings.js";
 import type * as providerOAuth from "../providerOAuth.js";
+import type * as responseFeedback from "../responseFeedback.js";
 import type * as systemPrompt from "../systemPrompt.js";
 import type * as terminalPolicy from "../terminalPolicy.js";
 import type * as terminalSandbox from "../terminalSandbox.js";
@@ -89,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   providerCrypto: typeof providerCrypto;
   providerEmbeddings: typeof providerEmbeddings;
   providerOAuth: typeof providerOAuth;
+  responseFeedback: typeof responseFeedback;
   systemPrompt: typeof systemPrompt;
   terminalPolicy: typeof terminalPolicy;
   terminalSandbox: typeof terminalSandbox;
