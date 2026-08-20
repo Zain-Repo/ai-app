@@ -61,7 +61,6 @@ import {
   decodeOpenRouterTextAttachment,
   getOpenRouterAttachmentCompatibilityError,
 } from "../../shared/openrouter-attachments"
-import { AiSuggestedActions } from "@/components/ai-suggested-actions"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
 import type { ChatMessageBranchNavigation } from "@/components/chat-message-row"
