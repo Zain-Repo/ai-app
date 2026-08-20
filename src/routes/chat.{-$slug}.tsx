@@ -2751,6 +2751,7 @@ function ChatWorkspace() {
       </Sidebar>
       <SidebarInset className="chat-workspace-stage">
         <header className="chat-workspace-header flex shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+          <SidebarTrigger className="shrink-0" />
           <div className="min-w-0">
             {selectedProject && search.mode !== "project" ? (
               <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -2776,7 +2777,6 @@ function ChatWorkspace() {
                     (workspace === "image" ? "New image" : "New chat"))}
             </p>
           </div>
-          <SidebarTrigger className="ml-auto" />
           {workspace === "image" &&
           search.mode !== "library" &&
           search.mode !== "project" &&
