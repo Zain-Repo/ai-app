@@ -15,7 +15,4 @@ bun.lock regenerated.
 ## Validation
 - Dev SSR rendered /, /desktop, /chat, /sign-in, /sign-up with no hook or render error; all 200 or auth redirect.
 - Fresh production build succeeded.
-- TypeScript typecheck matches the pre-existing unused-import error on master (unrelated).
-
-## Limitation
-The pre-existing unused-import type error in the chat route file was not touched. Version bumps only.
+- TypeScript typecheck passes after removing the unused `AiSuggestedActions` import from the chat route.
