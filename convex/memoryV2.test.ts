@@ -1092,6 +1092,86 @@ describe("agent memory v2", () => {
         profileRevision: profile?.policyRevision,
       })
     )
+    expect(profile).toMatchObject({
+      embeddingModel: "qwen/qwen3-embedding-8b",
+      dimensions: 1536,
+    })
+  })
+
+  it("upgrades a stale OpenRouter profile to Qwen3 embeddings and requeues work", async () => {
+    const t = convexTest(schema, modules)
+    const owner = t.withIdentity(identity("clerk|qwen-upgrade"))
+    const ownerId = await owner.mutation(api.users.syncCurrent)
+    await owner.mutation(api.memories.setEnabled, { enabled: true })
+    const memoryItemId = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("providerConnections", {
+        ownerId,
+        provider: "openrouter",
+        authMethod: "oauth",
+        status: "connected",
+        scopes: [],
+        updatedAt: 1,
+      })
+      await ctx.db.insert("memoryProcessingProfiles", {
+        ownerId,
+        providerConnectionId: connectionId,
+        provider: "openrouter",
+        extractionModel: "openai/gpt-4o-mini",
+        embeddingModel: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        policyRevision: 1,
+        status: "active",
+        updatedAt: 1,
+      })
+      return await ctx.db.insert("memoryItems", {
+        ownerId,
+        scope: "user",
+        scopeKey: "user",
+        category: "preference",
+        canonicalKey: "preferences.qwen_upgrade",
+        content: "Prefer Qwen memory embeddings.",
+        status: "active",
+        sourceSignal: "manual",
+        confirmation: "confirmed",
+        pinned: false,
+        sensitivity: "normal",
+        revision: 1,
+        sourceTimestamp: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    })
+
+    await owner.mutation(api.memories.syncProcessingPolicy)
+    const profile = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryProcessingProfiles")
+        .withIndex("by_owner_id", (q) => q.eq("ownerId", ownerId))
+        .unique()
+    )
+    const jobs = await t.run(async (ctx) =>
+      await ctx.db
+        .query("memoryJobs")
+        .withIndex("by_memory_item_id_and_profile_revision_and_kind", (q) =>
+          q
+            .eq("memoryItemId", memoryItemId)
+            .eq("profileRevision", profile?.policyRevision ?? 0)
+            .eq("kind", "embed")
+        )
+        .take(5)
+    )
+    expect(profile).toMatchObject({
+      embeddingModel: "qwen/qwen3-embedding-8b",
+      dimensions: 1536,
+      policyRevision: 2,
+    })
+    expect(jobs).toContainEqual(
+      expect.objectContaining({
+        kind: "embed",
+        memoryItemId,
+        status: "queued",
+      })
+    )
   })
 
   it("rejects a stale embedding commit after the owner disables memory", async () => {

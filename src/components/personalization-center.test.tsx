@@ -109,6 +109,8 @@ vi.mock("convex/react", () => ({
         return calls.setPinned
       case "memories:setProcessingProfile":
         return calls.setProfile
+      case "memories:syncProcessingPolicy":
+        return vi.fn().mockResolvedValue(null)
       case "memories:undoRemove":
         return calls.undo
       case "memories:update":

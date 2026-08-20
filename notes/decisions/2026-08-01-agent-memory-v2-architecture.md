@@ -13,9 +13,11 @@ did not have a shared lifecycle.
 - Use one owner-scoped, revisioned memory processing profile backed only by a
   user-owned OpenAI API key or OpenRouter OAuth connection. The selected
   provider pays for extraction and embeddings independently of the chat model.
-- Pin extraction and `text-embedding-3-small` model identifiers, 1,536 vector
-  dimensions, and the policy revision in code. Arbitrary model selection is not
-  part of v1.
+- Pin extraction and embedding model identifiers, 1,536 vector dimensions, and
+  the policy revision in code. OpenRouter memory embeddings use
+  `qwen/qwen3-embedding-8b` reduced to 1,536 dimensions; OpenAI memory embeddings
+  use `text-embedding-3-small`. Arbitrary client model selection is not part of
+  v1.
 - Keep saved memory and conversation-history summaries as separate layers. Each
   conversation has a `standard`, `read_only`, or `off` mode, and project
   `project_only` scope governs both recall and capture.

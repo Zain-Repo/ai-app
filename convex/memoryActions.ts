@@ -22,7 +22,7 @@ import {
   fuseMemorySearchRankings,
 } from "./memoryRetrievalPolicy"
 import {
-  createProviderEmbeddings,
+  createMemoryEmbeddings,
   ProviderEmbeddingError,
 } from "./providerEmbeddings"
 import { decryptProviderToken } from "./providerCrypto"
@@ -74,7 +74,7 @@ export const processEmbedding = internalAction({
         env.PROVIDER_TOKEN_ENCRYPTION_KEY,
         context.provider
       )
-      const [embedding] = await createProviderEmbeddings(
+      const [embedding] = await createMemoryEmbeddings(
         token,
         context.provider,
         [context.content]
@@ -252,7 +252,7 @@ export const processCapture = internalAction({
         }
       )
       if (embeddable.length) {
-        const embeddings = await createProviderEmbeddings(
+        const embeddings = await createMemoryEmbeddings(
           token,
           context.provider,
           embeddable.map((item) => item.content)
@@ -378,7 +378,7 @@ export const buildAgentContextWithRetrieval = internalAction({
         env.PROVIDER_TOKEN_ENCRYPTION_KEY,
         retrieval.provider
       )
-      const queryEmbeddings = await createProviderEmbeddings(
+      const queryEmbeddings = await createMemoryEmbeddings(
         token,
         retrieval.provider,
         retrieval.queries

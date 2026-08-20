@@ -743,6 +743,19 @@ describe("AI SDK provider bridge", () => {
         },
       },
     })
+    expect(getPrivateOpenRouterEmbeddingSettings(null)).toMatchObject({
+      extraBody: {
+        encoding_format: "float",
+        provider: {
+          data_collection: "deny",
+          require_parameters: true,
+          zdr: true,
+        },
+      },
+    })
+    expect(getPrivateOpenRouterEmbeddingSettings(null).extraBody).not.toHaveProperty(
+      "dimensions"
+    )
   })
 
   it("enables optional tools only from trusted current model metadata", async () => {
