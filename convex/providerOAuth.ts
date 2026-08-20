@@ -2,7 +2,6 @@ import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
 import { action, env } from "./_generated/server"
-import { createGateway } from "ai"
 import { FalApiError, loadFalImageModels } from "./fal"
 import { decryptProviderToken, encryptProviderToken } from "./providerCrypto"
 import {
@@ -168,6 +167,10 @@ type GatewayCatalogModel = {
   name?: string
   reasoning_options?: unknown
   type?: string
+}
+
+function isGatewayCatalogModel(model: unknown): model is GatewayCatalogModel {
+  return isRecord(model) && typeof model.id === "string"
 }
 
 type ModelEndpoint = {
@@ -588,7 +591,7 @@ export function parseOpenRouterModels(models: unknown[]): CatalogModel[] {
 
 export function parseGatewayModels(models: unknown[]): CatalogModel[] {
   return models
-    .filter(isRecord)
+    .filter(isGatewayCatalogModel)
     .flatMap((model) => {
       const id = typeof model.id === "string" ? model.id : ""
       const name = typeof model.name === "string" ? model.name : id
@@ -927,11 +930,42 @@ export const listModels = action({
     provider: v.union(
       v.literal("openrouter"),
       v.literal("openai"),
-      v.literal("fal")
+      v.literal("fal"),
+      v.literal("ai_gateway")
     ),
   },
   returns: v.array(modelValidator),
   handler: async (ctx, args) => {
+    if (args.provider === "ai_gateway") {
+      const credential = await ctx.runQuery(
+        internal.providerConnections.getProviderCredential,
+        { provider: "ai_gateway" }
+      )
+      if (!credential) throw new Error("Provider not connected")
+      const token = await decryptProviderToken(
+        credential.ciphertext,
+        credential.iv,
+        env.PROVIDER_TOKEN_ENCRYPTION_KEY,
+        "ai_gateway"
+      )
+      const response = await fetch(AI_GATEWAY_MODELS_URL, {
+        headers: { Authorization: "Bearer " + token },
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (response.status === 401 || response.status === 403) {
+        await ctx.runMutation(
+          internal.providerConnections.markProviderNeedsAuthentication,
+          { connectionId: credential.connectionId }
+        )
+        throw new Error("Provider authorization expired")
+      }
+      if (!response.ok) throw new Error("Could not load provider models")
+      const result = await readJson(response)
+      if (!isRecord(result) || !Array.isArray(result.data)) {
+        throw new Error("Provider returned an invalid model catalog")
+      }
+      return parseGatewayModels(result.data)
+    }
     if (args.provider === "fal") {
       const credential = await ctx.runQuery(
         internal.providerConnections.getProviderCredential,

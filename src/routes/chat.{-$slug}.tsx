@@ -760,7 +760,11 @@ function ChatWorkspace() {
     conversationId ? { conversationId } : "skip"
   )
   const workspace = resolveActiveWorkspace(
-    normalizeWorkspaceProduct(search.workspace),
+    normalizeWorkspaceProduct(
+      search.workspace === "chat" || search.workspace === "image"
+        ? search.workspace
+        : undefined
+    ),
     selected?.outputMode,
     Boolean(conversationId && selected)
   )
