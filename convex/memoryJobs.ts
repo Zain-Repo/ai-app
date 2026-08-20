@@ -2,6 +2,7 @@ import { v } from "convex/values"
 
 import { internal } from "./_generated/api"
 import { internalMutation } from "./_generated/server"
+import { reconcileMemoryProcessingProfile } from "./memories"
 
 const terminalErrorValidator = v.union(
   v.literal("provider_required"),
@@ -60,20 +61,24 @@ export const claim = internalMutation({
       }
     }
     const profile = job.profileId ? await ctx.db.get(job.profileId) : null
-    const connection = profile
-      ? await ctx.db.get(profile.providerConnectionId)
+    if (profile) await reconcileMemoryProcessingProfile(ctx, job.ownerId)
+    const currentProfile = job.profileId
+      ? await ctx.db.get(job.profileId)
+      : null
+    const connection = currentProfile
+      ? await ctx.db.get(currentProfile.providerConnectionId)
       : null
     if (
-      !profile ||
-      profile.ownerId !== job.ownerId ||
-      profile.policyRevision !== job.profileRevision ||
-      profile.status !== "active" ||
+      !currentProfile ||
+      currentProfile.ownerId !== job.ownerId ||
+      currentProfile.policyRevision !== job.profileRevision ||
+      currentProfile.status !== "active" ||
       !connection ||
       connection.ownerId !== job.ownerId ||
       connection.status !== "connected"
     ) {
-      if (profile && connection?.status !== "connected")
-        await ctx.db.patch(profile._id, {
+      if (currentProfile && connection?.status !== "connected")
+        await ctx.db.patch(currentProfile._id, {
           status:
             connection?.status === "needs_reauthentication"
               ? "needs_reauthentication"

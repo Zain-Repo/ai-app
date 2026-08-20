@@ -125,6 +125,7 @@ export function PersonalizationCenter({
   const remove = useMutation(api.memories.remove)
   const undoRemove = useMutation(api.memories.undoRemove)
   const setProcessingProfile = useMutation(api.memories.setProcessingProfile)
+  const syncProcessingPolicy = useMutation(api.memories.syncProcessingPolicy)
   const retryProcessing = useMutation(api.memories.retryProcessing)
   const clearSavedMemory = useMutation(api.memories.clear)
   const clearHistoryMemory = useMutation(api.memories.clearHistoryMemory)
@@ -148,6 +149,11 @@ export function PersonalizationCenter({
   useEffect(() => {
     if (open && saved) setPreferences(saved)
   }, [open, saved])
+
+  useEffect(() => {
+    if (!open || !personalization?.processing) return
+    void syncProcessingPolicy({})
+  }, [open, personalization?.processing, syncProcessingPolicy])
 
   const items = useMemo(
     () =>

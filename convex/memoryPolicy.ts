@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536
-export const MEMORY_EMBEDDING_MODEL = "openai/text-embedding-3-small"
+export const MEMORY_EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
 export const MEMORY_EXTRACTION_MODEL = "openai/gpt-4o-mini"
 
 export type MemoryProcessingProvider = "openrouter" | "openai"
@@ -23,9 +23,9 @@ const processingPolicies: Record<
   openrouter: {
     provider: "openrouter",
     extractionModel: "openai/gpt-4o-mini",
-    embeddingModel: "openai/text-embedding-3-small",
+    embeddingModel: MEMORY_EMBEDDING_MODEL,
     dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-    policyRevision: 1,
+    policyRevision: 2,
   },
   openai: {
     provider: "openai",
@@ -38,6 +38,39 @@ const processingPolicies: Record<
 
 export function getMemoryProcessingPolicy(provider: MemoryProcessingProvider) {
   return processingPolicies[provider]
+}
+
+export function isMemoryProcessingProfileStale(profile: {
+  dimensions: number
+  embeddingModel: string
+  extractionModel: string
+  provider: MemoryProcessingProvider
+}) {
+  const policy = getMemoryProcessingPolicy(profile.provider)
+  return (
+    profile.embeddingModel !== policy.embeddingModel ||
+    profile.extractionModel !== policy.extractionModel ||
+    profile.dimensions !== policy.dimensions
+  )
+}
+
+export function toFixedDimensionEmbedding(
+  values: number[],
+  dimensions: number = MEMORY_EMBEDDING_DIMENSIONS
+) {
+  if (
+    values.length < dimensions ||
+    values.some((value) => !Number.isFinite(value))
+  ) {
+    return null
+  }
+  const truncated =
+    values.length === dimensions ? values : values.slice(0, dimensions)
+  let magnitude = 0
+  for (const value of truncated) magnitude += value * value
+  if (magnitude <= 0) return null
+  const scale = 1 / Math.sqrt(magnitude)
+  return truncated.map((value) => value * scale)
 }
 
 const MAX_MEMORY_CONTENT_LENGTH = 500
@@ -237,19 +270,12 @@ export function parseEmbeddingResponse(value: unknown, expectedCount: number) {
   )
     return null
   const embeddings = rows.map((row) => row.embedding)
-  if (
-    !embeddings.every(
-      (embedding) =>
-        Array.isArray(embedding) &&
-        embedding.length === MEMORY_EMBEDDING_DIMENSIONS &&
-        embedding.every(
-          (number) => typeof number === "number" && Number.isFinite(number)
-        )
-    )
-  ) {
-    return null
-  }
-  return embeddings as number[][]
+  if (!embeddings.every((embedding) => Array.isArray(embedding))) return null
+  const normalized = embeddings.map((embedding) =>
+    toFixedDimensionEmbedding(embedding as number[])
+  )
+  if (normalized.some((embedding) => embedding === null)) return null
+  return normalized as number[][]
 }
 
 export function buildMemoryContext(preferences: string[], relevant: string[]) {

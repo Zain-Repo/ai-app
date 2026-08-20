@@ -12,6 +12,7 @@ import type { MutationCtx } from "./_generated/server"
 import { getCurrentUser } from "./authHelpers"
 import {
   getMemoryProcessingPolicy,
+  isMemoryProcessingProfileStale,
   isSensitiveMemory,
   normalizeEditedMemory,
 } from "./memoryPolicy"
@@ -1172,6 +1173,60 @@ export async function enqueueMemoryEmbedding(
     jobId,
   })
 }
+
+export async function reconcileMemoryProcessingProfile(
+  ctx: MutationCtx,
+  ownerId: Id<"users">
+) {
+  const profile = await ctx.db
+    .query("memoryProcessingProfiles")
+    .withIndex("by_owner_id", (q) => q.eq("ownerId", ownerId))
+    .unique()
+  if (!profile || profile.status !== "active") return profile
+  const policy = getMemoryProcessingPolicy(profile.provider)
+  if (!isMemoryProcessingProfileStale(profile)) return profile
+  const now = Date.now()
+  const policyRevision = Math.max(
+    profile.policyRevision + 1,
+    policy.policyRevision
+  )
+  await ctx.db.patch(profile._id, {
+    extractionModel: policy.extractionModel,
+    embeddingModel: policy.embeddingModel,
+    dimensions: policy.dimensions,
+    policyRevision,
+    updatedAt: now,
+  })
+  const activeItems = await ctx.db
+    .query("memoryItems")
+    .withIndex("by_owner_id_and_status_and_updated_at", (q) =>
+      q.eq("ownerId", ownerId).eq("status", "active")
+    )
+    .take(MAX_ACTIVE_MEMORY_ITEMS)
+  for (const item of activeItems) {
+    if (item.confirmation !== "confirmed" || item.sensitivity !== "normal")
+      continue
+    await enqueueMemoryEmbedding(ctx, ownerId, item._id)
+  }
+  return {
+    ...profile,
+    extractionModel: policy.extractionModel,
+    embeddingModel: policy.embeddingModel,
+    dimensions: policy.dimensions,
+    policyRevision,
+    updatedAt: now,
+  }
+}
+
+export const syncProcessingPolicy = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx)
+    await reconcileMemoryProcessingProfile(ctx, user._id)
+    return null
+  },
+})
 
 export const create = mutation({
   args: {
