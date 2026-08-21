@@ -6,6 +6,8 @@ import {
   CodeBlockActions,
   CodeBlockCopyButton,
   CodeBlockHeader,
+  CodeBlockLanguage,
+  isPythonCodeLanguage,
 } from "@/components/ai-elements/code-block"
 import {
   Terminal,
@@ -22,7 +24,7 @@ import { normalizeMarkdownMath } from "@/lib/markdown-math"
 import { createMathPlugin } from "@streamdown/math"
 import { PlayIcon, SquareIcon } from "lucide-react"
 import type { ComponentProps, HTMLAttributes } from "react"
-import { memo, useCallback, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Streamdown } from "streamdown"
 import type { Components } from "streamdown"
 
@@ -67,13 +69,13 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
 type MarkdownCodeProps = ComponentProps<"code"> & { node?: unknown }
 
-const PYTHON_LANGUAGES = new Set(["py", "python", "python3"])
-
 const BrowserPythonCodeBlock = ({
   code,
+  highlight,
   language,
 }: {
   code: string
+  highlight: boolean
   language: string
 }) => {
   const [isRunning, setIsRunning] = useState(false)
@@ -130,11 +132,16 @@ const BrowserPythonCodeBlock = ({
 
   return (
     <div className="my-4">
-      <CodeBlock className="my-0" code={code} language={language}>
+      <CodeBlock
+        className="my-0"
+        code={code}
+        highlight={highlight}
+        language={language}
+      >
         <CodeBlockHeader>
-          <span className="font-mono lowercase">{language}</span>
+          <CodeBlockLanguage language={language} />
           <CodeBlockActions>
-            <CodeBlockCopyButton aria-label="Copy code" size="icon-sm" />
+            <CodeBlockCopyButton aria-label="Copy code" size="icon-lg" />
             <Button
               aria-label={isRunning ? "Stop Python" : "Run Python"}
               onClick={isRunning ? stop : run}
@@ -168,20 +175,26 @@ const BrowserPythonCodeBlock = ({
   )
 }
 
-const markdownComponents: Components = {
+const createMarkdownComponents = (highlight: boolean): Components => ({
   code: ({ children, className, node: _node }: MarkdownCodeProps) => {
     const language = className?.replace(/^language-/, "") || "text"
     const value = String(children).replace(/\n$/, "")
 
-    if (PYTHON_LANGUAGES.has(language.toLowerCase()))
-      return <BrowserPythonCodeBlock code={value} language={language} />
+    if (isPythonCodeLanguage(language))
+      return (
+        <BrowserPythonCodeBlock
+          code={value}
+          highlight={highlight}
+          language={language}
+        />
+      )
 
     return (
-      <CodeBlock code={value} language={language}>
+      <CodeBlock code={value} highlight={highlight} language={language}>
         <CodeBlockHeader>
-          <span className="font-mono lowercase">{language}</span>
+          <CodeBlockLanguage language={language} />
           <CodeBlockActions>
-            <CodeBlockCopyButton aria-label="Copy code" size="icon-sm" />
+            <CodeBlockCopyButton aria-label="Copy code" size="icon-lg" />
           </CodeBlockActions>
         </CodeBlockHeader>
       </CodeBlock>
@@ -196,26 +209,41 @@ const markdownComponents: Components = {
       {...props}
     />
   ),
-}
+})
 
 const markdownPlugins = {
   math: createMathPlugin({ singleDollarTextMath: true }),
 }
 
-export const MessageResponse = memo(
-  ({ children, className, ...props }: MessageResponseProps) => (
+const MessageResponseComponent = ({
+  children,
+  className,
+  isAnimating,
+  ...props
+}: MessageResponseProps) => {
+  const components = useMemo(
+    () => createMarkdownComponents(!isAnimating),
+    [isAnimating]
+  )
+
+  return (
     <Streamdown
       className={cn(
         "markdown-response size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
-      components={markdownComponents}
+      components={components}
+      isAnimating={isAnimating}
       plugins={markdownPlugins}
       {...props}
     >
       {normalizeMarkdownMath(children ?? "")}
     </Streamdown>
-  ),
+  )
+}
+
+export const MessageResponse = memo(
+  MessageResponseComponent,
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     nextProps.isAnimating === prevProps.isAnimating
