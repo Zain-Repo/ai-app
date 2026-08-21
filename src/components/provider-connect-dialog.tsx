@@ -49,13 +49,6 @@ export const providers = [
     description: "Direct Grok API access uses an API key",
     auth: "API key",
   },
-  {
-    id: "vercel",
-    name: "Vercel",
-    mark: "V",
-    description: "Use Vercel AI Gateway with an API key",
-    auth: "API key",
-  },
 ] as const
 
 type CreditStatus = {
@@ -99,12 +92,14 @@ export function ProviderConnectDialog({
   const getCreditStatus = useAction(api.providerOAuth.getCreditStatus)
   const connectOpenAI = useAction(api.providerOAuth.connectOpenAI)
   const connectFal = useAction(api.providerOAuth.connectFal)
+  const connectAIGateway = useAction(api.providerOAuth.connectAIGateway)
   const [internalOpen, setInternalOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [openAiKey, setOpenAiKey] = useState("")
   const [falKey, setFalKey] = useState("")
+  const [vercelKey, setVercelKey] = useState("")
   const [desktopCodexAvailable, setDesktopCodexAvailable] = useState(false)
   const [desktopCodexAccount, setDesktopCodexAccount] = useState<{
     connected: boolean
@@ -126,6 +121,9 @@ export function ProviderConnectDialog({
     (connection) => connection.provider === "openai"
   )
   const fal = connections?.find((connection) => connection.provider === "fal")
+  const vercel = connections?.find(
+    (connection) => connection.provider === "ai_gateway"
+  )
   const codex = connections?.find(
     (connection) => connection.provider === "codex"
   )
@@ -164,6 +162,13 @@ export function ProviderConnectDialog({
     "API key",
     "direct",
   ])
+  const showVercel = matchesProviderSearch(searchQuery, [
+    "vercel",
+    "Vercel",
+    "AI Gateway",
+    "API key",
+    "direct",
+  ])
   const filteredProviders = providers.filter((provider) =>
     matchesProviderSearch(searchQuery, [
       provider.name,
@@ -177,6 +182,7 @@ export function ProviderConnectDialog({
     showOpenRouter ||
     showOpenAi ||
     showFal ||
+    showVercel ||
     filteredProviders.length > 0
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(nextOpen)
@@ -281,6 +287,23 @@ export function ProviderConnectDialog({
       setFalKey("")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not connect Fal")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function saveVercel() {
+    setPending(true)
+    setError("")
+    try {
+      await connectAIGateway({ apiKey: vercelKey })
+      setVercelKey("")
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not connect Vercel AI Gateway"
+      )
     } finally {
       setPending(false)
     }
@@ -764,6 +787,66 @@ export function ProviderConnectDialog({
                           onClick={() => void saveFal()}
                         >
                           {fal?.status === "connected" ? "Update" : "Connect"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {showVercel ? (
+                <section
+                  aria-labelledby="vercel-provider-heading"
+                  className="py-4"
+                >
+                  <div className="flex items-start gap-2.5 px-1">
+                    <span
+                      aria-hidden="true"
+                      className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-background font-heading text-[11px] font-semibold shadow-sm"
+                    >
+                      V
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 id="vercel-provider-heading" className="font-medium">
+                          Vercel AI Gateway
+                        </h3>
+                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                          API key
+                        </span>
+                        {vercel?.status === "connected" ? (
+                          <HugeiconsIcon
+                            aria-label="Connected"
+                            className="size-4 text-emerald-600"
+                            icon={CheckmarkCircle02Icon}
+                            strokeWidth={2}
+                          />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Route models through your own Vercel AI Gateway. Your
+                        key is encrypted before it is stored.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <Input
+                          aria-label="Vercel AI Gateway API key"
+                          autoComplete="off"
+                          className="h-9 rounded-lg"
+                          onChange={(event) => setVercelKey(event.target.value)}
+                          placeholder={
+                            vercel?.status === "connected"
+                              ? "Key saved"
+                              : "Paste Vercel AI Gateway key"
+                          }
+                          type="password"
+                          value={vercelKey}
+                        />
+                        <Button
+                          disabled={pending || !vercelKey.trim()}
+                          size="sm"
+                          onClick={() => void saveVercel()}
+                        >
+                          {vercel?.status === "connected" ? "Update" : "Connect"}
                         </Button>
                       </div>
                     </div>
