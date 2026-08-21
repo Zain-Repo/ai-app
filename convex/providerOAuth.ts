@@ -617,18 +617,20 @@ export function parseGatewayModels(models: unknown[]): CatalogModel[] {
               modalities.output,
               contextLengthLabel
             )
-      return [
-        {
-          provider,
-          value: id,
-          label: name,
-          outputMode: "text",
-          ...(modalities.input.length ? { inputModalities: modalities.input } : {}),
-          ...(contextLength === undefined ? {} : { contextLength }),
-          description,
-          ...reasoningOptions,
-        },
-      ]
+      const catalogModel: CatalogModel = {
+        provider,
+        value: id,
+        label: name,
+        outputMode: "text",
+        ...(modalities.input.length
+          ? { inputModalities: modalities.input }
+          : {}),
+        ...(contextLength === undefined ? {} : { contextLength }),
+        description,
+        ...reasoningOptions,
+      }
+
+      return [catalogModel]
     })
     .slice(0, MAX_MODELS)
 }
