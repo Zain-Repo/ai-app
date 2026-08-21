@@ -11,9 +11,11 @@ afterEach(() => {
 })
 
 describe("MessageResponse", () => {
-  it("renders fenced code without the optional syntax-highlighter chunk", async () => {
+  it("renders fenced code in a labelled syntax-highlighted frame", async () => {
     const { container } = render(
-      <MessageResponse>{"```html\n<main>Hello</main>\n```"}</MessageResponse>
+      <MessageResponse>
+        {'```typescript\nconst greeting = "Hello"\n```'}
+      </MessageResponse>
     )
 
     const code = await waitFor(() => {
@@ -21,14 +23,121 @@ describe("MessageResponse", () => {
       expect(element).toBeTruthy()
       return element
     })
-    expect(code?.textContent).toBe("<main>Hello</main>")
-    expect(code?.closest("pre")?.className).toContain("overflow-x-auto")
+    expect(code?.textContent).toBe('const greeting = "Hello"')
+    expect(container.textContent).toContain("TypeScript")
+    expect(container.querySelector('[data-language="typescript"]')).toBeTruthy()
+    expect(
+      container.querySelector('button[aria-label="Copy code"]')
+    ).toBeTruthy()
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-highlighted="true"]')
+        ).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
+    expect(
+      container.querySelector('[data-highlighted="true"]')?.className
+    ).toContain("overflow-x-auto")
+    const highlightedPre = container.querySelector<HTMLPreElement>(
+      '[data-highlighted="true"] pre'
+    )!
+    expect(highlightedPre.style.backgroundColor).not.toBe("")
+    expect(highlightedPre.style.getPropertyValue("--shiki-dark-bg")).not.toBe(
+      ""
+    )
     expect(
       container.querySelector('button[aria-label="Run Python"]')
     ).toBeNull()
   })
 
-  it("offers the browser runtime for Python code", async () => {
+  it("copies the original fenced source and exposes success feedback", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const source = "const answer = 42"
+    const { container } = render(
+      <MessageResponse>{`\`\`\`ts\n${source}\n\`\`\``}</MessageResponse>
+    )
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('button[aria-label="Copy code"]')
+      ).toBeTruthy()
+    })
+    const copyButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy code"]'
+    )!
+    fireEvent.click(copyButton)
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(source)
+      expect(
+        container.querySelector('button[aria-label="Code copied"]')
+      ).toBeTruthy()
+    })
+    expect(container.textContent).toContain("Code copied to clipboard")
+  })
+
+  it("falls back to readable plain text for an unknown fence language", async () => {
+    const { container } = render(
+      <MessageResponse>{"```dev3-config\nfeature = true\n```"}</MessageResponse>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelector("pre code")?.textContent).toBe(
+        "feature = true"
+      )
+    })
+    expect(container.textContent).toContain("dev3-config")
+    expect(container.querySelector('[data-highlighted="false"]')).toBeTruthy()
+  })
+
+  it("keeps unlabeled multiline fences readable and horizontally contained", async () => {
+    const { container } = render(
+      <MessageResponse>{"```\nfirst line\nsecond line\n```"}</MessageResponse>
+    )
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("pre code > span")).toHaveLength(2)
+    })
+    expect(container.querySelectorAll("pre code > span")[0].textContent).toBe(
+      "first line"
+    )
+    expect(container.querySelectorAll("pre code > span")[1].textContent).toBe(
+      "second line"
+    )
+    expect(container.textContent).toContain("Plain text")
+    expect(
+      container.querySelector('[data-highlighted="false"]')?.className
+    ).toContain("overflow-x-auto")
+  })
+
+  it("defers highlighting until a streamed response settles", async () => {
+    const source = '```ts\nconst status = "streaming"\n```'
+    const view = render(<MessageResponse isAnimating>{source}</MessageResponse>)
+
+    await waitFor(() => {
+      expect(view.container.querySelector("pre code")).toBeTruthy()
+    })
+    expect(
+      view.container.querySelector('[data-highlighted="false"]')
+    ).toBeTruthy()
+
+    view.rerender(
+      <MessageResponse isAnimating={false}>{source}</MessageResponse>
+    )
+    await waitFor(
+      () => {
+        expect(
+          view.container.querySelector('[data-highlighted="true"]')
+        ).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
+  })
+
+  it("highlights the python3 alias and keeps its browser runtime", async () => {
     class BrowserPythonWorker {
       onerror: (() => void) | null = null
       onmessage: ((event: MessageEvent<unknown>) => void) | null = null
@@ -47,7 +156,7 @@ describe("MessageResponse", () => {
     }
     vi.stubGlobal("Worker", BrowserPythonWorker)
     const { container } = render(
-      <MessageResponse>{"```python\nprint(2 + 2)\n```"}</MessageResponse>
+      <MessageResponse>{"```python3\nprint(2 + 2)\n```"}</MessageResponse>
     )
 
     let runButton: HTMLButtonElement | null = null
@@ -55,6 +164,15 @@ describe("MessageResponse", () => {
       runButton = container.querySelector('button[aria-label="Run Python"]')
       expect(runButton).toBeTruthy()
     })
+    expect(container.textContent).toContain("Python")
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector('[data-highlighted="true"]')
+        ).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
     fireEvent.click(runButton!)
     await waitFor(() => {
       expect(container.textContent).toContain("Browser Python")
