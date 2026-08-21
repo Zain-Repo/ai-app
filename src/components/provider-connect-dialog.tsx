@@ -49,6 +49,13 @@ export const providers = [
     description: "Direct Grok API access uses an API key",
     auth: "API key",
   },
+  {
+    id: "vercel",
+    name: "Vercel",
+    mark: "V",
+    description: "Use Vercel AI Gateway with an API key",
+    auth: "API key",
+  },
 ] as const
 
 type CreditStatus = {
@@ -134,7 +141,7 @@ export function ProviderConnectDialog({
   const showCodex =
     desktopCodexAvailable &&
     matchesProviderSearch(searchQuery, [
-      "ChatGPT subscription",
+      provider.name,
       "Codex",
       "OAuth",
       desktopCodexAccount?.email,
@@ -170,6 +177,7 @@ export function ProviderConnectDialog({
     "direct",
   ])
   const filteredProviders = providers.filter((provider) =>
+    provider.id !== "vercel" &&
     matchesProviderSearch(searchQuery, [
       provider.name,
       provider.description,
