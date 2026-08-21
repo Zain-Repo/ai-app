@@ -241,6 +241,11 @@ const providerSelectorOptions = [
   },
   { label: "OpenAI", provider: "openai", requiresDesktop: false },
   { label: "OpenRouter", provider: "openrouter", requiresDesktop: false },
+  {
+    label: "Vercel AI Gateway",
+    provider: "ai_gateway",
+    requiresDesktop: false,
+  },
   { label: "fal", provider: "fal", requiresDesktop: false },
 ] as const
 
@@ -251,6 +256,7 @@ const providerFallbackOrder: readonly ActiveProvider[] = [
   "codex",
   "openai",
   "openrouter",
+  "ai_gateway",
   "fal",
   "cursor",
 ]
@@ -3441,7 +3447,10 @@ function ChatWorkspace() {
                 setSelectedModelId(model)
                 setImageRoutingProvider("auto")
               }}
-              onProviderChange={setActiveProvider}
+              onProviderChange={(provider) => {
+                if (provider === "fal" || provider === "openrouter")
+                  setActiveProvider(provider)
+              }}
               onRoutingProviderChange={setImageRoutingProvider}
               provider={activeProvider === "fal" ? "fal" : "openrouter"}
               providers={executionProviderOptions.flatMap((option) =>

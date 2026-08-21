@@ -88,6 +88,7 @@ const MAX_PROJECT_PDF_IMAGE_PIXELS = 16_777_216
 const MAX_INLINE_TEXT_ATTACHMENT_CHARS = 500_000
 export const MAX_PROVIDER_ATTACHMENT_BYTES = MAX_ATTACHMENT_BYTES * 2
 const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images"
+const AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 const MAX_OPENROUTER_MODEL_METADATA_BYTES = 512 * 1024
 const OPENROUTER_MODEL_METADATA_TIMEOUT_MS = 5_000
 const IMAGE_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
@@ -273,13 +274,15 @@ type ProviderFailure = {
 
 export function getSafeProviderFailureMessage(
   code: ProviderFailureCode,
-  provider?: "openrouter" | "openai" | "fal"
+  provider?: "openrouter" | "openai" | "ai_gateway" | "fal"
 ) {
   const label =
     provider === "openrouter"
       ? "OpenRouter"
       : provider === "openai"
         ? "OpenAI"
+        : provider === "ai_gateway"
+          ? "Vercel AI Gateway"
         : provider === "fal"
           ? "Fal"
           : "The provider"
@@ -328,7 +331,7 @@ function readOpenRouterError(value: unknown) {
 
 export function classifyProviderFailure(
   cause: unknown,
-  provider?: "openrouter" | "openai" | "fal"
+  provider?: "openrouter" | "openai" | "ai_gateway" | "fal"
 ): ProviderFailure {
   if (cause instanceof ProviderInputError)
     return {
@@ -1308,7 +1311,7 @@ export const generate = internalAction({
     }, 1_000)
     let connectionId: Id<"providerConnections"> | undefined
     let content = ""
-    let provider: "openrouter" | "openai" | "fal" | undefined
+    let provider: "openrouter" | "openai" | "ai_gateway" | "fal" | undefined
     let reasoning = ""
     let terminalRuns: StoredTerminalRun[] = []
     let uiPayload: string | undefined
@@ -1617,7 +1620,12 @@ export const generate = internalAction({
               })
             })()
           : (() => {
-              const openai = createOpenAI({ apiKey: token })
+              const openai = createOpenAI({
+                apiKey: token,
+                ...(context.provider === "ai_gateway"
+                  ? { baseURL: AI_GATEWAY_BASE_URL }
+                  : {}),
+              })
               return streamText({
                 abortSignal: abortController.signal,
                 model: openai.responses(context.model),
@@ -1627,7 +1635,7 @@ export const generate = internalAction({
                   ...(terminalSandbox
                     ? { runTerminalCommand: runTerminalCommandTool }
                     : {}),
-                  ...(context.hasProjectLinks
+                  ...(context.hasProjectLinks && context.provider === "openai"
                     ? { webSearch: openai.tools.webSearch() }
                     : {}),
                 },

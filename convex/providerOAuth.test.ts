@@ -9,6 +9,7 @@ import {
   isOpenRouterEndpointCatalog,
   isValidOpenRouterModelId,
   isValidSdpOffer,
+  parseGatewayModels,
   parseOpenAIModels,
   parseOpenRouterCreditStatus,
   parseOpenRouterEndpoints,
@@ -233,6 +234,48 @@ describe("OpenRouter model catalog", () => {
       })
     ).toBeNull()
     expect(parseOpenRouterModelInputModalities({ data: {} })).toBeNull()
+  })
+})
+
+describe("Vercel AI Gateway model catalog", () => {
+  it("keeps only language models that return text for the chat composer", () => {
+    const models = parseGatewayModels([
+      {
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
+        type: "language",
+        context_window: 1_050_000,
+        modalities: { input: ["text", "image"], output: ["text"] },
+      },
+      {
+        id: "openai/text-embedding-3-large",
+        name: "Text Embedding 3 Large",
+        type: "embedding",
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      {
+        id: "bytedance/seedance-2.0",
+        name: "Seedance 2.0",
+        type: "video",
+        modalities: { input: ["text"], output: ["video"] },
+      },
+      {
+        id: "openai/gpt-image-2",
+        name: "GPT Image 2",
+        type: "image",
+        modalities: { input: ["text"], output: ["image"] },
+      },
+    ])
+
+    expect(models).toHaveLength(1)
+    expect(models[0]).toMatchObject({
+      provider: "openai",
+      value: "openai/gpt-5.4",
+      label: "GPT-5.4",
+      contextLength: 1_050_000,
+      inputModalities: ["text", "image"],
+      outputMode: "text",
+    })
   })
 })
 
