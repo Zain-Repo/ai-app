@@ -600,23 +600,21 @@ export function parseGatewayModels(models: unknown[]): CatalogModel[] {
       if (!provider) return []
       const type = typeof model.type === "string" ? model.type : ""
       const modalities = readGatewayModalities(model.modalities)
+      // The composer streams chat responses, so catalog entries for embeddings,
+      // speech, video, and other non-language endpoints are not selectable.
+      if (type !== "language" || !modalities.output.includes("text")) return []
       const contextLength =
         isFiniteNumber(model.context_window) && model.context_window > 0
           ? model.context_window
           : undefined
       const contextLengthLabel = formatContextLength(contextLength)
       const reasoningOptions = readReasoningOptions(model.reasoning_options)
-      const outputMode: CatalogModel["outputMode"] =
-        type === "image" ||
-        (modalities.output.includes("image") && !modalities.output.includes("text"))
-          ? "image"
-          : "text"
       const description =
         typeof model.description === "string" && model.description.trim()
           ? model.description.trim().slice(0, 240)
           : describeCapabilities(
               modalities.input,
-              modalities.output.length ? modalities.output : outputMode === "image" ? ["image"] : ["text"],
+              modalities.output,
               contextLengthLabel
             )
       return [
@@ -624,7 +622,7 @@ export function parseGatewayModels(models: unknown[]): CatalogModel[] {
           provider,
           value: id,
           label: name,
-          outputMode,
+          outputMode: "text",
           ...(modalities.input.length ? { inputModalities: modalities.input } : {}),
           ...(contextLength === undefined ? {} : { contextLength }),
           description,

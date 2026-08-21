@@ -48,6 +48,7 @@ const outputModeValidator = v.union(v.literal("image"), v.literal("text"))
 const responseProviderValidator = v.union(
   v.literal("openrouter"),
   v.literal("openai"),
+  v.literal("ai_gateway"),
   v.literal("fal")
 )
 const IMAGE_PROVIDERS = new Set(["openrouter", "fal"])
@@ -536,7 +537,13 @@ export const start = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai", "fal", "codex"].includes(connection.provider) ||
+      ![
+        "openrouter",
+        "openai",
+        "ai_gateway",
+        "fal",
+        "codex",
+      ].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -725,7 +732,13 @@ export const send = mutation({
     if (
       !connection ||
       connection.ownerId !== user._id ||
-      !["openrouter", "openai", "fal", "codex"].includes(connection.provider) ||
+      ![
+        "openrouter",
+        "openai",
+        "ai_gateway",
+        "fal",
+        "codex",
+      ].includes(connection.provider) ||
       connection.status !== "connected"
     )
       throw new Error("Provider connection unavailable")
@@ -1531,7 +1544,9 @@ export const getOpenRouterResponseContext = internalQuery({
     if (
       !connection ||
       connection.ownerId !== conversation.ownerId ||
-      !["openrouter", "openai", "fal"].includes(connection.provider) ||
+      !["openrouter", "openai", "ai_gateway", "fal"].includes(
+        connection.provider
+      ) ||
       connection.status !== "connected"
     ) {
       throw new Error("Provider connection unavailable")
@@ -1769,7 +1784,11 @@ export const getOpenRouterResponseContext = internalQuery({
       model: assistantMessage.model,
       outputMode:
         assistantMessage.outputMode ?? conversation.outputMode ?? "text",
-      provider: connection.provider as "openrouter" | "openai" | "fal",
+      provider: connection.provider as
+        | "openrouter"
+        | "openai"
+        | "ai_gateway"
+        | "fal",
       ...(assistantMessage.routingProvider
         ? { routingProvider: assistantMessage.routingProvider }
         : {}),

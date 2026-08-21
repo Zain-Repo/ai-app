@@ -408,6 +408,7 @@ describe("connected provider selector", () => {
   const connections = [
     { provider: "openrouter", status: "connected" },
     { provider: "openai", status: "connected" },
+    { provider: "ai_gateway", status: "connected" },
     { provider: "fal", status: "connected" },
     { provider: "codex", status: "connected" },
     { provider: "cursor", status: "connected" },
@@ -431,6 +432,11 @@ describe("connected provider selector", () => {
       {
         label: "OpenRouter",
         provider: "openrouter",
+        requiresDesktop: false,
+      },
+      {
+        label: "Vercel AI Gateway",
+        provider: "ai_gateway",
         requiresDesktop: false,
       },
       { label: "fal", provider: "fal", requiresDesktop: false },
@@ -508,6 +514,7 @@ describe("connected provider selector", () => {
       { label: "Cursor Agent", value: "cursor" },
       { label: "OpenAI", value: "openai" },
       { label: "OpenRouter", value: "openrouter" },
+      { label: "Vercel AI Gateway", value: "ai_gateway" },
     ])
     expect(getExecutionProviderOptions(options, "image")).toEqual([
       { label: "OpenRouter", value: "openrouter" },
@@ -518,6 +525,7 @@ describe("connected provider selector", () => {
 
   it("guards provider changes before updating the active provider", () => {
     expect(isActiveProvider("openrouter")).toBe(true)
+    expect(isActiveProvider("ai_gateway")).toBe(true)
     expect(isActiveProvider("fal")).toBe(true)
     expect(isActiveProvider("anthropic")).toBe(false)
     expect(isActiveProvider("unknown")).toBe(false)
