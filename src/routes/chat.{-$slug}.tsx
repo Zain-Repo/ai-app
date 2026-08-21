@@ -4282,7 +4282,44 @@ function MessageAreaContent({
                       </OptionalChatFeatureBoundary>
                     ) : null}
                     {remainingAttachments.length ? (
-                      <AttachmentGroup className="mt-2 max-w-full">
+                      isUser ? (
+                        <div className="mt-2 flex min-w-0 flex-wrap gap-2">
+                          {remainingAttachments.map((attachment) => {
+                            const isImage =
+                              attachment.contentType.startsWith("image/")
+                            return (
+                              <a
+                                className="flex max-w-full min-w-0 items-center gap-2 rounded-xl bg-background p-1.5 pr-3 text-card-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+                                href={attachment.url}
+                                key={attachment.storageId}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                {isImage ? (
+                                  <img
+                                    alt=""
+                                    className="size-8 shrink-0 rounded-lg object-cover"
+                                    src={attachment.url}
+                                  />
+                                ) : (
+                                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                    <FileText aria-hidden="true" />
+                                  </span>
+                                )}
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm leading-tight font-medium">
+                                    {attachment.name}
+                                  </span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {formatFileSize(attachment.size)}
+                                  </span>
+                                </span>
+                              </a>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <AttachmentGroup className="mt-2 max-w-full">
                         {remainingAttachments.map((attachment) => {
                           const isImage =
                             attachment.contentType.startsWith("image/")
@@ -4318,7 +4355,8 @@ function MessageAreaContent({
                             </Attachment>
                           )
                         })}
-                      </AttachmentGroup>
+                        </AttachmentGroup>
+                      )
                     ) : null}
                   </ChatMessageRow>
                 )
