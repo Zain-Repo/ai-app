@@ -141,7 +141,7 @@ export function ProviderConnectDialog({
   const showCodex =
     desktopCodexAvailable &&
     matchesProviderSearch(searchQuery, [
-      provider.name,
+      "ChatGPT subscription",
       "Codex",
       "OAuth",
       desktopCodexAccount?.email,
