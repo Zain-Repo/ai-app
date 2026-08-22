@@ -1592,15 +1592,11 @@ export const generate = internalAction({
                 ...(terminalSandbox
                   ? { runTerminalCommand: runTerminalCommandTool }
                   : {}),
-                ...(context.hasProjectLinks
-                  ? {
-                      webSearch: openrouter.tools.webSearch({
-                        maxResults: 5,
-                        searchPrompt:
-                          "Use the exact project source URLs when they answer the request.",
-                      }),
-                    }
-                  : {}),
+                webSearch: openrouter.tools.webSearch({
+                  maxResults: 5,
+                  searchPrompt:
+                    "Search the web for current, accurate information to answer the user's question.",
+                }),
               })
               return streamText({
                 abortSignal: abortController.signal,
@@ -1635,7 +1631,8 @@ export const generate = internalAction({
                   ...(terminalSandbox
                     ? { runTerminalCommand: runTerminalCommandTool }
                     : {}),
-                  ...(context.hasProjectLinks && context.provider === "openai"
+                  ...(context.provider === "openai" ||
+                  context.provider === "ai_gateway"
                     ? { webSearch: openai.tools.webSearch() }
                     : {}),
                 },
