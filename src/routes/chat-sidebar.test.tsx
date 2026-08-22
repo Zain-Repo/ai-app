@@ -37,6 +37,7 @@ class ResizeObserverMock implements ResizeObserver {
 vi.mock("convex/react", async (importOriginal) => ({
   ...(await importOriginal<typeof ConvexReact>()),
   useQuery: useQueryMock,
+  useMutation: vi.fn().mockReturnValue(vi.fn()),
 }))
 
 beforeEach(() => {
