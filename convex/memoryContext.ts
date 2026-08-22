@@ -337,6 +337,12 @@ export const recordResponseReferences = internalMutation({
     responseMessageId: v.id("messages"),
     memoryItemIds: v.array(v.id("memoryItems")),
     summaryIds: v.array(v.id("conversationMemorySummaries")),
+    webSources: v.optional(
+      v.array(
+        v.object({ url: v.string(), title: v.string() })
+      )
+    ),
+    projectSourceIds: v.optional(v.array(v.id("projectSources"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -366,6 +372,7 @@ export const recordResponseReferences = internalMutation({
         ownerId: args.ownerId,
         conversationId: conversation._id,
         responseMessageId: response._id,
+        sourceType: "memory",
         memoryItemId: item._id,
         createdAt: now,
       })
@@ -381,7 +388,31 @@ export const recordResponseReferences = internalMutation({
         ownerId: args.ownerId,
         conversationId: conversation._id,
         responseMessageId: response._id,
+        sourceType: "memory",
         summaryId: summary._id,
+        createdAt: now,
+      })
+    }
+    for (const webSource of (args.webSources ?? []).slice(0, 10)) {
+      await ctx.db.insert("responseMemoryReferences", {
+        ownerId: args.ownerId,
+        conversationId: conversation._id,
+        responseMessageId: response._id,
+        sourceType: "web",
+        url: webSource.url,
+        title: webSource.title,
+        createdAt: now,
+      })
+    }
+    for (const projectSourceId of (args.projectSourceIds ?? []).slice(0, 10)) {
+      const source = await ctx.db.get(projectSourceId)
+      if (!source || source.ownerId !== args.ownerId) continue
+      await ctx.db.insert("responseMemoryReferences", {
+        ownerId: args.ownerId,
+        conversationId: conversation._id,
+        responseMessageId: response._id,
+        sourceType: "project",
+        projectSourceId: source._id,
         createdAt: now,
       })
     }

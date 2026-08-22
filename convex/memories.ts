@@ -37,6 +37,10 @@ type MemoryDatabaseContext = Parameters<typeof getCurrentUser>[0]
 
 const responseMemorySourceValidator = v.object({
   referenceId: v.id("responseMemoryReferences"),
+  sourceType: v.optional(v.union(v.literal("memory"), v.literal("web"), v.literal("project"))),
+  url: v.optional(v.string()),
+  title: v.optional(v.string()),
+  projectSourceId: v.optional(v.id("projectSources")),
   memoryItemId: v.optional(v.id("memoryItems")),
   summaryId: v.optional(v.id("conversationMemorySummaries")),
   feedback: v.optional(
@@ -48,6 +52,10 @@ const responseMemorySourceValidator = v.object({
 function toResponseMemorySource(reference: Doc<"responseMemoryReferences">) {
   return {
     referenceId: reference._id,
+    ...(reference.sourceType ? { sourceType: reference.sourceType } : {}),
+    ...(reference.url ? { url: reference.url } : {}),
+    ...(reference.title ? { title: reference.title } : {}),
+    ...(reference.projectSourceId ? { projectSourceId: reference.projectSourceId } : {}),
     ...(reference.memoryItemId ? { memoryItemId: reference.memoryItemId } : {}),
     ...(reference.summaryId ? { summaryId: reference.summaryId } : {}),
     ...(reference.feedback ? { feedback: reference.feedback } : {}),
@@ -1585,6 +1593,10 @@ export const listConversationResponseSources = query({
 export const submitFeedback = mutation({
   args: {
     referenceId: v.id("responseMemoryReferences"),
+  sourceType: v.optional(v.union(v.literal("memory"), v.literal("web"), v.literal("project"))),
+  url: v.optional(v.string()),
+  title: v.optional(v.string()),
+  projectSourceId: v.optional(v.id("projectSources")),
     feedback: v.union(
       v.literal("helpful"),
       v.literal("incorrect"),

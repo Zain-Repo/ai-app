@@ -63,6 +63,7 @@ import {
 } from "../../shared/openrouter-attachments"
 import { ArchivedChatsDialog } from "@/components/archived-chats-dialog"
 import { ChatMessageRow, copyMessageText } from "@/components/chat-message-row"
+import type { ResponseSource } from "@/components/response-sources"
 import type {
   AssistantResponseFeedbackRating,
   ChatMessageBranchNavigation,
@@ -3905,17 +3906,8 @@ type LoadedMessageAreaProps = Omit<MessageAreaProps, "messages"> & {
   messages: ChatMessage[]
 }
 
-type ResponseMemorySource = {
-  memoryItemId?: Id<"memoryItems">
-  referenceId: Id<"responseMemoryReferences">
-}
-
 export function MessageArea(props: MessageAreaProps) {
-  const welcomeMessage = useSyncExternalStore(
-    subscribeToLaunchWelcomeMessage,
-    getLaunchWelcomeMessage,
-    getDefaultWelcomeMessage
-  )
+
 
   if (props.messages === undefined)
     return <ChatStatus loading message="Loading messages..." />
@@ -3995,7 +3987,6 @@ function MessageAreaContent({
   onAction,
   onCopy = () => undefined,
   onEdit = () => undefined,
-  onManageMemory,
   onRetry = () => undefined,
   onSelectBranch = () => undefined,
   conversationId,
@@ -4007,7 +3998,7 @@ function MessageAreaContent({
 }: LoadedMessageAreaProps & {
   responseSourcesByMessageId?: ReadonlyMap<
     Id<"messages">,
-    ResponseMemorySource[]
+    ResponseSource[]
   >
   responseFeedbackByMessageId?: ReadonlyMap<
     Id<"messages">,
@@ -4087,6 +4078,7 @@ function MessageAreaContent({
                     onRetry={(model) => onRetry(message, model)}
                     onSelectBranch={onSelectBranch}
                     retryModels={retryModels}
+                    sources={responseSourcesByMessageId?.get(message._id)}
                   >
                     {!isUser && message.terminalRuns?.length ? (
                       <div className="mb-3 space-y-2">
@@ -4282,14 +4274,6 @@ function MessageAreaContent({
                         Stopped
                       </p>
                     ) : null}
-                    {!isUser && message.status === "complete" ? (
-                      <OptionalChatFeatureBoundary>
-                        <MemoryUsed
-                          onManageMemory={onManageMemory}
-                          sources={responseSourcesByMessageId?.get(message._id)}
-                        />
-                      </OptionalChatFeatureBoundary>
-                    ) : null}
                     {remainingAttachments.length ? (
                       isUser ? (
                         <div className="mt-2 flex min-w-0 flex-wrap gap-2">
@@ -4376,83 +4360,6 @@ function MessageAreaContent({
         <MessageScrollerButton />
       </MessageScroller>
     </MessageScrollerProvider>
-  )
-}
-
-function MemoryUsed({
-  onManageMemory,
-  sources,
-}: {
-  onManageMemory: () => void
-  sources: ResponseMemorySource[] | undefined
-}) {
-  const feedback = useMutation(api.memories.submitFeedback)
-  const [open, setOpen] = useState(false)
-  if (!sources?.length) return null
-  return (
-    <div className="mt-3 border-t pt-2">
-      <Button
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        size="sm"
-        variant="outline"
-      >
-        Memory used ({sources.length})
-      </Button>
-      {open ? (
-        <div className="mt-2 space-y-2 text-xs" aria-label="Memory sources">
-          <Button onClick={onManageMemory} size="sm" variant="ghost">
-            Correct or manage memory
-          </Button>
-          {sources.map((source) => (
-            <div
-              className="flex flex-wrap items-center gap-2"
-              key={source.referenceId}
-            >
-              <span>
-                {source.memoryItemId ? "Saved memory" : "History summary"}
-              </span>
-              <Button
-                onClick={() =>
-                  void feedback({
-                    feedback: "helpful",
-                    referenceId: source.referenceId,
-                  })
-                }
-                size="sm"
-                variant="ghost"
-              >
-                Helpful
-              </Button>
-              <Button
-                onClick={() =>
-                  void feedback({
-                    feedback: "incorrect",
-                    referenceId: source.referenceId,
-                  })
-                }
-                size="sm"
-                variant="ghost"
-              >
-                Incorrect
-              </Button>
-              <Button
-                onClick={() =>
-                  void feedback({
-                    feedback: "dont_use",
-                    referenceId: source.referenceId,
-                  })
-                }
-                size="sm"
-                variant="ghost"
-              >
-                Don’t use this again
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
   )
 }
 

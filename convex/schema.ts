@@ -699,6 +699,12 @@ export default defineSchema({
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
     responseMessageId: v.id("messages"),
+    sourceType: v.optional(
+      v.union(v.literal("memory"), v.literal("web"), v.literal("project"))
+    ),
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    projectSourceId: v.optional(v.id("projectSources")),
     rating: v.union(v.literal("positive"), v.literal("negative")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -711,6 +717,12 @@ export default defineSchema({
     ownerId: v.id("users"),
     conversationId: v.id("conversations"),
     responseMessageId: v.id("messages"),
+    sourceType: v.optional(
+      v.union(v.literal("memory"), v.literal("web"), v.literal("project"))
+    ),
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    projectSourceId: v.optional(v.id("projectSources")),
     memoryItemId: v.optional(v.id("memoryItems")),
     summaryId: v.optional(v.id("conversationMemorySummaries")),
     feedback: v.optional(

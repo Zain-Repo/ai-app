@@ -22,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ResponseSources, type ResponseSource } from "@/components/response-sources"
 import { Message, MessageContent } from "@/components/ui/message"
 import { MessageScrollerItem } from "@/components/ui/message-scroller"
 import { cn } from "@/lib/utils"
@@ -70,6 +71,7 @@ export function ChatMessageRow({
   onRetry,
   onSelectBranch,
   retryModels,
+  sources,
 }: {
   actionsDisabled: boolean
   bubbleClassName?: string
@@ -83,6 +85,7 @@ export function ChatMessageRow({
   onRetry: (model?: string) => void
   onSelectBranch: (branchId: Id<"conversationBranches">) => void
   retryModels: Array<{ label: string; value: string }>
+  sources?: ResponseSource[]
 }) {
   const isUser = message.role === "user"
   const actionsAvailable =
@@ -231,6 +234,10 @@ export function ChatMessageRow({
     </MessageToolbar>
   ) : null
 
+  const sourceList = sources && sources.length > 0 ? (
+    <ResponseSources sources={sources} />
+  ) : null
+
   return (
     <MessageScrollerItem
       className="group/message-row focus-visible:rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
@@ -248,6 +255,7 @@ export function ChatMessageRow({
             </BubbleContent>
           </Bubble>
           {toolbar}
+          {sourceList}
         </MessageContent>
       </Message>
     </MessageScrollerItem>
